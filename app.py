@@ -25,7 +25,9 @@ PUESTOS_CATALOGO = {
 # --- REGLAS DE COMISIÓN PARA CHICAS / BAILARINAS ---
 def calcular_comision_chica(producto_str):
     p = producto_str.upper().strip()
-    if 'BOONS ARTISTA' in p:
+    if 'PRIVADO ARTISTA' in p:
+        return 600.0  # Comisión estándar para privado artista (ej. $600 según el excel)
+    elif 'BOONS ARTISTA' in p:
         return 700.0
     elif 'BOONS' in p:
         return 700.0
@@ -183,6 +185,7 @@ elif opcion == "3. Corte y Nómina Final":
                 vip5_priv_cant = 0.0
                 vip15_cant = 0.0
                 vip30_cant = 0.0
+                priv_artista_cant = 0.0
 
                 if not chicas_totales.empty:
                     sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
@@ -193,9 +196,9 @@ elif opcion == "3. Corte y Nómina Final":
                             desc = str(f_prod['descripcion']).upper()
                             cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
                             
-                            if 'BOONS ARTISTA' in desc:
-                                pass
-                            elif 'BOONS' in desc:
+                            if 'PRIVADO ARTISTA' in desc:
+                                priv_artista_cant += cant
+                            elif 'BOONS' in desc: # Incluye BOONS y BOONS ARTISTA
                                 boons_cant += cant
                             elif 'COPA LADY' in desc:
                                 copa_cant += cant
@@ -225,6 +228,7 @@ elif opcion == "3. Corte y Nómina Final":
                     "VIP 5 / Privado": int(vip5_priv_cant),
                     "VIP 15": int(vip15_cant),
                     "VIP 30": int(vip30_cant),
+                    "Privado Artista": int(priv_artista_cant),
                     "Sueldo Base": sueldo_base, 
                     "Comisiones": extras, 
                     "Total a Pagar": total_pagar
@@ -235,7 +239,7 @@ elif opcion == "3. Corte y Nómina Final":
 
             # --- TOTALES DE PRODUCTOS VENDIDOS ---
             st.markdown("##### 📦 Totales de Productos Vendidos en el Día")
-            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
             c1.metric("Boons", int(df_res_gc['Boons'].sum()))
             c2.metric("Copa Lady", int(df_res_gc['Copa Lady'].sum()))
             c3.metric("Strongbow", int(df_res_gc['Strongbow'].sum()))
@@ -243,6 +247,7 @@ elif opcion == "3. Corte y Nómina Final":
             c5.metric("VIP 5/Priv", int(df_res_gc['VIP 5 / Privado'].sum()))
             c6.metric("VIP 15", int(df_res_gc['VIP 15'].sum()))
             c7.metric("VIP 30", int(df_res_gc['VIP 30'].sum()))
+            c8.metric("Priv. Artista", int(df_res_gc['Privado Artista'].sum()))
 
             st.metric("Subtotal Nómina Chicas y Bailarinas", f"${df_res_gc['Total a Pagar'].sum():,.2f}")
 
