@@ -390,10 +390,14 @@ elif opcion == "3. Corte y Nómina Final":
                 nombre = emp['nombre']
                 tipo = emp['tipo']
                 sueldo_base = float(emp['sueldo_base'])
+                
+                # Porcentaje por defecto en 50% (0.50)
+                porcentaje_propina = 50.0
                 propinas = 0.0
                 comisiones_prod = 0.0
 
-                # 1. Cálculo de Propinas (para Meseros)
+                # 1. Cálculo base de la bolsa de propinas (para Meseros)
+                total_propinaable = 0.0
                 if "Mesero" in tipo:
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
@@ -401,9 +405,8 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
                             prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
-                            
                             total_propinaable = prop_tarj + prop_efec + prop_vale
-                            propinas = total_propinaable * 0.50
+                            propinas = total_propinaable * (porcentaje_propina / 100.0)
 
                 # 2. Cálculo de Comisiones por Productos (para Gerentes, Capitanes, Cajeros, etc.)
                 puesto_upper = tipo.upper()
@@ -421,9 +424,11 @@ elif opcion == "3. Corte y Nómina Final":
                     "Nombre": nombre, 
                     "Puesto": tipo,
                     "Sueldo Base": sueldo_base, 
+                    "% Propinas": porcentaje_propina,
                     "Propinas": propinas, 
                     "Comisiones": comisiones_prod, 
-                    "Total a Pagar": total_pagar
+                    "Total a Pagar": total_pagar,
+                    "_propinaable": total_propinaable
                 })
 
             df_res_general = pd.DataFrame(res_general)
@@ -440,23 +445,43 @@ elif opcion == "3. Corte y Nómina Final":
                         format="$%.2f",
                         required=True
                     ),
+                    "% Propinas": st.column_config.NumberColumn(
+                        "% Propinas",
+                        help="Modifica el porcentaje de propinas que le corresponde a este empleado",
+                        min_value=0.0,
+                        max_value=100.0,
+                        format="%.1f%%",
+                        required=True
+                    ),
                     "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
                     "Propinas": st.column_config.NumberColumn("Propinas ($)", format="$%.2f", disabled=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                 },
-                disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones"],
+                disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones", "Total a Pagar"],
                 use_container_width=True,
                 key="editor_sueldos_general"
             )
 
+            # Recalcular Propinas y Total a Pagar en tiempo real si se edita el porcentaje o sueldo base
             actualizado_gen_flag = False
-            for _, row_ed in df_editado_gen.iterrows():
+            for idx, row_ed in df_editado_gen.iterrows():
                 e_id = row_ed['ID']
                 nuevo_sb = float(row_ed['Sueldo Base'])
-                original_sb = float(df_res_general[df_res_general['ID'] == e_id]['Sueldo Base'].values[0])
+                nuevo_pct = float(row_ed['% Propinas'])
+                
+                orig_row = df_res_general[df_res_general['ID'] == e_id].iloc[0]
+                original_sb = float(orig_row['Sueldo Base'])
+                original_pct = float(orig_row['% Propinas'])
+                
                 if nuevo_sb != original_sb:
                     actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
                     actualizado_gen_flag = True
+                
+                if nuevo_pct != original_pct:
+                    # Actualizar cálculo dinámicamente en pantalla
+                    propina_calculada = float(row_ed['_propinaable']) * (nuevo_pct / 100.0)
+                    df_editado_gen.loc[idx, 'Propinas'] = propina_calculada
+                    df_editado_gen.loc[idx, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
 
             if actualizado_gen_flag:
                 st.rerun()
