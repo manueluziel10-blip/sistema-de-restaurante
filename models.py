@@ -108,18 +108,24 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
     session.commit()
     session.close()
 
-
 def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
-    """Limpia los registros del día actual e inserta el nuevo corte de ventas validando empleados y puestos."""
+    """Limpia los registros del día actual e inserta el nuevo corte de meseros asignando el puesto correcto."""
     session = get_session()
     try:
         # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
         session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
         session.commit()
 
-        # 2. Obtener un puesto válido del catálogo para asignar por defecto si el empleado es nuevo
-        primer_puesto = session.query(PuestoCatalogo).first()
-        tipo_por_defecto = primer_puesto.nombre if primer_puesto else "Mesero"
+        # 2. Buscar un puesto que corresponda a meseros en el catálogo
+        puesto_mesero = session.query(PuestoCatalogo).filter(
+            func.lower(PuestoCatalogo.nombre).like("%meser%")
+        ).first()
+        
+        # Si no encuentra uno con la palabra meser, toma el primero disponible del catálogo
+        if not puesto_mesero:
+            puesto_mesero = session.query(PuestoCatalogo).first()
+            
+        tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Meseros"
 
         # 3. Insertar los nuevos registros del Excel
         for _, row in df_v.iterrows():
@@ -132,7 +138,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
                 emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
             
             if not emp:
-                # Si no existe, lo creamos usando un puesto válido del catálogo
+                # Si no existe, lo creamos asignándole estrictamente el puesto de mesero
                 emp = Empleado(
                     id=idmesero,
                     nombre=nombre_mesero.upper(),
@@ -141,6 +147,11 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
                 )
                 session.add(emp)
                 session.commit()
+            else:
+                # Si ya existía pero por error se quedó con otro puesto, se lo corregimos
+                if "CHICA" in emp.tipo.upper() or "BAILARINA" in emp.tipo.upper():
+                    emp.tipo = tipo_por_defecto
+                    session.commit()
 
             session.add(CorteVenta(
                 idmesero=emp.id,
@@ -156,7 +167,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
         raise e
     finally:
         session.close()
-
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
     """
     Limpia los registros del día actual de productos de chicas e inserta los nuevos (sobrescribe).
