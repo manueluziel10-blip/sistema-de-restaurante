@@ -21,7 +21,8 @@ PUESTOS_CATALOGO = {
     "Animador (Fijo)": 400.0,
     "Gerente (Fijo)": 500.0,
     "Capitán de Mesero (Fijo)": 400.0,
-    "Ayudante de Mesero (Fijo)": 300.0
+    "Ayudante de Mesero (Fijo)": 300.0,
+    "Cajero (Fijo)": 400.0
 }
 
 # --- REGLAS DE COMISIÓN PARA CHICAS / BAILARINAS ---
@@ -45,6 +46,21 @@ def calcular_comision_chica(producto_str):
         return 100.0
     elif 'VIP3' in p:
         return 50.0
+    return 0.0
+
+# --- REGLAS DE COMISIÓN DE PRODUCTOS PARA GERENTES, CAPITANES Y CAJEROS ---
+def calcular_comision_gerencia_caja(producto_str):
+    p = producto_str.upper().strip()
+    if 'MOET IMPERIAL' in p:
+        return 170.0
+    elif 'VINO ESPUMOSO' in p:
+        return 60.0
+    elif 'BOONS' in p:
+        return 30.0
+    elif 'STRONGBOW' in p:
+        return 10.0
+    elif 'COPA' in p:
+        return 5.0
     return 0.0
 
 # --- MENÚ LATERAL ---
@@ -224,17 +240,13 @@ elif opcion == "3. Corte y Nómina Final":
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
                 if not sus_filas.empty:
-                    extras = float((sus_filas['comision_unitaria'] * sus_filas['cantidad']).sum())
-                    
                     for _, f_prod in sus_filas.iterrows():
                         desc = str(f_prod['descripcion']).upper()
                         cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                        com_unit = float(f_prod['comision_unitaria']) if pd.notna(f_prod['comision_unitaria']) else 0.0
+                        
+                        com_unit = 300.0 if 'PRIVADO ARTISTA' in desc else float(f_prod['comision_unitaria'])
                         subtotal_prod = cant * com_unit
                         
-                        if 'PRIVADO ARTISTA' in desc or 'BOONS' in desc or 'COPA LADY' in desc or 'MINI STRONGBOW' in desc or 'VIP30' in desc or 'VIP 15' in desc or 'VIP15' in desc or 'VIP5' in desc or 'PRIVADO' in desc or 'VIP3' in desc:
-                            pass # Procesado abajo de forma específica
-
                         if 'PRIVADO ARTISTA' in desc:
                             vip5_priv_art_cant += cant
                             vip5_priv_art_monto += subtotal_prod
@@ -259,6 +271,8 @@ elif opcion == "3. Corte y Nómina Final":
                         elif 'VIP3' in desc:
                             vip3_cant += cant
                             vip3_monto += subtotal_prod
+
+                    extras = boons_monto + copa_monto + strong_monto + vip3_monto + vip5_priv_art_monto + vip15_monto + vip30_monto
 
             if penalizada:
                 extras = extras / 2.0
@@ -376,8 +390,10 @@ elif opcion == "3. Corte y Nómina Final":
                 nombre = emp['nombre']
                 tipo = emp['tipo']
                 sueldo_base = float(emp['sueldo_base'])
-                extras = 0.0
+                propinas = 0.0
+                comisiones_prod = 0.0
 
+                # 1. Cálculo de Propinas (para Meseros)
                 if "Mesero" in tipo:
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
@@ -387,13 +403,29 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                             
                             total_propinaable = prop_tarj + prop_efec + prop_vale
-                            extras = total_propinaable * 0.50
+                            propinas = total_propinaable * 0.50
 
-                total_pagar = sueldo_base + extras
+                # 2. Cálculo de Comisiones por Productos (para Gerentes, Capitanes, Cajeros, etc.)
+                puesto_upper = tipo.upper()
+                if any(p in puesto_upper for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    if not chicas_totales.empty:
+                        for _, f_prod in chicas_totales.iterrows():
+                            desc = str(f_prod['descripcion'])
+                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                            com_unit = calcular_comision_gerencia_caja(desc)
+                            comisiones_prod += cant * com_unit
+
+                total_pagar = sueldo_base + propinas + comisiones_prod
                 res_general.append({
-                    "ID": emp_id, "Nombre": nombre, "Puesto": tipo,
-                    "Sueldo Base": sueldo_base, "Comisiones / Extras": extras, "Total a Pagar": total_pagar
+                    "ID": emp_id, 
+                    "Nombre": nombre, 
+                    "Puesto": tipo,
+                    "Sueldo Base": sueldo_base, 
+                    "Propinas": propinas, 
+                    "Comisiones": comisiones_prod, 
+                    "Total a Pagar": total_pagar
                 })
+
             df_res_general = pd.DataFrame(res_general)
             
             altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
@@ -409,9 +441,10 @@ elif opcion == "3. Corte y Nómina Final":
                         required=True
                     ),
                     "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                    "Comisiones / Extras": st.column_config.NumberColumn("Comisiones / Extras ($)", format="$%.2f", disabled=True),
+                    "Propinas": st.column_config.NumberColumn("Propinas ($)", format="$%.2f", disabled=True),
+                    "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                 },
-                disabled=["ID", "Nombre", "Puesto", "Comisiones / Extras"],
+                disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones"],
                 use_container_width=True,
                 key="editor_sueldos_general"
             )
@@ -445,9 +478,11 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     nomina_chicas_calc = 0.0
     if not chicas_acumuladas.empty:
-        nomina_chicas_calc = float(
-            (chicas_acumuladas['comision_unitaria'] * chicas_acumuladas['cantidad']).sum()
-        )
+        for _, r in chicas_acumuladas.iterrows():
+            desc = str(r['descripcion']).upper()
+            cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
+            com = 300.0 if 'PRIVADO ARTISTA' in desc else float(r['comision_unitaria'])
+            nomina_chicas_calc += cant * com
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     gasto_previo = cargar_gastos_hoy()
