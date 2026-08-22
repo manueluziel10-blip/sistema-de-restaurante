@@ -318,10 +318,12 @@ elif opcion == "3. Corte y Nómina Final":
 
         df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1)
 
+        editor_key = f"editor_sueldos_{key_sufijo}"
         df_editado = st.data_editor(
             df_estilizado,
             height=altura_tabla,
             column_config={
+                "ID": st.column_config.NumberColumn("ID", disabled=True),
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
                     help="Haz clic para modificar el sueldo base directamente",
@@ -334,17 +336,22 @@ elif opcion == "3. Corte y Nómina Final":
             },
             disabled=[c for c in cols_mostrar if c != "Sueldo Base"],
             use_container_width=True,
-            key=f"editor_sueldos_{key_sufijo}"
+            key=editor_key
         )
 
+        # Capturar exclusivamente los cambios reportados por st.session_state para este editor
         actualizado_flag = False
-        for _, row_ed in df_editado.iterrows():
-            e_id = int(row_ed['ID'])
-            nuevo_sb = float(row_ed['Sueldo Base']) if pd.notna(row_ed['Sueldo Base']) else 0.0
-            original_sb = float(df_res.loc[df_res['ID'] == e_id, 'Sueldo Base'].values[0])
-            if nuevo_sb != original_sb and nuevo_sb >= 0:
-                actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
-                actualizado_flag = True
+        if editor_key in st.session_state:
+            cambios = st.session_state[editor_key].get("edited_rows", {})
+            for row_idx, edits in cambios.items():
+                if "Sueldo Base" in edits:
+                    fila_modificada = df_res.iloc[int(row_idx)]
+                    e_id = int(fila_modificada['ID'])
+                    nuevo_sb = float(edits["Sueldo Base"])
+                    puesto_emp = fila_modificada['Puesto']
+                    
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb)
+                    actualizado_flag = True
 
         if actualizado_flag:
             st.rerun()
@@ -442,10 +449,12 @@ elif opcion == "3. Corte y Nómina Final":
             cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
             
             altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
+            editor_key_gen = "editor_sueldos_general"
             df_editado_gen = st.data_editor(
                 df_res_general[cols_mostrar_gen],
                 height=altura_tabla_gen,
                 column_config={
+                    "ID": st.column_config.NumberColumn("ID", disabled=True),
                     "Sueldo Base": st.column_config.NumberColumn(
                         "Sueldo Base ($)",
                         help="Haz clic para modificar el sueldo base directamente",
@@ -464,37 +473,21 @@ elif opcion == "3. Corte y Nómina Final":
                 },
                 disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones", "Total a Pagar"],
                 use_container_width=True,
-                key="editor_sueldos_general"
+                key=editor_key_gen
             )
 
             actualizado_gen_flag = False
-            for _, row_ed in df_editado_gen.iterrows():
-                e_id = int(row_ed['ID'])
-                
-                # Validación estricta para evitar sobreescritura accidental con ceros
-                if pd.isna(row_ed['Sueldo Base']):
-                    continue
-                nuevo_sb = float(row_ed['Sueldo Base'])
-                
-                raw_pct_str = str(row_ed['% Prop.']).replace('↑', '').replace('%', '').strip()
-                try:
-                    nuevo_pct = float(raw_pct_str)
-                except ValueError:
-                    nuevo_pct = 0.0
-
-                orig_row = df_res_general[df_res_general['ID'] == e_id].iloc[0]
-                original_sb = float(orig_row['Sueldo Base'])
-                original_pct_num = float(orig_row['_pct_num'])
-                
-                if nuevo_sb != original_sb and nuevo_sb >= 0:
-                    actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
-                    actualizado_gen_flag = True
-                
-                if nuevo_pct != original_pct_num:
-                    propina_calculada = float(orig_row['_propinaable']) * (nuevo_pct / 100.0)
-                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, '% Prop.'] = f"↑ {nuevo_pct:.1f}%"
-                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, 'Propinas'] = propina_calculada
-                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
+            if editor_key_gen in st.session_state:
+                cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
+                for row_idx, edits in cambios_gen.items():
+                    if "Sueldo Base" in edits:
+                        fila_mod_gen = df_res_general.iloc[int(row_idx)]
+                        e_id = int(fila_mod_gen['ID'])
+                        nuevo_sb = float(edits["Sueldo Base"])
+                        puesto_emp = fila_mod_gen['Puesto']
+                        
+                        actualizar_empleado(e_id, puesto_emp, nuevo_sb)
+                        actualizado_gen_flag = True
 
             if actualizado_gen_flag:
                 st.rerun()
