@@ -391,26 +391,35 @@ elif opcion == "3. Corte y Nómina Final":
                 tipo = emp['tipo']
                 sueldo_base = float(emp['sueldo_base'])
                 
-                # Porcentaje por defecto en 50% (0.50)
-                porcentaje_propina = 50.0
+                # Definir porcentaje por defecto según el puesto indicado
+                puesto_ upper_check = tipo.upper()
+                if "AYUDANTE" in puesto_upper_check:
+                    porcentaje_propina = 5.0
+                elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    porcentaje_propina = 8.0
+                else:
+                    porcentaje_propina = 50.0 # Meseros por defecto
+
                 propinas = 0.0
                 comisiones_prod = 0.0
 
-                # 1. Cálculo base de la bolsa de propinas (para Meseros)
+                # 1. Cálculo base de la bolsa de propinas (restando el 16% a las tarjetas)
                 total_propinaable = 0.0
-                if "Mesero" in tipo:
-                    if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
+                if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
+                    if "Mesero" in tipo:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
-                        if not ventas_emp.empty:
-                            prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
-                            prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
-                            prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
-                            total_propinaable = prop_tarj + prop_efec + prop_vale
-                            propinas = total_propinaable * (porcentaje_propina / 100.0)
+                    else:
+                        ventas_emp = ventas_totales # Para gerentes, capitanes, cajeros, ayudantes se toma el total general
+
+                    if not ventas_emp.empty:
+                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                        total_propinaable = prop_tarj + prop_efec + prop_vale
+                        propinas = total_propinaable * (porcentaje_propina / 100.0)
 
                 # 2. Cálculo de Comisiones por Productos (para Gerentes, Capitanes, Cajeros, etc.)
-                puesto_upper = tipo.upper()
-                if any(p in puesto_upper for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     if not chicas_totales.empty:
                         for _, f_prod in chicas_totales.iterrows():
                             desc = str(f_prod['descripcion'])
@@ -478,7 +487,6 @@ elif opcion == "3. Corte y Nómina Final":
                     actualizado_gen_flag = True
                 
                 if nuevo_pct != original_pct:
-                    # Actualizar cálculo dinámicamente en pantalla
                     propina_calculada = float(row_ed['_propinaable']) * (nuevo_pct / 100.0)
                     df_editado_gen.loc[idx, 'Propinas'] = propina_calculada
                     df_editado_gen.loc[idx, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
