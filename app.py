@@ -298,12 +298,17 @@ elif opcion == "3. Corte y Nómina Final":
 
         df_editado['Total a Pagar'] = df_editado['Sueldo Base'] + df_editado['Comisiones']
 
+        actualizado_flag = False
         for _, row_ed in df_editado.iterrows():
             e_id = row_ed['ID']
             nuevo_sb = float(row_ed['Sueldo Base'])
             original_sb = float(df_res[df_res['ID'] == e_id]['Sueldo Base'].values[0])
             if nuevo_sb != original_sb:
                 actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+                actualizado_flag = True
+
+        if actualizado_flag:
+            st.rerun()
 
         st.markdown(f"##### 📦 Totales de Productos Vendidos - {nombre_pestana}")
         c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
@@ -395,12 +400,17 @@ elif opcion == "3. Corte y Nómina Final":
 
             df_editado_gen['Total a Pagar'] = df_editado_gen['Sueldo Base'] + df_editado_gen['Comisiones / Extras']
 
+            actualizado_gen_flag = False
             for _, row_ed in df_editado_gen.iterrows():
                 e_id = row_ed['ID']
                 nuevo_sb = float(row_ed['Sueldo Base'])
                 original_sb = float(df_res_general[df_res_general['ID'] == e_id]['Sueldo Base'].values[0])
                 if nuevo_sb != original_sb:
                     actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+                    actualizado_gen_flag = True
+
+            if actualizado_gen_flag:
+                st.rerun()
 
             sub_g = float(df_editado_gen['Total a Pagar'].sum())
             st.metric("Subtotal Nómina Personal General", f"${sub_g:,.2f}")
