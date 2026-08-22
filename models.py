@@ -256,3 +256,19 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
     emp_id = emp.id
     session.close()
     return emp_id, creado
+
+
+def reiniciar_base_de_datos():
+    """Borra todos los registros de ventas, comisiones, gastos y empleados para empezar desde cero."""
+    session = get_session()
+    try:
+        session.query(CorteVenta).delete()
+        session.query(ProductoChica).delete()
+        session.query(GastoDiario).delete()
+        session.query(Empleado).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
