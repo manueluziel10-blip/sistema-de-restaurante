@@ -70,6 +70,9 @@ up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['x
 if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
 up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
 
+if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
+up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
+
 if up_ventas is not None and up_propinas is not None:
     df_v = pd.read_excel(up_ventas)
     df_p = pd.read_excel(up_propinas)
