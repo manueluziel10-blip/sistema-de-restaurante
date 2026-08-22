@@ -110,7 +110,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
         "📋 Personal Operativo y General"
     ])
 
-    # Filtro flexible: Detecta cualquier puesto que maneje comisiones de chicas o contenga 'CHICA' / 'BAILARINA'
     def es_chica_o_bailarina(tipo_str):
         t = str(tipo_str).upper()
         return ('CHICA' in t) or ('BAILARINA' in t) or ('COMISIONES' in t and 'MESERO' not in t)
@@ -173,9 +172,8 @@ elif opcion == "2. Gestión y Edición de Empleados":
 elif opcion == "3. Corte y Nómina Final":
     st.subheader("Cálculo de Nómina Semanal por Categorías")
 
-    tab_bailarinas, tab_salon, tab_general = st.tabs([
-        "💃 Bailarinas",
-        "🍸 Chicas de Salón",
+    tab_bailarinas, tab_general = st.tabs([
+        "💃 Bailarinas y Chicas",
         "📋 Personal Operativo y General"
     ])
 
@@ -308,29 +306,20 @@ elif opcion == "3. Corte y Nómina Final":
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         return df_editado, subtotal
 
-    # --- PESTAÑA 1: BAILARINAS ---
+    def es_chica_o_bailarina(tipo_str):
+        t = str(tipo_str).upper()
+        return ('CHICA' in t) or ('BAILARINA' in t) or ('COMISIONES' in t and 'MESERO' not in t)
+
+    # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
     with tab_bailarinas:
-        st.markdown("### Nómina: Bailarinas")
-        df_bailarinas = empleados_df[
-            empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas", case=False, na=False) &
-            ~empleados_df['tipo'].str.contains("Salón", case=False, na=False)
-        ]
-        df_editado_b, sub_b = procesar_grupo_chicas(df_bailarinas, "Bailarinas", "bailarinas")
+        st.markdown("### Nómina: Bailarinas y Chicas")
+        df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
+        df_editado_b, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
-    # --- PESTAÑA 2: CHICAS DE SALÓN ---
-    with tab_salon:
-        st.markdown("### Nómina: Chicas de Salón")
-        df_salon = empleados_df[
-            empleados_df['tipo'].str.contains("Salón", case=False, na=False)
-        ]
-        df_editado_s, sub_s = procesar_grupo_chicas(df_salon, "Chicas de Salón", "salon")
-
-    # --- PESTAÑA 3: PERSONAL GENERAL Y OPERATIVO ---
+    # --- PESTAÑA 2: PERSONAL GENERAL Y OPERATIVO ---
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
-        df_general_empleados = empleados_df[
-            ~empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas|Salón", case=False, na=False)
-        ]
+        df_general_empleados = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else empleados_df
 
         if df_general_empleados.empty:
             st.info("No hay personal general registrado.")
@@ -364,7 +353,7 @@ elif opcion == "3. Corte y Nómina Final":
             st.metric("Subtotal Nómina Personal General", f"${sub_g:,.2f}")
 
     st.markdown("---")
-    total_general_semana = sub_b + sub_s + sub_g
+    total_general_semana = sub_b + sub_g
     st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
