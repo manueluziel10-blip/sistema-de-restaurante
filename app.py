@@ -739,8 +739,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
     
-    # --- FORMULA ACTUALIZADA DE UTILIDAD ANTES DE COSTOS (Ventas Totales - Nómina Personal - Cocina) ---
-    utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + gasto_cocina)
+    # --- FORMULA ACTUALIZADA DE UTILIDAD ANTES DE COSTOS (Ventas Totales - Nómina Personal - Nómina Chicas - Cocina) ---
+    utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
@@ -1013,7 +1013,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                                 <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
                                 </div>
-                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between;">
+                                <div style="color: #00E6765; font-size: 12px; display: flex; justify-content: space-between;">
                                     <span>Por Cobrar:</span> <b>${cobrar_m:,.2f}</b>
                                 </div>
                             </div>
