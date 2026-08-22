@@ -171,7 +171,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
         st.markdown("### Importar o Actualizar Personal Masivamente")
         st.info("Sube un archivo de Excel con las columnas: **Nombre**, **Puesto** y **Sueldo Base**.")
 
-        # Generar plantilla incluyendo todos los puestos del catálogo oficial
         filas_plantilla = []
         for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
             filas_plantilla.append({
@@ -458,7 +457,11 @@ elif opcion == "3. Corte y Nómina Final":
             sueldo_base = float(emp['sueldo_base'])
             
             puesto_upper_check = tipo.upper()
-            if "SEGURIDAD" in puesto_upper_check:
+            
+            # DJ y Animador no llevan propina
+            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+                porcentaje_propina = 0.0
+            elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
                 porcentaje_propina = 10.0
@@ -473,7 +476,7 @@ elif opcion == "3. Corte y Nómina Final":
             comisiones_prod = 0.0
             total_propinaable = 0.0
 
-            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
+            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
                 if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
                     ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                     if not ventas_emp.empty:
@@ -498,21 +501,23 @@ elif opcion == "3. Corte y Nómina Final":
                         comisiones_prod += cant * com_unit
 
             total_pagar = sueldo_base + propinas + comisiones_prod
+            
+            # Combinar porcentaje y cantidad de propina en una sola columna limpia
+            propina_str = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
+
             res_general.append({
                 "ID": emp_id, 
                 "Nombre": nombre, 
                 "Puesto": tipo,
                 "Sueldo Base": sueldo_base, 
-                "% Prop.": f"↑ {porcentaje_propina:.1f}%",
-                "Propinas": propinas, 
+                "Propina (%)": propina_str,
                 "Comisiones": comisiones_prod, 
                 "Total a Pagar": total_pagar,
-                "_pct_num": porcentaje_propina,
-                "_propinaable": total_propinaable
+                "_propinas_num": propinas
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "Propina (%)", "Comisiones", "Total a Pagar"]
         
         altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
@@ -529,16 +534,11 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
-                "% Prop.": st.column_config.TextColumn(
-                    "% Prop.",
-                    help="Modifica el porcentaje de propinas (ej: 50%, 10%, 8%, 5%, 0%)",
-                    required=True
-                ),
+                "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                 "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                "Propinas": st.column_config.NumberColumn("Propinas ($)", format="$%.2f", disabled=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones", "Total a Pagar"],
+            disabled=["ID", "Nombre", "Puesto", "Propina (%)", "Comisiones", "Total a Pagar"],
             use_container_width=True,
             key=editor_key_gen
         )
@@ -562,7 +562,7 @@ elif opcion == "3. Corte y Nómina Final":
         st.markdown(f"---")
         st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
         tot_sb = float(df_editado_gen['Sueldo Base'].sum())
-        tot_prop = float(df_editado_gen['Propinas'].sum())
+        tot_prop = float(df_res_general['_propinas_num'].sum())
         tot_com = float(df_editado_gen['Comisiones'].sum())
         sub_g = float(df_editado_gen['Total a Pagar'].sum())
 
