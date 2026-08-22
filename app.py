@@ -638,10 +638,51 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_fijo},
-        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
+        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicano if 'nomina_chicas_calc' in locals() else nomina_chicas_calc},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales", "Monto": gasto_vales},
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
+
+    # --- NUEVA TABLA: RESUMEN DE VENTAS POR MESERO ---
+    st.markdown("---")
+    st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
+    
+    empleados_df = cargar_empleados_df()
+    if not ventas_acumuladas.empty and not empleados_df.empty:
+        # Cruzar la tabla de ventas con los nombres de empleados
+        df_ventas_meseros = pd.merge(
+            ventas_acumuladas, 
+            empleados_df[['id', 'nombre']], 
+            left_on='idmesero', 
+            right_on='id', 
+            how='left'
+        )
+        
+        # Agrupar por nombre del mesero y sumar sus importes y formas de pago
+        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
+            'importe': 'sum',
+            'efectivo': 'sum',
+            'tarjeta': 'sum',
+            'vales': 'sum',
+            'otros': 'sum'
+        }).reset_index()
+        
+        resumen_meseros.columns = ['Mesero', 'Importe Total', 'Efectivo', 'Tarjeta', 'Vales', 'Otros']
+        
+        st.dataframe(
+            resumen_meseros,
+            column_config={
+                "Importe Total": st.column_config.NumberColumn("Importe Total ($)", format="$%.2f"),
+                "Efectivo": st.column_config.NumberColumn("Efectivo ($)", format="$%.2f"),
+                "Tarjeta": st.column_config.NumberColumn("Tarjeta ($)", format="$%.2f"),
+                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f"),
+                "Otros": st.column_config.NumberColumn("Otros ($)", format="$%.2f"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No hay registros de ventas de meseros disponibles para mostrar en el resumen de hoy.")
