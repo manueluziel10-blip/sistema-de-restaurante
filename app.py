@@ -458,7 +458,6 @@ elif opcion == "3. Corte y Nómina Final":
             
             puesto_upper_check = tipo.upper()
             
-            # DJ y Animador no llevan propina
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
             elif "SEGURIDAD" in puesto_upper_check:
@@ -501,8 +500,6 @@ elif opcion == "3. Corte y Nómina Final":
                         comisiones_prod += cant * com_unit
 
             total_pagar = sueldo_base + propinas + comisiones_prod
-            
-            # Combinar porcentaje y cantidad de propina en una sola columna limpia
             propina_str = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
 
             res_general.append({
@@ -624,6 +621,13 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     ventas_acumuladas = cargar_ventas_df()
     chicas_acumuladas = cargar_chicas_df()
+    empleados_dashboard_df = cargar_empleados_df()
+
+    # Cálculo automático de la nómina real de personal fijo/operativo (excluyendo chicas de salón)
+    nomina_personal_fijo = 0.0
+    if not empleados_dashboard_df.empty:
+        df_personal_operativo = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
+        nomina_personal_fijo = float(df_personal_operativo['sueldo_base'].sum())
 
     nomina_chicas_calc = 0.0
     if not chicas_acumuladas.empty:
@@ -684,7 +688,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
 
-    nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
     total_gastos_nomina = nomina_personal_fijo + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
 
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
