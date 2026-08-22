@@ -43,9 +43,10 @@ class CorteVenta(Base):
     idmesero = Column(Integer, ForeignKey("empleados.id"))
     importe = Column(Numeric(10, 2), default=0)
     efectivo = Column(Numeric(10, 2), default=0)
+    propina_efectivo = Column(Numeric(10, 2), default=0)
     tarjeta = Column(Numeric(10, 2), default=0)
-    propina = Column(Numeric(10, 2), default=0)
-    penalizado = Column(Boolean, default=False)
+    propina_tarjeta = Column(Numeric(10, 2), default=0)
+    propina_vales = Column(Numeric(10, 2), default=0)
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
 
@@ -108,8 +109,9 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
     session.commit()
     session.close()
 
-def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
-    """Limpia los registros del día actual e inserta el nuevo corte de meseros asignando el puesto correcto."""
+
+def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str):
+    """Limpia los registros del día actual e inserta el nuevo corte combinando ventas y propinas."""
     session = get_session()
     try:
         # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
@@ -121,16 +123,19 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
             func.lower(PuestoCatalogo.nombre).like("%meser%")
         ).first()
         
-        # Si no encuentra uno con la palabra meser, toma el primero disponible del catálogo
         if not puesto_mesero:
             puesto_mesero = session.query(PuestoCatalogo).first()
             
         tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Meseros"
 
-        # 3. Insertar los nuevos registros del Excel
-        for _, row in df_v.iterrows():
+        # 3. Combinar ambos DataFrames usando idmesero
+        df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
+        df_completo = df_completo.fillna(0)
+
+        # 4. Insertar los nuevos registros
+        for _, row in df_completo.iterrows():
             idmesero = row.get("idmesero")
-            nombre_mesero = str(row.get("nombre", f"MESERO {idmesero}"))
+            nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", f"MESERO {idmesero}")))
 
             # Verificar si el empleado existe por ID o por nombre
             emp = session.query(Empleado).filter(Empleado.id == idmesero).first()
@@ -138,7 +143,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
                 emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
             
             if not emp:
-                # Si no existe, lo creamos asignándole estrictamente el puesto de mesero
                 emp = Empleado(
                     id=idmesero,
                     nombre=nombre_mesero.upper(),
@@ -148,17 +152,18 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
                 session.add(emp)
                 session.commit()
             else:
-                # Si ya existía pero por error se quedó con otro puesto, se lo corregimos
                 if "CHICA" in emp.tipo.upper() or "BAILARINA" in emp.tipo.upper():
                     emp.tipo = tipo_por_defecto
                     session.commit()
 
             session.add(CorteVenta(
                 idmesero=emp.id,
-                importe=row.get("importe", 0),
+                importe=row.get("importe_x", row.get("importe", 0)),
                 efectivo=row.get("efectivo", 0),
+                propina_efectivo=row.get("propinaefectivo", 0),
                 tarjeta=row.get("tarjeta", 0),
-                propina=row.get("propina", 0),
+                propina_tarjeta=row.get("propinatarjeta", 0),
+                propina_vales=row.get("propinavales", 0),
                 archivo_origen=archivo_origen,
             ))
         session.commit()
@@ -167,13 +172,14 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
         raise e
     finally:
         session.close()
+
+
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
     """
     Limpia los registros del día actual de productos de chicas e inserta los nuevos (sobrescribe).
     """
     session = get_session()
     try:
-        # 1. Borrar los registros de la fecha actual antes de guardar
         session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
         session.commit()
 
