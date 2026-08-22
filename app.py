@@ -16,6 +16,7 @@ st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 PUESTOS_CATALOGO = {
     "Chicas / Bailarinas (Comisiones)": 300.0,
     "Mesero (Comisiones)": 300.0,
+    "Barman (Fijo)": 400.0,
     "Seguridad (Fijo)": 500.0,
     "DJ (Fijo)": 600.0,
     "Animador (Fijo)": 400.0,
@@ -155,7 +156,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
     with tab_gest_general:
         st.markdown("### Listado: Personal Operativo, Meseros y Fijos")
         if not empleados_df.empty:
-            # Corrección: Filtramos explícitamente para asegurar que tome todo lo que NO sea chica o bailarina
             df_general_gen = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)].copy()
             st.dataframe(df_general_gen, use_container_width=True)
         else:
@@ -393,6 +393,8 @@ elif opcion == "3. Corte y Nómina Final":
                 puesto_upper_check = tipo.upper()
                 if "SEGURIDAD" in puesto_upper_check:
                     porcentaje_propina = 0.0
+                elif "BARMAN" in puesto_upper_check:
+                    porcentaje_propina = 10.0
                 elif "AYUDANTE" in puesto_upper_check:
                     porcentaje_propina = 5.0
                 elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
@@ -414,7 +416,7 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                             total_propinaable = prop_tarj + prop_efec + prop_vale
                     else:
-                        # Para Gerentes, Capitanes, Cajeros, Seguridad y Ayudantes, se toma la bolsa total general de propinas
+                        # Para Gerentes, Capitanes, Cajeros, Barman, Seguridad y Ayudantes, se toma la bolsa total general de propinas
                         prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
                         prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
                         prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
@@ -462,7 +464,7 @@ elif opcion == "3. Corte y Nómina Final":
                     ),
                     "% Propinas": st.column_config.TextColumn(
                         "% Propinas",
-                        help="Modifica el porcentaje de propinas (ej: 50%, 8%, 5%, 0%)",
+                        help="Modifica el porcentaje de propinas (ej: 50%, 10%, 8%, 5%, 0%)",
                         required=True
                     ),
                     "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
