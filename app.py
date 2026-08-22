@@ -179,7 +179,7 @@ elif opcion == "2. Gestión y Edición de Empleados":
             nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
 
             if st.button("Actualizar Empleado"):
-                actualizar_empleado(emp_actual['id'], nuevo_tipo_edit, nuevo_sueldo_edit)
+                actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit)
                 st.success(f"¡Datos de {emp_a_editar} actualizados!")
                 st.rerun()
 
@@ -340,9 +340,9 @@ elif opcion == "3. Corte y Nómina Final":
         actualizado_flag = False
         for _, row_ed in df_editado.iterrows():
             e_id = int(row_ed['ID'])
-            nuevo_sb = float(row_ed['Sueldo Base'])
+            nuevo_sb = float(row_ed['Sueldo Base']) if pd.notna(row_ed['Sueldo Base']) else 0.0
             original_sb = float(df_res.loc[df_res['ID'] == e_id, 'Sueldo Base'].values[0])
-            if nuevo_sb != original_sb:
+            if nuevo_sb != original_sb and nuevo_sb >= 0:
                 actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
                 actualizado_flag = True
 
@@ -470,6 +470,10 @@ elif opcion == "3. Corte y Nómina Final":
             actualizado_gen_flag = False
             for _, row_ed in df_editado_gen.iterrows():
                 e_id = int(row_ed['ID'])
+                
+                # Validación estricta para evitar sobreescritura accidental con ceros
+                if pd.isna(row_ed['Sueldo Base']):
+                    continue
                 nuevo_sb = float(row_ed['Sueldo Base'])
                 
                 raw_pct_str = str(row_ed['% Prop.']).replace('↑', '').replace('%', '').strip()
@@ -482,7 +486,7 @@ elif opcion == "3. Corte y Nómina Final":
                 original_sb = float(orig_row['Sueldo Base'])
                 original_pct_num = float(orig_row['_pct_num'])
                 
-                if nuevo_sb != original_sb:
+                if nuevo_sb != original_sb and nuevo_sb >= 0:
                     actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
                     actualizado_gen_flag = True
                 
