@@ -597,7 +597,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     # --- PESTAÑA 4: PERSONAL GENERAL, FIJO Y CAPITANES ---
     with tab_general:
-        st.markdown("### Nómina: Personal General, Gerencia y Capitanes")
+        st.markdown("### Personal General, Gerencia y Capitanes")
         if not empleados_df.empty:
             mask_general = (
                 ~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
@@ -623,11 +623,58 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
-    # Cálculo automático de la nómina real de personal fijo/operativo (excluyendo chicas de salón)
-    nomina_personal_fijo = 0.0
+    # Cálculo exacto idéntico al de la Sección 3 (Sueldos + Propinas + Comisiones del personal operativo)
+    nomina_personal_p_total = 0.0
     if not empleados_dashboard_df.empty:
-        df_personal_operativo = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
-        nomina_personal_fijo = float(df_personal_operativo['sueldo_base'].sum())
+        df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
+        for _, emp in df_operativo_dash.iterrows():
+            emp_id = emp['id']
+            tipo = emp['tipo']
+            sueldo_base = float(emp['sueldo_base'])
+            puesto_upper_check = tipo.upper()
+            
+            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+                porcentaje_propina = 0.0
+            elif "SEGURIDAD" in puesto_upper_check:
+                porcentaje_propina = 0.0
+            elif "BARMAN" in puesto_upper_check:
+                porcentaje_propina = 10.0
+            elif "AYUDANTE" in puesto_upper_check:
+                porcentaje_propina = 5.0
+            elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                porcentaje_propina = 8.0
+            else:
+                porcentaje_propina = 50.0
+
+            propinas = 0.0
+            comisiones_prod = 0.0
+            total_propinaable = 0.0
+
+            if not ventas_acumuladas.empty and 'idmesero' in ventas_acumuladas.columns and porcentaje_propina > 0.0:
+                if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
+                    ventas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
+                    if not ventas_emp.empty:
+                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                        total_propinaable = prop_tarj + prop_efec + prop_vale
+                else:
+                    prop_tarj = (ventas_acumuladas['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0) * 0.84
+                    prop_efec = ventas_acumuladas['propina_efectivo'].sum() if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
+                    prop_vale = ventas_acumuladas['propina_vales'].sum() if 'propina_vales' in ventas_acumuladas.columns else 0.0
+                    total_propinaable = prop_tarj + prop_efec + prop_vale
+
+                propinas = total_propinaable * (porcentaje_propina / 100.0)
+
+            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                if not chicas_acumuladas.empty:
+                    for _, f_prod in chicas_acumuladas.iterrows():
+                        desc = str(f_prod['descripcion'])
+                        cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                        com_unit = calcular_comision_gerencia_caja(desc)
+                        comisiones_prod += cant * com_unit
+
+            nomina_personal_p_total += (sueldo_base + propinas + comisiones_prod)
 
     nomina_chicas_calc = 0.0
     if not chicas_acumuladas.empty:
@@ -688,7 +735,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
 
-    total_gastos_nomina = nomina_personal_fijo + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
+    total_gastos_nomina = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
 
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
     utilidad_monto = ventas_totales_con_propinas - total_gastos_nomina
@@ -714,7 +761,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
-        {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_fijo},
+        {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_p_total},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
