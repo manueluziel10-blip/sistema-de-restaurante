@@ -392,7 +392,7 @@ elif opcion == "3. Corte y Nómina Final":
                 sueldo_base = float(emp['sueldo_base'])
                 
                 # Definir porcentaje por defecto según el puesto indicado
-                puesto_ upper_check = tipo.upper()
+                puesto_upper_check = tipo.upper()
                 if "AYUDANTE" in puesto_upper_check:
                     porcentaje_propina = 5.0
                 elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
