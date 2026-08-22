@@ -202,9 +202,11 @@ elif opcion == "2. Gestión y Edición de Empleados":
 elif opcion == "3. Corte y Nómina Final":
     st.subheader("Cálculo de Nómina Semanal por Categorías")
 
-    tab_bailarinas, tab_general = st.tabs([
+    tab_bailarinas, tab_meseros, tab_seguridad, tab_general = st.tabs([
         "💃 Bailarinas y Chicas",
-        "📋 Personal Operativo y General"
+        "👥 Meseros y Ayudantes",
+        "🛡️ Seguridad",
+        "📋 Personal General y Fijo"
     ])
 
     empleados_df = cargar_empleados_df()
@@ -339,7 +341,6 @@ elif opcion == "3. Corte y Nómina Final":
             key=editor_key
         )
 
-        # Capturar exclusivamente los cambios reportados por st.session_state para este editor
         actualizado_flag = False
         if editor_key in st.session_state:
             cambios = st.session_state[editor_key].get("edited_rows", {})
@@ -370,143 +371,167 @@ elif opcion == "3. Corte y Nómina Final":
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         return df_editado, subtotal
 
+    def procesar_grupo_general(df_subgrupo, nombre_pestana, key_sufijo):
+        if df_subgrupo.empty:
+            st.info(f"No hay registros en {nombre_pestana}.")
+            return 0.0
+
+        res_general = []
+        for _, emp in df_subgrupo.iterrows():
+            emp_id = emp['id']
+            nombre = emp['nombre']
+            tipo = emp['tipo']
+            sueldo_base = float(emp['sueldo_base'])
+            
+            puesto_upper_check = tipo.upper()
+            if "SEGURIDAD" in puesto_upper_check:
+                porcentaje_propina = 0.0
+            elif "BARMAN" in puesto_upper_check:
+                porcentaje_propina = 10.0
+            elif "AYUDANTE" in puesto_upper_check:
+                porcentaje_propina = 5.0
+            elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                porcentaje_propina = 8.0
+            else:
+                porcentaje_propina = 50.0
+
+            propinas = 0.0
+            comisiones_prod = 0.0
+            total_propinaable = 0.0
+
+            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
+                if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
+                    ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
+                    if not ventas_emp.empty:
+                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                        total_propinaable = prop_tarj + prop_efec + prop_vale
+                else:
+                    prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
+                    prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+                    prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
+                    total_propinaable = prop_tarj + prop_efec + prop_vale
+
+                propinas = total_propinaable * (porcentaje_propina / 100.0)
+
+            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                if not chicas_totales.empty:
+                    for _, f_prod in chicas_totales.iterrows():
+                        desc = str(f_prod['descripcion'])
+                        cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                        com_unit = calcular_comision_gerencia_caja(desc)
+                        comisiones_prod += cant * com_unit
+
+            total_pagar = sueldo_base + propinas + comisiones_prod
+            res_general.append({
+                "ID": emp_id, 
+                "Nombre": nombre, 
+                "Puesto": tipo,
+                "Sueldo Base": sueldo_base, 
+                "% Prop.": f"↑ {porcentaje_propina:.1f}%",
+                "Propinas": propinas, 
+                "Comisiones": comisiones_prod, 
+                "Total a Pagar": total_pagar,
+                "_pct_num": porcentaje_propina,
+                "_propinaable": total_propinaable
+            })
+
+        df_res_general = pd.DataFrame(res_general)
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
+        
+        altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
+        editor_key_gen = f"editor_sueldos_{key_sufijo}"
+        df_editado_gen = st.data_editor(
+            df_res_general[cols_mostrar_gen],
+            height=altura_tabla_gen,
+            column_config={
+                "ID": st.column_config.NumberColumn("ID", disabled=True),
+                "Sueldo Base": st.column_config.NumberColumn(
+                    "Sueldo Base ($)",
+                    help="Haz clic para modificar el sueldo base directamente",
+                    min_value=0.0,
+                    format="$%.2f",
+                    required=True
+                ),
+                "% Prop.": st.column_config.TextColumn(
+                    "% Prop.",
+                    help="Modifica el porcentaje de propinas (ej: 50%, 10%, 8%, 5%, 0%)",
+                    required=True
+                ),
+                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                "Propinas": st.column_config.NumberColumn("Propinas ($)", format="$%.2f", disabled=True),
+                "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
+            },
+            disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones", "Total a Pagar"],
+            use_container_width=True,
+            key=editor_key_gen
+        )
+
+        actualizado_gen_flag = False
+        if editor_key_gen in st.session_state:
+            cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
+            for row_idx, edits in cambios_gen.items():
+                if "Sueldo Base" in edits:
+                    fila_mod_gen = df_res_general.iloc[int(row_idx)]
+                    e_id = int(fila_mod_gen['ID'])
+                    nuevo_sb = float(edits["Sueldo Base"])
+                    puesto_emp = fila_mod_gen['Puesto']
+                    
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb)
+                    actualizado_gen_flag = True
+
+        if actualizado_gen_flag:
+            st.rerun()
+
+        st.markdown(f"---")
+        st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
+        tot_sb = float(df_editado_gen['Sueldo Base'].sum())
+        tot_prop = float(df_editado_gen['Propinas'].sum())
+        tot_com = float(df_editado_gen['Comisiones'].sum())
+        sub_g = float(df_editado_gen['Total a Pagar'].sum())
+
+        col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+        col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
+        col_t2.metric("Total Propinas", f"${tot_prop:,.2f}")
+        col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
+        col_t4.metric(f"Subtotal {nombre_pestana}", f"${sub_g:,.2f}")
+        return sub_g
+
+    # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
     with tab_bailarinas:
         st.markdown("### Nómina: Bailarinas y Chicas")
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
         _, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
+    # --- PESTAÑA 2: MESEROS Y AYUDANTES ---
+    with tab_meseros:
+        st.markdown("### Nómina: Meseros y Ayudantes de Mesero")
+        df_meseros = empleados_df[empleados_df['tipo'].astype(str).str.upper().str.contains("MESERO|AYUDANTE")] if not empleados_df.empty else pd.DataFrame()
+        sub_m = procesar_grupo_general(df_meseros, "Meseros y Ayudantes", "meseros")
+
+    # --- PESTAÑA 3: SEGURIDAD ---
+    with tab_seguridad:
+        st.markdown("### Nómina: Personal de Seguridad")
+        df_seguridad = empleados_df[empleados_df['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")] if not empleados_df.empty else pd.DataFrame()
+        sub_s = procesar_grupo_general(df_seguridad, "Seguridad", "seguridad")
+
+    # --- PESTAÑA 4: PERSONAL GENERAL Y FIJO ---
     with tab_general:
-        st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
-        
-        df_general_empleados = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not empleados_df.empty else empleados_df
-
-        if df_general_empleados.empty:
-            st.info("No hay personal general registrado.")
-            sub_g = 0.0
-        else:
-            res_general = []
-            for _, emp in df_general_empleados.iterrows():
-                emp_id = emp['id']
-                nombre = emp['nombre']
-                tipo = emp['tipo']
-                sueldo_base = float(emp['sueldo_base'])
-                
-                puesto_upper_check = tipo.upper()
-                if "SEGURIDAD" in puesto_upper_check:
-                    porcentaje_propina = 0.0
-                elif "BARMAN" in puesto_upper_check:
-                    porcentaje_propina = 10.0
-                elif "AYUDANTE" in puesto_upper_check:
-                    porcentaje_propina = 5.0
-                elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    porcentaje_propina = 8.0
-                else:
-                    porcentaje_propina = 50.0
-
-                propinas = 0.0
-                comisiones_prod = 0.0
-                total_propinaable = 0.0
-
-                if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
-                    if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
-                        ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
-                        if not ventas_emp.empty:
-                            prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
-                            prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
-                            prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
-                            total_propinaable = prop_tarj + prop_efec + prop_vale
-                    else:
-                        prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
-                        prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
-                        prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
-                        total_propinaable = prop_tarj + prop_efec + prop_vale
-
-                    propinas = total_propinaable * (porcentaje_propina / 100.0)
-
-                if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    if not chicas_totales.empty:
-                        for _, f_prod in chicas_totales.iterrows():
-                            desc = str(f_prod['descripcion'])
-                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                            com_unit = calcular_comision_gerencia_caja(desc)
-                            comisiones_prod += cant * com_unit
-
-                total_pagar = sueldo_base + propinas + comisiones_prod
-                res_general.append({
-                    "ID": emp_id, 
-                    "Nombre": nombre, 
-                    "Puesto": tipo,
-                    "Sueldo Base": sueldo_base, 
-                    "% Prop.": f"↑ {porcentaje_propina:.1f}%",
-                    "Propinas": propinas, 
-                    "Comisiones": comisiones_prod, 
-                    "Total a Pagar": total_pagar,
-                    "_pct_num": porcentaje_propina,
-                    "_propinaable": total_propinaable
-                })
-
-            df_res_general = pd.DataFrame(res_general)
-            cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
-            
-            altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
-            editor_key_gen = "editor_sueldos_general"
-            df_editado_gen = st.data_editor(
-                df_res_general[cols_mostrar_gen],
-                height=altura_tabla_gen,
-                column_config={
-                    "ID": st.column_config.NumberColumn("ID", disabled=True),
-                    "Sueldo Base": st.column_config.NumberColumn(
-                        "Sueldo Base ($)",
-                        help="Haz clic para modificar el sueldo base directamente",
-                        min_value=0.0,
-                        format="$%.2f",
-                        required=True
-                    ),
-                    "% Prop.": st.column_config.TextColumn(
-                        "% Prop.",
-                        help="Modifica el porcentaje de propinas (ej: 50%, 10%, 8%, 5%, 0%)",
-                        required=True
-                    ),
-                    "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                    "Propinas": st.column_config.NumberColumn("Propinas ($)", format="$%.2f", disabled=True),
-                    "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
-                },
-                disabled=["ID", "Nombre", "Puesto", "Propinas", "Comisiones", "Total a Pagar"],
-                use_container_width=True,
-                key=editor_key_gen
+        st.markdown("### Nómina: Personal General, Gerencia y Otros Fijos")
+        if not empleados_df.empty:
+            mask_general = (
+                ~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
+                ~empleados_df['tipo'].astype(str).str.upper().str.contains("MESERO|AYUDANTE|SEGURIDAD")
             )
-
-            actualizado_gen_flag = False
-            if editor_key_gen in st.session_state:
-                cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
-                for row_idx, edits in cambios_gen.items():
-                    if "Sueldo Base" in edits:
-                        fila_mod_gen = df_res_general.iloc[int(row_idx)]
-                        e_id = int(fila_mod_gen['ID'])
-                        nuevo_sb = float(edits["Sueldo Base"])
-                        puesto_emp = fila_mod_gen['Puesto']
-                        
-                        actualizar_empleado(e_id, puesto_emp, nuevo_sb)
-                        actualizado_gen_flag = True
-
-            if actualizado_gen_flag:
-                st.rerun()
-
-            st.markdown("---")
-            st.markdown("##### 📊 Totales de Nómina General")
-            tot_sb = float(df_editado_gen['Sueldo Base'].sum())
-            tot_prop = float(df_editado_gen['Propinas'].sum())
-            tot_com = float(df_editado_gen['Comisiones'].sum())
-            sub_g = float(df_editado_gen['Total a Pagar'].sum())
-
-            col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-            col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
-            col_t2.metric("Total Propinas", f"${tot_prop:,.2f}")
-            col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
-            col_t4.metric("Subtotal Nómina General", f"${sub_g:,.2f}")
+            df_general_otros = empleados_df[mask_general]
+        else:
+            df_general_otros = pd.DataFrame()
+            
+        sub_o = procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
     st.markdown("---")
-    total_general_semana = sub_b + sub_g
+    total_general_semana = sub_b + sub_m + sub_s + sub_o
     st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
