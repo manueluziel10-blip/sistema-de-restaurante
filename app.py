@@ -171,19 +171,25 @@ elif opcion == "2. Gestión y Edición de Empleados":
         st.markdown("### Importar o Actualizar Personal Masivamente")
         st.info("Sube un archivo de Excel con las columnas: **Nombre**, **Puesto** y **Sueldo Base**.")
 
-        df_plantilla = pd.DataFrame([
-            {"Nombre": "Ejemplo Juan Pérez", "Puesto": "Mesero (Comisiones)", "Sueldo Base": 300.0},
-            {"Nombre": "Ejemplo María López", "Puesto": "Barman (Fijo)", "Sueldo Base": 400.0}
-        ])
+        # Generar plantilla incluyendo todos los puestos del catálogo oficial
+        filas_plantilla = []
+        for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
+            filas_plantilla.append({
+                "Nombre": f"Ejemplo Empleado {idx}",
+                "Puesto": puesto,
+                "Sueldo Base": sueldo
+            })
+        df_plantilla = pd.DataFrame(filas_plantilla)
+
         buffer_plantilla = io.BytesIO()
         with pd.ExcelWriter(buffer_plantilla, engine='openpyxl') as writer:
             df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla_Personal')
         buffer_plantilla.seek(0)
 
         st.download_button(
-            label="📥 Descargar Plantilla de Excel de Ejemplo",
+            label="📥 Descargar Plantilla de Excel con Todos los Puestos",
             data=buffer_plantilla,
-            file_name="Plantilla_Alta_Empleados.xlsx",
+            file_name="Plantilla_Alta_Empleados_Completa.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
