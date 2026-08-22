@@ -25,6 +25,11 @@ PUESTOS_CATALOGO = {
     "Cajero (Fijo)": 400.0
 }
 
+# --- FUNCIÓN GLOBAL DE FILTRADO PARA CHICAS / BAILARINAS ---
+def es_chica_o_bailarina(tipo_str):
+    t = str(tipo_str).upper()
+    return ('CHICA' in t) or ('BAILARINA' in t)
+
 # --- REGLAS DE COMISIÓN PARA CHICAS / BAILARINAS ---
 def calcular_comision_chica(producto_str):
     p = producto_str.upper().strip()
@@ -138,10 +143,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
         "💃 Bailarinas y Chicas de Salón",
         "📋 Personal Operativo y General"
     ])
-
-    def es_chica_o_bailarina(tipo_str):
-        t = str(tipo_str).upper()
-        return ('CHICA' in t) or ('BAILARINA' in t) or ('COMISIONES' in t and 'MESERO' not in t)
 
     with tab_gest_chicas:
         st.markdown("### Listado: Bailarinas y Chicas de Salón")
@@ -339,7 +340,7 @@ elif opcion == "3. Corte y Nómina Final":
         )
 
         actualizado_flag = False
-        for idx, row_ed in df_editado.iterrows():
+        for _, row_ed in df_editado.iterrows():
             e_id = row_ed['ID']
             nuevo_sb = float(row_ed['Sueldo Base'])
             original_sb = float(df_res.loc[df_res['ID'] == e_id, 'Sueldo Base'].values[0])
@@ -363,10 +364,6 @@ elif opcion == "3. Corte y Nómina Final":
         subtotal = float(df_res['Total a Pagar'].sum())
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         return df_editado, subtotal
-
-    def es_chica_o_bailarina(tipo_str):
-        t = str(tipo_str).upper()
-        return ('CHICA' in t) or ('BAILARINA' in t) or ('COMISIONES' in t and 'MESERO' not in t)
 
     # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
     with tab_bailarinas:
