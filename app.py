@@ -44,7 +44,7 @@ def calcular_comision_chica(producto_str):
     if 'PRIVADO ARTISTA' in p:
         return 300.0
     elif 'BOONS ARTISTA' in p:
-        return 1000.0
+        return 700.0
     elif 'BOONS' in p:
         return 700.0
     elif 'COPA LADY' in p:
@@ -597,7 +597,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     # --- PESTAÑA 4: PERSONAL GENERAL, FIJO Y CAPITANES ---
     with tab_general:
-        st.markdown("### Personal General, Gerencia y Capitanes")
+        st.markdown("### Nómina: Personal General, Gerencia y Capitanes")
         if not empleados_df.empty:
             mask_general = (
                 ~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
@@ -623,7 +623,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
-    # Cálculo exacto idéntico al de la Sección 3 (Sueldos + Propinas + Comisiones del personal operativo)
+    # Cálculo exacto de la nómina del personal general (Sueldos + Propinas + Comisiones)
     nomina_personal_p_total = 0.0
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
@@ -738,7 +738,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     total_gastos_nomina = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
 
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
-    utilidad_monto = ventas_totales_con_propinas - total_gastos_nomina
+    
+    # --- FORMULA ACTUALIZADA DE UTILIDAD ANTES DE COSTOS (Ventas Totales - Nómina Personal - Cocina) ---
+    utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
