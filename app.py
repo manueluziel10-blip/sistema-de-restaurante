@@ -406,7 +406,7 @@ elif opcion == "3. Corte y Nómina Final":
                 # 1. Cálculo base de la bolsa de propinas (restando el 16% a las tarjetas)
                 total_propinaable = 0.0
                 if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
-                    if "Mesero" in tipo:
+                    if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         if not ventas_emp.empty:
                             prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
@@ -414,7 +414,7 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                             total_propinaable = prop_tarj + prop_efec + prop_vale
                     else:
-                        # Para gerentes, capitanes, cajeros y ayudantes, se toma la bolsa total general de propinas del archivo de ventas
+                        # Para Gerentes, Capitanes, Cajeros y Ayudantes, se toma la bolsa total general de propinas
                         prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
                         prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
                         prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
