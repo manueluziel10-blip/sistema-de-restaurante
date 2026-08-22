@@ -28,7 +28,7 @@ PUESTOS_CATALOGO = {
 def calcular_comision_chica(producto_str):
     p = producto_str.upper().strip()
     if 'PRIVADO ARTISTA' in p:
-        return 600.0
+        return 300.0
     elif 'BOONS ARTISTA' in p:
         return 700.0
     elif 'BOONS' in p:
@@ -217,10 +217,9 @@ elif opcion == "3. Corte y Nómina Final":
             copa_cant, copa_monto = 0.0, 0.0
             strong_cant, strong_monto = 0.0, 0.0
             vip3_cant, vip3_monto = 0.0, 0.0
-            vip5_priv_cant, vip5_priv_monto = 0.0, 0.0
+            vip5_priv_art_cant, vip5_priv_art_monto = 0.0, 0.0
             vip15_cant, vip15_monto = 0.0, 0.0
             vip30_cant, vip30_monto = 0.0, 0.0
-            priv_artista_cant, priv_artista_monto = 0.0, 0.0
 
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
@@ -233,9 +232,12 @@ elif opcion == "3. Corte y Nómina Final":
                         com_unit = float(f_prod['comision_unitaria']) if pd.notna(f_prod['comision_unitaria']) else 0.0
                         subtotal_prod = cant * com_unit
                         
+                        if 'PRIVADO ARTISTA' in desc or 'BOONS' in desc or 'COPA LADY' in desc or 'MINI STRONGBOW' in desc or 'VIP30' in desc or 'VIP 15' in desc or 'VIP15' in desc or 'VIP5' in desc or 'PRIVADO' in desc or 'VIP3' in desc:
+                            pass # Procesado abajo de forma específica
+
                         if 'PRIVADO ARTISTA' in desc:
-                            priv_artista_cant += cant
-                            priv_artista_monto += subtotal_prod
+                            vip5_priv_art_cant += cant
+                            vip5_priv_art_monto += subtotal_prod
                         elif 'BOONS' in desc:
                             boons_cant += cant
                             boons_monto += subtotal_prod
@@ -252,8 +254,8 @@ elif opcion == "3. Corte y Nómina Final":
                             vip15_cant += cant
                             vip15_monto += subtotal_prod
                         elif 'VIP5' in desc or 'PRIVADO' in desc:
-                            vip5_priv_cant += cant
-                            vip5_priv_monto += subtotal_prod
+                            vip5_priv_art_cant += cant
+                            vip5_priv_art_monto += subtotal_prod
                         elif 'VIP3' in desc:
                             vip3_cant += cant
                             vip3_monto += subtotal_prod
@@ -264,10 +266,9 @@ elif opcion == "3. Corte y Nómina Final":
                 copa_monto /= 2.0
                 strong_monto /= 2.0
                 vip3_monto /= 2.0
-                vip5_priv_monto /= 2.0
+                vip5_priv_art_monto /= 2.0
                 vip15_monto /= 2.0
                 vip30_monto /= 2.0
-                priv_artista_monto /= 2.0
 
             total_pagar = sueldo_base + extras
             
@@ -279,10 +280,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
                 "Strongbow": f"{int(strong_cant)} (${strong_monto:,.2f})",
                 "VIP 3": f"{int(vip3_cant)} (${vip3_monto:,.2f})",
-                "VIP 5 / Priv": f"{int(vip5_priv_cant)} (${vip5_priv_monto:,.2f})",
+                "VIP 5 / Priv / Artista": f"{int(vip5_priv_art_cant)} (${vip5_priv_art_monto:,.2f})",
                 "VIP 15": f"{int(vip15_cant)} (${vip15_monto:,.2f})",
                 "VIP 30": f"{int(vip30_cant)} (${vip30_monto:,.2f})",
-                "Priv. Artista": f"{int(priv_artista_cant)} (${priv_artista_monto:,.2f})",
                 "Sueldo Base": sueldo_base, 
                 "Comisiones": extras, 
                 "Total a Pagar": total_pagar,
@@ -290,10 +290,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "_c_cant": copa_cant, "_c_m": copa_monto,
                 "_s_cant": strong_cant, "_s_m": strong_monto,
                 "_v3_cant": vip3_cant, "_v3_m": vip3_monto,
-                "_v5_cant": vip5_priv_cant, "_v5_m": vip5_priv_monto,
+                "_v5_art_cant": vip5_priv_art_cant, "_v5_art_m": vip5_priv_art_monto,
                 "_v15_cant": vip15_cant, "_v15_m": vip15_monto,
-                "_v30_cant": vip30_cant, "_v30_m": vip30_monto,
-                "_pa_cant": priv_artista_cant, "_pa_m": priv_artista_monto
+                "_v30_cant": vip30_cant, "_v30_m": vip30_monto
             })
         
         df_res = pd.DataFrame(res_grupo)
@@ -301,7 +300,6 @@ elif opcion == "3. Corte y Nómina Final":
         
         altura_tabla = min(max(len(df_res) * 45 + 40, 150), 900)
 
-        # Función corregida para alternar colores de filas con tonos suaves visuales
         def resaltar_filas(row):
             return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
 
@@ -339,15 +337,14 @@ elif opcion == "3. Corte y Nómina Final":
             st.rerun()
 
         st.markdown(f"##### 📦 Totales de Productos Vendidos y Comisiones - {nombre_pestana}")
-        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
+        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
         c1.metric("Boons", int(df_res['_b_cant'].sum()), f"${df_res['_b_m'].sum():,.2f}")
         c2.metric("Copa Lady", int(df_res['_c_cant'].sum()), f"${df_res['_c_m'].sum():,.2f}")
         c3.metric("Strongbow", int(df_res['_s_cant'].sum()), f"${df_res['_s_m'].sum():,.2f}")
         c4.metric("VIP 3", int(df_res['_v3_cant'].sum()), f"${df_res['_v3_m'].sum():,.2f}")
-        c5.metric("VIP 5/Priv", int(df_res['_v5_cant'].sum()), f"${df_res['_v5_m'].sum():,.2f}")
+        c5.metric("VIP 5/Priv/Art", int(df_res['_v5_art_cant'].sum()), f"${df_res['_v5_art_m'].sum():,.2f}")
         c6.metric("VIP 15", int(df_res['_v15_cant'].sum()), f"${df_res['_v15_m'].sum():,.2f}")
         c7.metric("VIP 30", int(df_res['_v30_cant'].sum()), f"${df_res['_v30_m'].sum():,.2f}")
-        c8.metric("Priv. Artista", int(df_res['_pa_cant'].sum()), f"${df_res['_pa_m'].sum():,.2f}")
 
         subtotal = float(df_res['Total a Pagar'].sum())
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
