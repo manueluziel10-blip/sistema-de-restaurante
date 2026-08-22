@@ -504,10 +504,17 @@ elif opcion == "3. Corte y Nómina Final":
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
         _, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
-    # --- PESTAÑA 2: MESEROS Y AYUDANTES ---
+    # --- PESTAÑA 2: MESEROS Y AYUDANTES (EXCLUYENDO CAPITANES) ---
     with tab_meseros:
         st.markdown("### Nómina: Meseros y Ayudantes de Mesero")
-        df_meseros = empleados_df[empleados_df['tipo'].astype(str).str.upper().str.contains("MESERO|AYUDANTE")] if not empleados_df.empty else pd.DataFrame()
+        if not empleados_df.empty:
+            mask_meseros = (
+                empleados_df['tipo'].astype(str).str.upper().str.contains("MESERO|AYUDANTE") &
+                ~empleados_df['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN")
+            )
+            df_meseros = empleados_df[mask_meseros]
+        else:
+            df_meseros = pd.DataFrame()
         sub_m = procesar_grupo_general(df_meseros, "Meseros y Ayudantes", "meseros")
 
     # --- PESTAÑA 3: SEGURIDAD ---
@@ -516,9 +523,9 @@ elif opcion == "3. Corte y Nómina Final":
         df_seguridad = empleados_df[empleados_df['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")] if not empleados_df.empty else pd.DataFrame()
         sub_s = procesar_grupo_general(df_seguridad, "Seguridad", "seguridad")
 
-    # --- PESTAÑA 4: PERSONAL GENERAL Y FIJO ---
+    # --- PESTAÑA 4: PERSONAL GENERAL, FIJO Y CAPITANES ---
     with tab_general:
-        st.markdown("### Nómina: Personal General, Gerencia y Otros Fijos")
+        st.markdown("### Nómina: Personal General, Gerencia y Capitanes")
         if not empleados_df.empty:
             mask_general = (
                 ~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
