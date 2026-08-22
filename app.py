@@ -390,7 +390,9 @@ elif opcion == "3. Corte y Nómina Final":
                 
                 # Definir porcentaje por defecto según el puesto indicado
                 puesto_upper_check = tipo.upper()
-                if "AYUDANTE" in puesto_upper_check:
+                if "SEGURIDAD" in puesto_upper_check:
+                    porcentaje_propina = 0.0
+                elif "AYUDANTE" in puesto_upper_check:
                     porcentaje_propina = 5.0
                 elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     porcentaje_propina = 8.0
@@ -411,7 +413,7 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                             total_propinaable = prop_tarj + prop_efec + prop_vale
                     else:
-                        # Para Gerentes, Capitanes, Cajeros y Ayudantes, se toma la bolsa total general de propinas
+                        # Para Gerentes, Capitanes, Cajeros, Seguridad y Ayudantes, se toma la bolsa total general de propinas
                         prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
                         prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
                         prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
@@ -459,7 +461,7 @@ elif opcion == "3. Corte y Nómina Final":
                     ),
                     "% Propinas": st.column_config.TextColumn(
                         "% Propinas",
-                        help="Modifica el porcentaje de propinas (ej: 50%, 8%, 5%)",
+                        help="Modifica el porcentaje de propinas (ej: 50%, 8%, 5%, 0%)",
                         required=True
                     ),
                     "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
