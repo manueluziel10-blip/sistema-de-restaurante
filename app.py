@@ -1,5 +1,12 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+import io
+
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 from models import (
     cargar_empleados_df, agregar_empleado, actualizar_empleado,
@@ -646,8 +653,115 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- RESUMEN DE VENTAS POR MESERO (APILADO CON CONTENEDORES Y MARKDOWN) ---
+    # --- FUNCIÓN DE EXPORTACIÓN A PDF ---
+    def generar_pdf():
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        elementos = []
+        
+        styles = getSampleStyleSheet()
+        titulo_style = ParagraphStyle(
+            'TituloReporte',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor("#1A2634"),
+            spaceAfter=15,
+            alignment=1
+        )
+        sub_style = ParagraphStyle(
+            'SubTituloReporte',
+            parent=styles['Heading2'],
+            fontSize=12,
+            textColor=colors.HexColor("#334155"),
+            spaceBefore=10,
+            spaceAfter=8
+        )
+        normal_style = styles['Normal']
+
+        # Encabezado
+        elementos.append(Paragraph("REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
+        elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
+        elementos.append(Spacer(1, 10))
+
+        # Resumen Financiero Tabla
+        elementos.append(Paragraph("1. Resumen Financiero", sub_style))
+        datos_fin = [
+            ["Concepto", "Monto"],
+            ["Ventas Totales", f"${ventas_totales_con_propinas:,.2f}"],
+            ["Ventas Efectivo", f"${efectivo_ventas:,.2f}"],
+            ["Ventas Terminales", f"${tarjeta_ventas:,.2f}"],
+            ["Ventas Transferencias", f"${transferencia_ventas:,.2f}"],
+            ["Ventas por Cobrar", f"${ventas_por_cobrar:,.2f}"],
+            ["Efectivo Entregado", f"${efectivo_entregado:,.2f}"],
+            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f}"]
+        ]
+        t_fin = Table(datos_fin, colWidths=[200, 150])
+        t_fin.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.HexColor("#1A2634")),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ]))
+        elementos.append(t_fin)
+        elementos.append(Spacer(1, 10))
+
+        # Desglose de Gastos
+        elementos.append(Paragraph("2. Desglose de Gastos y Nómina", sub_style))
+        datos_gastos = [["Concepto", "Monto"]] + [[row["Concepto"], f"${row['Monto']:,.2f}"] for _, row in tabla_gastos.iterrows()]
+        t_gas = Table(datos_gastos, colWidths=[250, 150])
+        t_gas.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.HexColor("#1A2634")),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+        ]))
+        elementos.append(t_gas)
+        elementos.append(Spacer(1, 10))
+
+        # Ventas por Mesero
+        elementos.append(Paragraph("3. Resumen de Ventas por Mesero", sub_style))
+        empleados_df = cargar_empleados_df()
+        if not ventas_acumuladas.empty and not empleados_df.empty:
+            df_v_m = pd.merge(ventas_acumuladas, empleados_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
+            res_m = df_v_m.groupby('nombre').agg({
+                'efectivo': 'sum', 'propina_efectivo': 'sum',
+                'tarjeta': 'sum', 'propina_tarjeta': 'sum',
+                'vales': 'sum', 'propina_vales': 'sum', 'otros': 'sum'
+            }).reset_index()
+            res_m['total'] = res_m['efectivo'] + res_m['propina_efectivo'] + res_m['tarjeta'] + res_m['propina_tarjeta'] + res_m['vales'] + res_m['propina_vales'] + res_m['otros']
+            
+            datos_meseros = [["Mesero", "Efectivo", "Tarjeta", "Total"]] + [
+                [row['nombre'], f"${row['efectivo']+row['propina_efectivo']:,.2f}", f"${row['tarjeta']+row['propina_tarjeta']:,.2f}", f"${row['total']:,.2f}"]
+                for _, row in res_m.iterrows()
+            ]
+            t_mes = Table(datos_meseros, colWidths=[150, 100, 100, 100])
+            t_mes.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A2634")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ]))
+            elementos.append(t_mes)
+
+        doc.build(elementos)
+        buffer.seek(0)
+        return buffer
+
+    # --- BOTÓN DE DESCARGA PDF ---
     st.markdown("---")
+    pdf_buffer = generar_pdf()
+    st.download_button(
+        label="📄 Descargar Reporte de Cierre en PDF",
+        data=pdf_buffer,
+        file_name=f"Cierre_Caja_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+
+    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (APILADO) ---
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
     empleados_df = cargar_empleados_df()
