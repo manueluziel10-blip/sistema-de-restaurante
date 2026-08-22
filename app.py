@@ -33,10 +33,10 @@ def calcular_comision_chica(producto_str):
         return 100.0
     elif 'MINI STRONGBOW' in p:
         return 250.0
-    elif 'VIP 15' in p or 'VIP15' in p:
-        return 1000.0
     elif 'VIP30' in p:
         return 1900.0
+    elif 'VIP 15' in p or 'VIP15' in p:
+        return 1000.0
     elif 'VIP5' in p or 'PRIVADO' in p:
         return 100.0
     elif 'VIP3' in p:
@@ -179,7 +179,10 @@ elif opcion == "3. Corte y Nómina Final":
                 boons_cant = 0.0
                 copa_cant = 0.0
                 strong_cant = 0.0
-                vip_cant = 0.0
+                vip3_cant = 0.0
+                vip5_priv_cant = 0.0
+                vip15_cant = 0.0
+                vip30_cant = 0.0
 
                 if not chicas_totales.empty:
                     sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
@@ -190,19 +193,22 @@ elif opcion == "3. Corte y Nómina Final":
                             desc = str(f_prod['descripcion']).upper()
                             cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
                             
-                            # Validaciones exactas para evitar cruces de nombres (ej: BOONS vs BOONS ARTISTA)
                             if 'BOONS ARTISTA' in desc:
-                                pass # O manejarlo si requiere columna separada, pero aquí sumamos a boons o dejamos separado
+                                pass
                             elif 'BOONS' in desc:
                                 boons_cant += cant
                             elif 'COPA LADY' in desc:
                                 copa_cant += cant
                             elif 'MINI STRONGBOW' in desc:
                                 strong_cant += cant
-                            elif ('VIP' in desc or 'PRIVADO' in desc) and 'ARTISTA' not in desc:
-                                vip_cant += cant
-                            elif 'VIP' in desc and 'ARTISTA' in desc:
-                                vip_cant += cant
+                            elif 'VIP30' in desc:
+                                vip30_cant += cant
+                            elif 'VIP 15' in desc or 'VIP15' in desc:
+                                vip15_cant += cant
+                            elif 'VIP5' in desc or 'PRIVADO' in desc:
+                                vip5_priv_cant += cant
+                            elif 'VIP3' in desc:
+                                vip3_cant += cant
 
                 if penalizada:
                     extras = extras / 2.0
@@ -215,7 +221,10 @@ elif opcion == "3. Corte y Nómina Final":
                     "Boons": int(boons_cant),
                     "Copa Lady": int(copa_cant),
                     "Strongbow": int(strong_cant),
-                    "VIP / Privados": int(vip_cant),
+                    "VIP 3": int(vip3_cant),
+                    "VIP 5 / Privado": int(vip5_priv_cant),
+                    "VIP 15": int(vip15_cant),
+                    "VIP 30": int(vip30_cant),
                     "Sueldo Base": sueldo_base, 
                     "Comisiones": extras, 
                     "Total a Pagar": total_pagar
