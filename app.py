@@ -433,18 +433,20 @@ elif opcion == "3. Corte y Nómina Final":
                     "Nombre": nombre, 
                     "Puesto": tipo,
                     "Sueldo Base": sueldo_base, 
-                    "% Propinas": porcentaje_propina,
+                    "% Propinas": f"↑ {porcentaje_propina:.1f}%",
                     "Propinas": propinas, 
                     "Comisiones": comisiones_prod, 
                     "Total a Pagar": total_pagar,
+                    "_pct_num": porcentaje_propina,
                     "_propinaable": total_propinaable
                 })
 
             df_res_general = pd.DataFrame(res_general)
+            cols_mostrar_gen = [c for c in df_res_general.columns if not c.startswith("_")]
             
             altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
             df_editado_gen = st.data_editor(
-                df_res_general,
+                df_res_general[cols_mostrar_gen],
                 height=altura_tabla_gen,
                 column_config={
                     "Sueldo Base": st.column_config.NumberColumn(
@@ -454,12 +456,9 @@ elif opcion == "3. Corte y Nómina Final":
                         format="$%.2f",
                         required=True
                     ),
-                    "% Propinas": st.column_config.NumberColumn(
+                    "% Propinas": st.column_config.TextColumn(
                         "% Propinas",
-                        help="Modifica el porcentaje de propinas que le corresponde a este empleado",
-                        min_value=0.0,
-                        max_value=100.0,
-                        format="%.1f%%",
+                        help="Modifica el porcentaje de propinas (ej: 50%, 8%, 5%)",
                         required=True
                     ),
                     "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
@@ -476,18 +475,25 @@ elif opcion == "3. Corte y Nómina Final":
             for idx, row_ed in df_editado_gen.iterrows():
                 e_id = row_ed['ID']
                 nuevo_sb = float(row_ed['Sueldo Base'])
-                nuevo_pct = float(row_ed['% Propinas'])
                 
+                # Limpiar texto del porcentaje ingresado por el usuario (quitando flechas, espacios o %)
+                raw_pct_str = str(row_ed['% Propinas']).replace('↑', '').replace('%', '').strip()
+                try:
+                    nuevo_pct = float(raw_pct_str)
+                except ValueError:
+                    nuevo_pct = 0.0
+
                 orig_row = df_res_general[df_res_general['ID'] == e_id].iloc[0]
                 original_sb = float(orig_row['Sueldo Base'])
-                original_pct = float(orig_row['% Propinas'])
+                original_pct_num = float(orig_row['_pct_num'])
                 
                 if nuevo_sb != original_sb:
                     actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
                     actualizado_gen_flag = True
                 
-                if nuevo_pct != original_pct:
-                    propina_calculada = float(row_ed['_propinaable']) * (nuevo_pct / 100.0)
+                if nuevo_pct != original_pct_num:
+                    propina_calculada = float(orig_row['_propinaable']) * (nuevo_pct / 100.0)
+                    df_editado_gen.loc[idx, '% Propinas'] = f"↑ {nuevo_pct:.1f}%"
                     df_editado_gen.loc[idx, 'Propinas'] = propina_calculada
                     df_editado_gen.loc[idx, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
 
