@@ -64,12 +64,20 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"])
 
     if up_ventas is not None:
-        df_v = pd.read_excel(up_ventas)
-        st.success("¡Archivo de ventas de meseros cargado!")
-        st.dataframe(df_v.head(), use_container_width=True)
-        if st.button("Guardar corte de Meseros"):
-            guardar_corte_ventas(df_v, archivo_origen=up_ventas.name)
-            st.success("¡Corte de meseros guardado en la base de datos!")
+      up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'])
+up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'])
+
+if up_ventas is not None and up_propinas is not None:
+    df_v = pd.read_excel(up_ventas)
+    df_p = pd.read_excel(up_propinas)
+    
+    st.success("¡Archivos de meseros y propinas cargados con éxito!")
+    st.dataframe(df_v.head(), width=700)
+    
+    if st.button("Guardar corte de Meseros"):
+        # Llamamos a la función pasando los dos dataframes
+        guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name)
+        st.success("¡Corte de meseros y propinas guardado correctamente en la base de datos!")
 
     if up_chicas is not None:
         df_c = pd.read_excel(up_chicas, skiprows=4)
