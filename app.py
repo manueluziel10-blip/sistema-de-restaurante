@@ -174,10 +174,10 @@ elif opcion == "3. Corte y Nómina Final":
                 )
 
                 extras = 0.0
-                boons_cant = 0
-                copa_cant = 0
-                strong_cant = 0
-                vip_cant = 0
+                boons_cant = 0.0
+                copa_cant = 0.0
+                strong_cant = 0.0
+                vip_cant = 0.0
 
                 if not chicas_totales.empty:
                     sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
@@ -186,7 +186,8 @@ elif opcion == "3. Corte y Nómina Final":
                         
                         for _, f_prod in sus_filas.iterrows():
                             desc = str(f_prod['descripcion']).upper()
-                            cant = int(f_prod['cantidad'])
+                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                            
                             if 'BOONS' in desc:
                                 boons_cant += cant
                             elif 'COPA LADY' in desc:
@@ -204,10 +205,10 @@ elif opcion == "3. Corte y Nómina Final":
                     "ID": emp_id, 
                     "Nombre": nombre, 
                     "Puesto": emp['tipo'],
-                    "Boons": boons_cant,
-                    "Copa Lady": copa_cant,
-                    "Strongbow": strong_cant,
-                    "VIP / Privados": vip_cant,
+                    "Boons": int(boons_cant),
+                    "Copa Lady": int(copa_cant),
+                    "Strongbow": int(strong_cant),
+                    "VIP / Privados": int(vip_cant),
                     "Sueldo Base": sueldo_base, 
                     "Comisiones": extras, 
                     "Total a Pagar": total_pagar
