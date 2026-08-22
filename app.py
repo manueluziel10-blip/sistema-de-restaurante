@@ -57,32 +57,30 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
 
     col_1, col_2, col_3 = st.columns(3)
     with col_1:
-        up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"])
+        up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
     with col_2:
-        up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=["xls", "xlsx"])
+        up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=["xls", "xlsx"], key="subir_cheques_propinas")
     with col_3:
-        up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"])
+        up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"], key="subir_productos_chicas")
 
-  up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
-up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
-
-if up_ventas is not None:
-    if up_propinas is not None:
+    # Procesar Meseros y Propinas juntos
+    if up_ventas is not None and up_propinas is not None:
         df_v = pd.read_excel(up_ventas)
         df_p = pd.read_excel(up_propinas)
         
-        st.success("¡Archivos cargados correctamente!")
+        st.success("¡Archivos de ventas y propinas cargados correctamente!")
         st.dataframe(df_v.head(), width=700)
         
         if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
             guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name)
             st.success("¡Corte de meseros y propinas guardado correctamente en la base de datos!")
 
+    # Procesar Productos de Chicas / Bailarinas
     if up_chicas is not None:
         df_c = pd.read_excel(up_chicas, skiprows=4)
         st.success("¡Archivo de productos cargado!")
 
-        if st.button("Procesar y Guardar Comisiones del Día"):
+        if st.button("Procesar y Guardar Comisiones del Día", key="btn_guardar_chicas"):
             if len(df_c.columns) >= 5:
                 df_c.columns = ['CLAVE', 'DESCRIPCION', 'GRUPO', 'PRECIO', 'CANTIDAD'] + list(df_c.columns[5:])
                 filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
@@ -152,7 +150,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     empleados_df = cargar_empleados_df()
     ventas_totales = cargar_ventas_df()
-    chicas_totales = cargar_chicas_df()  # ya trae comision_unitaria calculada y guardada
+    chicas_totales = cargar_chicas_df()
 
     # --- PESTAÑA 1: CHICAS Y BAILARINAS UNIFICADAS ---
     with tab_chicas_bailarinas:
@@ -215,8 +213,9 @@ elif opcion == "3. Corte y Nómina Final":
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         penalizado = st.checkbox(f"¿Penalizar a {nombre}?", key=f"pen_mesero_{emp_id}")
-                        if not ventas_emp.empty and 'propina' in ventas_emp.columns:
-                            total_propina = float(ventas_emp['propina'].sum())
+                        if not ventas_emp.empty and 'propina_tarjeta' in ventas_emp.columns:
+                            # Sumar las propinas correspondientes para el cálculo del bono/comisión si aplica
+                            total_propina = float(ventas_emp['propina_tarjeta'].sum() + ventas_emp['propina_efectivo'].sum())
                             tasa = 0.10 if not penalizado else 0.05
                             extras = total_propina * tasa
 
@@ -238,7 +237,7 @@ elif opcion == "3. Corte y Nómina Final":
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.subheader("📊 Dashboard y Resumen de Cierre Diario")
-    st.info("Este panel consolida las ventas totales, terminales, efectivo, gastos y nómina diaria basados en tus archivos cargados.")
+    st.info("Este panel consolida las ventas totales, terminales, efectivo, propinas, gastos y nómina diaria basados en tus archivos cargados.")
 
     ventas_acumuladas = cargar_ventas_df()
     chicas_acumuladas = cargar_chicas_df()
@@ -281,21 +280,28 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.markdown("---")
     st.markdown("### 📋 Resumen Financiero del Día (Estilo Dashboard)")
 
+    # Cálculo correcto sumando efectivo + propina_efectivo y tarjeta + propina_tarjeta + propina_vales
+    efectivo_ventas = 0.0
+    tarjeta_ventas = 0.0
+    if not ventas_acumuladas.empty:
+        base_efectivo = float(ventas_acumuladas['efectivo'].sum()) if 'efectivo' in ventas_acumuladas.columns else 0.0
+        prop_efectivo = float(ventas_acumuladas['propina_efectivo'].sum()) if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
+        efectivo_ventas = base_efectivo + prop_efectivo
+
+        base_tarjeta = float(ventas_acumuladas['tarjeta'].sum()) if 'tarjeta' in ventas_acumuladas.columns else 0.0
+        prop_tarjeta = float(ventas_acumuladas['propina_tarjeta'].sum()) if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
+        prop_vales = float(ventas_acumuladas['propina_vales'].sum()) if 'propina_vales' in ventas_acumuladas.columns else 0.0
+        tarjeta_ventas = base_tarjeta + prop_tarjeta + prop_vales
+
+    ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas
+
     col_d1, col_d2, col_d3 = st.columns(3)
     with col_d1:
-        st.metric("VENTAS TOTALES", f"${venta_total_calc:,.2f}")
+        st.metric("VENTAS TOTALES (Inc. Propinas)", f"${ventas_totales_con_propinas:,.2f}")
     with col_d2:
-        efectivo_ventas = (
-            float(ventas_acumuladas['efectivo'].sum())
-            if not ventas_acumuladas.empty and 'efectivo' in ventas_acumuladas.columns else 0.0
-        )
-        st.metric("VENTAS EFECTIVO", f"${efectivo_ventas:,.2f}")
+        st.metric("VENTAS EFECTIVO (Inc. Propina)", f"${efectivo_ventas:,.2f}")
     with col_d3:
-        tarjeta_ventas = (
-            float(ventas_acumuladas['tarjeta'].sum())
-            if not ventas_acumuladas.empty and 'tarjeta' in ventas_acumuladas.columns else 0.0
-        )
-        st.metric("VENTAS TERMINALES", f"${tarjeta_ventas:,.2f}")
+        st.metric("VENTAS TERMINALES (Inc. Propinas)", f"${tarjeta_ventas:,.2f}")
 
     st.markdown("#### Desglose de Gastos y Nómina")
     nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
