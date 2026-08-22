@@ -110,30 +110,33 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
 
 
 def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
-    """Limpia los registros del día actual e inserta el nuevo corte de ventas validando empleados."""
+    """Limpia los registros del día actual e inserta el nuevo corte de ventas validando empleados y puestos."""
     session = get_session()
     try:
         # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
         session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
         session.commit()
 
-        # 2. Insertar los nuevos registros del Excel
+        # 2. Obtener un puesto válido del catálogo para asignar por defecto si el empleado es nuevo
+        primer_puesto = session.query(PuestoCatalogo).first()
+        tipo_por_defecto = primer_puesto.nombre if primer_puesto else "Mesero"
+
+        # 3. Insertar los nuevos registros del Excel
         for _, row in df_v.iterrows():
             idmesero = row.get("idmesero")
             nombre_mesero = str(row.get("nombre", f"MESERO {idmesero}"))
 
-            # Verificar si el empleado existe, si no, crearlo con su ID o nombre
+            # Verificar si el empleado existe por ID o por nombre
             emp = session.query(Empleado).filter(Empleado.id == idmesero).first()
             if not emp:
-                # Si no existe por ID, intentamos buscarlo por nombre
                 emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
             
             if not emp:
-                # Si de plano no existe, lo creamos asignándole su ID del Excel
+                # Si no existe, lo creamos usando un puesto válido del catálogo
                 emp = Empleado(
                     id=idmesero,
                     nombre=nombre_mesero.upper(),
-                    tipo="Mesero",  # O el tipo de puesto correspondiente en tu catálogo
+                    tipo=tipo_por_defecto,
                     sueldo_base=300.0
                 )
                 session.add(emp)
