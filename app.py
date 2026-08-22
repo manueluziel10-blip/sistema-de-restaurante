@@ -408,15 +408,19 @@ elif opcion == "3. Corte y Nómina Final":
                 if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                     if "Mesero" in tipo:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
+                        if not ventas_emp.empty:
+                            prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                            prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                            prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                            total_propinaable = prop_tarj + prop_efec + prop_vale
                     else:
-                        ventas_emp = ventas_totales # Para gerentes, capitanes, cajeros, ayudantes se toma el total general
-
-                    if not ventas_emp.empty:
-                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
-                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
-                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                        # Para gerentes, capitanes, cajeros y ayudantes, se toma la bolsa total general de propinas del archivo de ventas
+                        prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
+                        prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+                        prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
                         total_propinaable = prop_tarj + prop_efec + prop_vale
-                        propinas = total_propinaable * (porcentaje_propina / 100.0)
+
+                    propinas = total_propinaable * (porcentaje_propina / 100.0)
 
                 # 2. Cálculo de Comisiones por Productos (para Gerentes, Capitanes, Cajeros, etc.)
                 if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
@@ -476,7 +480,6 @@ elif opcion == "3. Corte y Nómina Final":
                 e_id = row_ed['ID']
                 nuevo_sb = float(row_ed['Sueldo Base'])
                 
-                # Limpiar texto del porcentaje ingresado por el usuario (quitando flechas, espacios o %)
                 raw_pct_str = str(row_ed['% Propinas']).replace('↑', '').replace('%', '').strip()
                 try:
                     nuevo_pct = float(raw_pct_str)
