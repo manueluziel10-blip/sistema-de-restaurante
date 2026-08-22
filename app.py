@@ -336,11 +336,14 @@ elif opcion == "3. Corte y Nómina Final":
                 if "Mesero" in tipo:
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
-                        penalizado = st.checkbox(f"¿Penalizar a {nombre}?", key=f"pen_mesero_{emp_id}")
                         if not ventas_emp.empty and 'propina_tarjeta' in ventas_emp.columns:
-                            total_propina = float(ventas_emp['propina_tarjeta'].sum() + ventas_emp['propina_efectivo'].sum())
-                            tasa = 0.10 if not penalizado else 0.05
-                            extras = total_propina * tasa
+                            # Sumar propina total (tarjeta + efectivo + vales si aplica) y calcular el 50% exacto
+                            total_propina = float(
+                                ventas_emp['propina_tarjeta'].sum() + 
+                                ventas_emp['propina_efectivo'].sum() +
+                                (ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0)
+                            )
+                            extras = total_propina * 0.50
 
                 total_pagar = sueldo_base + extras
                 res_general.append({
