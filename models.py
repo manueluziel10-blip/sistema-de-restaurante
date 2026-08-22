@@ -107,10 +107,11 @@ def agregar_empleado(nombre, tipo, sueldo_base):
     session.close()
 
 
-def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo):
+    """Actualiza al empleado utilizando su ID único para evitar cambios masivos."""
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
-    session.query(Empleado).filter(Empleado.nombre == nombre).update(
+    session.query(Empleado).filter(Empleado.id == emp_id).update(
         {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
     )
     session.commit()
@@ -280,6 +281,7 @@ def reiniciar_base_de_datos():
         puestos_iniciales = [
             PuestoCatalogo(nombre="Chicas / Bailarinas (Comisiones)", sueldo_base=300.0, es_comision=True),
             PuestoCatalogo(nombre="Mesero (Comisiones)", sueldo_base=300.0, es_comision=True),
+            PuestoCatalogo(nombre="Barman (Fijo)", sueldo_base=400.0, es_comision=False),
             PuestoCatalogo(nombre="Seguridad (Fijo)", sueldo_base=500.0, es_comision=False),
             PuestoCatalogo(nombre="DJ (Fijo)", sueldo_base=600.0, es_comision=False),
             PuestoCatalogo(nombre="Animador (Fijo)", sueldo_base=400.0, es_comision=False),

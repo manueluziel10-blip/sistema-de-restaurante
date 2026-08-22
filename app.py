@@ -99,7 +99,6 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     with col_3:
         up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"], key="subir_productos_chicas")
 
-    # Procesar Meseros y Propinas juntos
     if up_ventas is not None and up_propinas is not None:
         df_v = pd.read_excel(up_ventas)
         df_p = pd.read_excel(up_propinas)
@@ -114,7 +113,6 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
             guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name)
             st.success("¡Corte de meseros y propinas guardado correctamente en la base de datos!")
 
-    # Procesar Productos de Chicas / Bailarinas
     if up_chicas is not None:
         df_c = pd.read_excel(up_chicas, skiprows=4)
         st.success("¡Archivo de productos cargado!")
@@ -181,7 +179,7 @@ elif opcion == "2. Gestión y Edición de Empleados":
             nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
 
             if st.button("Actualizar Empleado"):
-                actualizar_empleado(emp_a_editar, nuevo_tipo_edit, nuevo_sueldo_edit)
+                actualizar_empleado(emp_actual['id'], nuevo_tipo_edit, nuevo_sueldo_edit)
                 st.success(f"¡Datos de {emp_a_editar} actualizados!")
                 st.rerun()
 
@@ -200,7 +198,7 @@ elif opcion == "2. Gestión y Edición de Empleados":
                 else:
                     st.error("El nombre no puede estar vacío.")
 
-# --- SECCIÓN 3: CORTE Y NÓMINA FINAL (UNIFICADO EN PESTAÑAS) ---
+# --- SECCIÓN 3: CORTE Y NÓMINA FINAL ---
 elif opcion == "3. Corte y Nómina Final":
     st.subheader("Cálculo de Nómina Semanal por Categorías")
 
@@ -230,7 +228,6 @@ elif opcion == "3. Corte y Nómina Final":
             )
 
             extras = 0.0
-            
             boons_cant, boons_monto = 0.0, 0.0
             copa_cant, copa_monto = 0.0, 0.0
             strong_cant, strong_monto = 0.0, 0.0
@@ -342,11 +339,11 @@ elif opcion == "3. Corte y Nómina Final":
 
         actualizado_flag = False
         for _, row_ed in df_editado.iterrows():
-            e_id = row_ed['ID']
+            e_id = int(row_ed['ID'])
             nuevo_sb = float(row_ed['Sueldo Base'])
             original_sb = float(df_res.loc[df_res['ID'] == e_id, 'Sueldo Base'].values[0])
             if nuevo_sb != original_sb:
-                actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+                actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
                 actualizado_flag = True
 
         if actualizado_flag:
@@ -366,13 +363,11 @@ elif opcion == "3. Corte y Nómina Final":
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         return df_editado, subtotal
 
-    # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
     with tab_bailarinas:
         st.markdown("### Nómina: Bailarinas y Chicas")
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
-        df_editado_b, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
+        _, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
-    # --- PESTAÑA 2: PERSONAL GENERAL Y OPERATIVO ---
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
         
@@ -444,8 +439,6 @@ elif opcion == "3. Corte y Nómina Final":
                 })
 
             df_res_general = pd.DataFrame(res_general)
-            
-            # Reordenar columnas para que "% Prop." esté junto a "Propinas"
             cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
             
             altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
@@ -475,8 +468,8 @@ elif opcion == "3. Corte y Nómina Final":
             )
 
             actualizado_gen_flag = False
-            for idx, row_ed in df_editado_gen.iterrows():
-                e_id = row_ed['ID']
+            for _, row_ed in df_editado_gen.iterrows():
+                e_id = int(row_ed['ID'])
                 nuevo_sb = float(row_ed['Sueldo Base'])
                 
                 raw_pct_str = str(row_ed['% Prop.']).replace('↑', '').replace('%', '').strip()
@@ -490,19 +483,18 @@ elif opcion == "3. Corte y Nómina Final":
                 original_pct_num = float(orig_row['_pct_num'])
                 
                 if nuevo_sb != original_sb:
-                    actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+                    actualizar_empleado(e_id, row_ed['Puesto'], nuevo_sb)
                     actualizado_gen_flag = True
                 
                 if nuevo_pct != original_pct_num:
                     propina_calculada = float(orig_row['_propinaable']) * (nuevo_pct / 100.0)
-                    df_editado_gen.loc[idx, '% Prop.'] = f"↑ {nuevo_pct:.1f}%"
-                    df_editado_gen.loc[idx, 'Propinas'] = propina_calculada
-                    df_editado_gen.loc[idx, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
+                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, '% Prop.'] = f"↑ {nuevo_pct:.1f}%"
+                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, 'Propinas'] = propina_calculada
+                    df_editado_gen.loc[df_editado_gen['ID'] == e_id, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
 
             if actualizado_gen_flag:
                 st.rerun()
 
-            # --- MÉTRICAS DE TOTALES ABAJO DE LA TABLA GENERAL ---
             st.markdown("---")
             st.markdown("##### 📊 Totales de Nómina General")
             tot_sb = float(df_editado_gen['Sueldo Base'].sum())
