@@ -155,7 +155,8 @@ elif opcion == "2. Gestión y Edición de Empleados":
     with tab_gest_general:
         st.markdown("### Listado: Personal Operativo, Meseros y Fijos")
         if not empleados_df.empty:
-            df_general_gen = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)].copy()
+            # Corrección: Filtramos explícitamente para asegurar que tome todo lo que NO sea chica o bailarina
+            df_general_gen = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)].copy()
             st.dataframe(df_general_gen, use_container_width=True)
         else:
             st.info("No hay registros.")
@@ -375,7 +376,7 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
         
-        df_general_empleados = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else empleados_df
+        df_general_empleados = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not empleados_df.empty else empleados_df
 
         if df_general_empleados.empty:
             st.info("No hay personal general registrado.")
