@@ -43,7 +43,7 @@ class CorteVenta(Base):
     propina_tarjeta = Column(Numeric(10, 2), default=0)
     vales = Column(Numeric(10, 2), default=0)
     propina_vales = Column(Numeric(10, 2), default=0)
-    otros = Column(Numeric(10, 2), default=0)  # <-- Columna "otros" añadida
+    otros = Column(Numeric(10, 2), default=0)
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
 
@@ -77,21 +77,13 @@ class GastoDiario(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
-# ---------------------------------------------------------
-# FUNCIONES DE AUXILIO PARA CATÁLOGOS
-# ---------------------------------------------------------
 def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300.0, es_comision: bool = True):
-    """Garantiza que el puesto exista en el catálogo para evitar errores de FK."""
     puesto = session.query(PuestoCatalogo).filter(PuestoCatalogo.nombre == nombre_puesto).first()
     if not puesto:
         puesto = PuestoCatalogo(nombre=nombre_puesto, sueldo_base=sueldo_base, es_comision=es_comision)
         session.add(puesto)
         session.commit()
 
-
-# ---------------------------------------------------------
-# FUNCIONES DE ACCESO A DATOS
-# ---------------------------------------------------------
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
@@ -104,8 +96,13 @@ def cargar_empleados_df() -> pd.DataFrame:
 def agregar_empleado(nombre, tipo, sueldo_base):
     session = get_session()
     asegurar_puesto_existe(session, tipo)
-    emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
-    session.add(emp)
+    emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+    if emp:
+        emp.tipo = tipo
+        emp.sueldo_base = sueldo_base
+    else:
+        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
+        session.add(emp)
     session.commit()
     session.close()
 
@@ -160,7 +157,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 propina_tarjeta=row.get("propinatarjeta", 0),
                 vales=row.get("vales", 0),
                 propina_vales=row.get("propinavales", 0),
-                otros=row.get("otros", 0),  # <-- Se guarda el valor de la columna 'otros'
+                otros=row.get("otros", 0),
                 archivo_origen=archivo_origen,
             ))
         session.commit()
@@ -169,6 +166,25 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         raise e
     finally:
         session.close()
+
+
+def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, existing_session=None):
+    session = existing_session if existing_session else get_session()
+    try:
+        asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
+        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        creado = False
+        if not emp:
+            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
+            session.add(emp)
+            session.commit()
+            session.refresh(emp)
+            creado = True
+        emp_id = emp.id
+        return emp_id, creado
+    finally:
+        if not existing_session:
+            session.close()
 
 
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
@@ -180,12 +196,17 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
         nuevas_detectadas = []
         for _, row in filas_chicas.iterrows():
             desc = str(row["DESCRIPCION"])
-            prod_parte, chica_parte = desc.split(">")
-            nombre_persona = chica_parte.strip().upper()
+            if ">" in desc:
+                prod_parte, chica_parte = desc.split(">", 1)
+                nombre_persona = chica_parte.strip().upper()
+            else:
+                nombre_persona = "GENERAL"
+                prod_parte = desc
+
             comision_unit = calcular_comision_fn(prod_parte)
             cantidad = float(row["CANTIDAD"]) if pd.notna(row.get("CANTIDAD")) else 1.0
 
-            empleado_id, creado = obtener_o_crear_empleado(nombre_persona)
+            emp_id, creado = obtener_o_crear_empleado(nombre_persona, existing_session=session)
             if creado:
                 nuevas_detectadas.append(nombre_persona)
 
@@ -196,7 +217,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
                 precio=row.get("PRECIO"),
                 cantidad=cantidad,
                 empleado_nombre=nombre_persona,
-                empleado_id=empleado_id,
+                empleado_id=emp_id,
                 comision_unitaria=comision_unit,
                 archivo_origen=archivo_origen,
             ))
@@ -228,7 +249,6 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
 
 
 def cargar_ventas_df() -> pd.DataFrame:
-    """Ventas de meseros del día actual"""
     session = get_session()
     query = session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date())
     df = pd.read_sql(query.statement, session.bind)
@@ -237,7 +257,6 @@ def cargar_ventas_df() -> pd.DataFrame:
 
 
 def cargar_chicas_df() -> pd.DataFrame:
-    """Productos de chicas del día actual"""
     session = get_session()
     query = session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date())
     df = pd.read_sql(query.statement, session.bind)
@@ -252,24 +271,7 @@ def cargar_gastos_hoy():
     return hoy
 
 
-def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0):
-    session = get_session()
-    asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
-    emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
-    creado = False
-    if not emp:
-        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
-        session.add(emp)
-        session.commit()
-        session.refresh(emp)
-        creado = True
-    emp_id = emp.id
-    session.close()
-    return emp_id, creado
-
-
 def reiniciar_base_de_datos():
-    """Elimina, recrea tablas y puebla el catálogo inicial de puestos."""
     session = get_session()
     try:
         Base.metadata.drop_all(session.bind)
@@ -284,6 +286,7 @@ def reiniciar_base_de_datos():
             PuestoCatalogo(nombre="Gerente (Fijo)", sueldo_base=500.0, es_comision=False),
             PuestoCatalogo(nombre="Capitán de Mesero (Fijo)", sueldo_base=400.0, es_comision=False),
             PuestoCatalogo(nombre="Ayudante de Mesero (Fijo)", sueldo_base=300.0, es_comision=False),
+            PuestoCatalogo(nombre="Cajero (Fijo)", sueldo_base=400.0, es_comision=False),
         ]
         session.add_all(puestos_iniciales)
         session.commit()
