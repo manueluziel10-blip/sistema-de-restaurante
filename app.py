@@ -63,17 +63,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     with col_3:
         up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"])
 
-    if up_ventas is not None:
-      up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'])
-up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'])
-
-if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
-up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
-
-if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
-up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
-
-if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
+  up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
 up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
 
 if up_ventas is not None:
