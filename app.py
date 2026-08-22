@@ -646,7 +646,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (APILADO) ---
+    # --- RESUMEN DE VENTAS POR MESERO (APILADO CON CONTENEDORES Y MARKDOWN) ---
     st.markdown("---")
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
@@ -687,14 +687,17 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                     efectivo_m = row['efectivo'] + row['propina_efectivo']
                     tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
                     
-                    # Usamos saltos de línea HTML en el delta para apilar los conceptos
-                    detalle_extra = f"Efectivo: ${efectivo_m:,.2f}<br>Tarjeta: ${tarjeta_m:,.2f}"
-                    
                     with cols[j]:
-                        st.metric(
-                            label=f"MESERO: {nombre_mesero}",
-                            value=f"${importe_total:,.2f}",
-                            delta=detalle_extra
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #141D26; padding: 15px; border-radius: 8px; border: 1px solid #1A2634; margin-bottom: 10px;">
+                                <span style="color: #90A4AE; font-size: 12px; font-weight: bold;">MESERO: {nombre_mesero}</span><br>
+                                <span style="color: #FFFFFF; font-size: 24px; font-weight: bold;">${importe_total:,.2f}</span><br>
+                                <span style="color: #00E676; font-size: 13px;">↑ Efectivo: ${efectivo_m:,.2f}</span><br>
+                                <span style="color: #00E676; font-size: 13px;">↑ Tarjeta: ${tarjeta_m:,.2f}</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
                         )
     else:
         st.info("No hay registros de ventas de meseros disponibles para mostrar en el resumen de hoy.")
