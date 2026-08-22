@@ -72,6 +72,10 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         df_v = pd.read_excel(up_ventas)
         df_p = pd.read_excel(up_propinas)
         
+        # Estandarizar ID a entero para evitar errores de cruce
+        df_v['idmesero'] = pd.to_numeric(df_v['idmesero'], errors='coerce').fillna(0).astype(int)
+        df_p['idmesero'] = pd.to_numeric(df_p['idmesero'], errors='coerce').fillna(0).astype(int)
+
         st.success("¡Archivos de ventas y propinas cargados correctamente!")
         st.dataframe(df_v.head(), width=700)
         
@@ -337,7 +341,6 @@ elif opcion == "3. Corte y Nómina Final":
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         if not ventas_emp.empty and 'propina_tarjeta' in ventas_emp.columns:
-                            # Sumar propina total (tarjeta + efectivo + vales si aplica) y calcular el 50% exacto
                             total_propina = float(
                                 ventas_emp['propina_tarjeta'].sum() + 
                                 ventas_emp['propina_efectivo'].sum() +
@@ -351,8 +354,44 @@ elif opcion == "3. Corte y Nómina Final":
                     "Sueldo Base": sueldo_base, "Comisiones / Extras": extras, "Total a Pagar": total_pagar
                 })
             df_res_general = pd.DataFrame(res_general)
-            st.dataframe(df_res_general, use_container_width=True)
-            sub_g = float(df_res_general['Total a Pagar'].sum())
+            
+            # --- TABLA EDITABLE PARA PERSONAL GENERAL ---
+            df_editado_gen = st.data_editor(
+                df_res_general,
+                column_config={
+                    "Sueldo Base": st.column_config.NumberColumn(
+                        "Sueldo Base ($)",
+                        help="Haz clic para modificar el sueldo base directamente",
+                        min_value=0.0,
+                        format="$%.2f",
+                        required=True
+                    ),
+                    "Total a Pagar": st.column_config.NumberColumn(
+                        "Total a Pagar ($)",
+                        format="$%.2f",
+                        disabled=True
+                    ),
+                    "Comisiones / Extras": st.column_config.NumberColumn(
+                        "Comisiones / Extras ($)",
+                        format="$%.2f",
+                        disabled=True
+                    ),
+                },
+                disabled=["ID", "Nombre", "Puesto", "Comisiones / Extras"],
+                use_container_width=True,
+                key="editor_sueldos_general"
+            )
+
+            df_editado_gen['Total a Pagar'] = df_editado_gen['Sueldo Base'] + df_editado_gen['Comisiones / Extras']
+
+            for _, row_ed in df_editado_gen.iterrows():
+                e_id = row_ed['ID']
+                nuevo_sb = float(row_ed['Sueldo Base'])
+                original_sb = float(df_res_general[df_res_general['ID'] == e_id]['Sueldo Base'].values[0])
+                if nuevo_sb != original_sb:
+                    actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+
+            sub_g = float(df_editado_gen['Total a Pagar'].sum())
             st.metric("Subtotal Nómina Personal General", f"${sub_g:,.2f}")
 
     st.markdown("---")
