@@ -212,6 +212,8 @@ elif opcion == "3. Corte y Nómina Final":
             )
 
             extras = 0.0
+            
+            # Cantidades de productos
             boons_cant = 0.0
             copa_cant = 0.0
             strong_cant = 0.0
@@ -221,6 +223,16 @@ elif opcion == "3. Corte y Nómina Final":
             vip30_cant = 0.0
             priv_artista_cant = 0.0
 
+            # Montos en dinero de comisión por producto
+            boons_monto = 0.0
+            copa_monto = 0.0
+            strong_monto = 0.0
+            vip3_monto = 0.0
+            vip5_priv_monto = 0.0
+            vip15_monto = 0.0
+            vip30_monto = 0.0
+            priv_artista_monto = 0.0
+
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
                 if not sus_filas.empty:
@@ -229,26 +241,44 @@ elif opcion == "3. Corte y Nómina Final":
                     for _, f_prod in sus_filas.iterrows():
                         desc = str(f_prod['descripcion']).upper()
                         cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                        com_unit = float(f_prod['comision_unitaria']) if pd.notna(f_prod['comision_unitaria']) else 0.0
+                        subtotal_prod = cant * com_unit
                         
                         if 'PRIVADO ARTISTA' in desc:
                             priv_artista_cant += cant
+                            priv_artista_monto += subtotal_prod
                         elif 'BOONS' in desc:
                             boons_cant += cant
+                            boons_monto += subtotal_prod
                         elif 'COPA LADY' in desc:
                             copa_cant += cant
+                            copa_monto += subtotal_prod
                         elif 'MINI STRONGBOW' in desc:
                             strong_cant += cant
+                            strong_monto += subtotal_prod
                         elif 'VIP30' in desc:
                             vip30_cant += cant
+                            vip30_monto += subtotal_prod
                         elif 'VIP 15' in desc or 'VIP15' in desc:
                             vip15_cant += cant
+                            vip15_monto += subtotal_prod
                         elif 'VIP5' in desc or 'PRIVADO' in desc:
                             vip5_priv_cant += cant
+                            vip5_priv_monto += subtotal_prod
                         elif 'VIP3' in desc:
                             vip3_cant += cant
+                            vip3_monto += subtotal_prod
 
             if penalizada:
                 extras = extras / 2.0
+                boons_monto /= 2.0
+                copa_monto /= 2.0
+                strong_monto /= 2.0
+                vip3_monto /= 2.0
+                vip5_priv_monto /= 2.0
+                vip15_monto /= 2.0
+                vip30_monto /= 2.0
+                priv_artista_monto /= 2.0
 
             total_pagar = sueldo_base + extras
             res_grupo.append({
@@ -256,13 +286,21 @@ elif opcion == "3. Corte y Nómina Final":
                 "Nombre": nombre, 
                 "Puesto": emp['tipo'],
                 "Boons": int(boons_cant),
+                "$ Boons": boons_monto,
                 "Copa Lady": int(copa_cant),
+                "$ Copa Lady": copa_monto,
                 "Strongbow": int(strong_cant),
+                "$ Strongbow": strong_monto,
                 "VIP 3": int(vip3_cant),
+                "$ VIP 3": vip3_monto,
                 "VIP 5 / Privado": int(vip5_priv_cant),
+                "$ VIP 5 / Priv": vip5_priv_monto,
                 "VIP 15": int(vip15_cant),
+                "$ VIP 15": vip15_monto,
                 "VIP 30": int(vip30_cant),
+                "$ VIP 30": vip30_monto,
                 "Privado Artista": int(priv_artista_cant),
+                "$ Priv. Artista": priv_artista_monto,
                 "Sueldo Base": sueldo_base, 
                 "Comisiones": extras, 
                 "Total a Pagar": total_pagar
@@ -280,6 +318,14 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
+                "$ Boons": st.column_config.NumberColumn("$ Boons", format="$%.2f", disabled=True),
+                "$ Copa Lady": st.column_config.NumberColumn("$ Copa Lady", format="$%.2f", disabled=True),
+                "$ Strongbow": st.column_config.NumberColumn("$ Strongbow", format="$%.2f", disabled=True),
+                "$ VIP 3": st.column_config.NumberColumn("$ VIP 3", format="$%.2f", disabled=True),
+                "$ VIP 5 / Priv": st.column_config.NumberColumn("$ VIP 5 / Priv", format="$%.2f", disabled=True),
+                "$ VIP 15": st.column_config.NumberColumn("$ VIP 15", format="$%.2f", disabled=True),
+                "$ VIP 30": st.column_config.NumberColumn("$ VIP 30", format="$%.2f", disabled=True),
+                "$ Priv. Artista": st.column_config.NumberColumn("$ Priv. Artista", format="$%.2f", disabled=True),
                 "Total a Pagar": st.column_config.NumberColumn(
                     "Total a Pagar ($)",
                     format="$%.2f",
@@ -291,7 +337,11 @@ elif opcion == "3. Corte y Nómina Final":
                     disabled=True
                 ),
             },
-            disabled=["ID", "Nombre", "Puesto", "Boons", "Copa Lady", "Strongbow", "VIP 3", "VIP 5 / Privado", "VIP 15", "VIP 30", "Privado Artista", "Comisiones"],
+            disabled=[
+                "ID", "Nombre", "Puesto", "Boons", "$ Boons", "Copa Lady", "$ Copa Lady", 
+                "Strongbow", "$ Strongbow", "VIP 3", "$ VIP 3", "VIP 5 / Privado", "$ VIP 5 / Priv", 
+                "VIP 15", "$ VIP 15", "VIP 30", "$ VIP 30", "Privado Artista", "$ Priv. Artista", "Comisiones"
+            ],
             use_container_width=True,
             key=f"editor_sueldos_{key_sufijo}"
         )
@@ -310,16 +360,16 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
-        st.markdown(f"##### 📦 Totales de Productos Vendidos - {nombre_pestana}")
+        st.markdown(f"##### 📦 Totales de Productos Vendidos y Comisiones - {nombre_pestana}")
         c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
-        c1.metric("Boons", int(df_editado['Boons'].sum()))
-        c2.metric("Copa Lady", int(df_editado['Copa Lady'].sum()))
-        c3.metric("Strongbow", int(df_editado['Strongbow'].sum()))
-        c4.metric("VIP 3", int(df_editado['VIP 3'].sum()))
-        c5.metric("VIP 5/Priv", int(df_editado['VIP 5 / Privado'].sum()))
-        c6.metric("VIP 15", int(df_editado['VIP 15'].sum()))
-        c7.metric("VIP 30", int(df_editado['VIP 30'].sum()))
-        c8.metric("Priv. Artista", int(df_editado['Privado Artista'].sum()))
+        c1.metric("Boons", int(df_editado['Boons'].sum()), f"${df_editado['$ Boons'].sum():,.2f}")
+        c2.metric("Copa Lady", int(df_editado['Copa Lady'].sum()), f"${df_editado['$ Copa Lady'].sum():,.2f}")
+        c3.metric("Strongbow", int(df_editado['Strongbow'].sum()), f"${df_editado['$ Strongbow'].sum():,.2f}")
+        c4.metric("VIP 3", int(df_editado['VIP 3'].sum()), f"${df_editado['$ VIP 3'].sum():,.2f}")
+        c5.metric("VIP 5/Priv", int(df_editado['VIP 5 / Privado'].sum()), f"${df_editado['$ VIP 5 / Priv'].sum():,.2f}")
+        c6.metric("VIP 15", int(df_editado['VIP 15'].sum()), f"${df_editado['$ VIP 15'].sum():,.2f}")
+        c7.metric("VIP 30", int(df_editado['VIP 30'].sum()), f"${df_editado['$ VIP 30'].sum():,.2f}")
+        c8.metric("Priv. Artista", int(df_editado['Privado Artista'].sum()), f"${df_editado['$ Priv. Artista'].sum():,.2f}")
 
         subtotal = float(df_editado['Total a Pagar'].sum())
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
@@ -465,42 +515,31 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ventas_por_cobrar = 0.0
 
     if not ventas_acumuladas.empty:
-        # Efectivo = base efectivo + propina efectivo
         base_efectivo = float(ventas_acumuladas['efectivo'].sum()) if 'efectivo' in ventas_acumuladas.columns else 0.0
         prop_efectivo = float(ventas_acumuladas['propina_efectivo'].sum()) if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
         efectivo_ventas = base_efectivo + prop_efectivo
 
-        # Terminales = base tarjeta + propina tarjeta
         base_tarjeta = float(ventas_acumuladas['tarjeta'].sum()) if 'tarjeta' in ventas_acumuladas.columns else 0.0
         prop_tarjeta = float(ventas_acumuladas['propina_tarjeta'].sum()) if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
         tarjeta_ventas = base_tarjeta + prop_tarjeta
 
-        # Transferencias = vales + propinavales
         vales_monto = float(ventas_acumuladas['vales'].sum()) if 'vales' in ventas_acumuladas.columns else 0.0
         prop_vales = float(ventas_acumuladas['propina_vales'].sum()) if 'propina_vales' in ventas_acumuladas.columns else 0.0
         transferencia_ventas = vales_monto + prop_vales
 
-        # Ventas Por Cobrar = columna 'otros' + columna 'propinacredito' (si existe en el df)
         monto_otros = float(ventas_acumuladas['otros'].sum()) if 'otros' in ventas_acumuladas.columns else 0.0
         monto_prop_credito = float(ventas_acumuladas['propinacredito'].sum()) if 'propinacredito' in ventas_acumuladas.columns else 0.0
         ventas_por_cobrar = monto_otros + monto_prop_credito
 
-    # Ventas Totales sumando todos los conceptos de ingresos
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
 
-    # --- CÁLCULO DE GASTOS Y NÓMINA TOTALES ---
     nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
     total_gastos_nomina = nomina_personal_fijo + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
 
-    # --- CÁLCULO DE EFECTIVO ENTREGADO Y UTILIDAD ---
-    # Efectivo entregado = Ventas en efectivo menos todos los gastos y nóminas del día
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
-
-    # Utilidad = Ventas totales menos gastos y nóminas
     utilidad_monto = ventas_totales_con_propinas - total_gastos_nomina
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
-    # Fila superior de métricas de ventas
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
     with col_d1:
         st.metric("VENTAS TOTALES", f"${ventas_totales_con_propinas:,.2f}")
@@ -513,7 +552,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_d5:
         st.metric("VENTAS POR COBRAR", f"${ventas_por_cobrar:,.2f}")
 
-    # Fila secundaria de Efectivo Entregado y Utilidad
     col_e1, col_e2 = st.columns(2)
     with col_e1:
         st.metric("EFECTIVO ENTREGADO", f"${efectivo_entregado:,.2f}")
