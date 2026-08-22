@@ -154,7 +154,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     # --- PESTAÑA 1: CHICAS Y BAILARINAS UNIFICADAS ---
     with tab_chicas_bailarinas:
-        st.markdown("### Nómina: Chicas y Bailarinas")
+        st.markdown("### Nómina: Chicas, Bailarinas y Detalle de Productos")
         df_grupo_chicas = empleados_df[
             empleados_df['tipo'].str.contains("Chicas / Bailarinas", case=False, na=False)
         ]
@@ -164,29 +164,55 @@ elif opcion == "3. Corte y Nómina Final":
         else:
             res_grupo_chicas = []
             for _, emp in df_grupo_chicas.iterrows():
+                emp_id = emp['id']
                 nombre = emp['nombre']
                 sueldo_base = float(emp['sueldo_base'])
 
                 penalizada = st.checkbox(
                     f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
-                    key=f"pen_chicas_{emp['id']}"
+                    key=f"pen_chicas_{emp_id}"
                 )
 
                 extras = 0.0
+                boons_cant = 0
+                copa_cant = 0
+                strong_cant = 0
+                vip_cant = 0
+
                 if not chicas_totales.empty:
-                    sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp['id']]
-                    extras = float(
-                        (sus_filas['comision_unitaria'] * sus_filas['cantidad']).sum()
-                    )
+                    sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
+                    if not sus_filas.empty:
+                        extras = float((sus_filas['comision_unitaria'] * sus_filas['cantidad']).sum())
+                        
+                        for _, f_prod in sus_filas.iterrows():
+                            desc = str(f_prod['descripcion']).upper()
+                            cant = int(f_prod['cantidad'])
+                            if 'BOONS' in desc:
+                                boons_cant += cant
+                            elif 'COPA LADY' in desc:
+                                copa_cant += cant
+                            elif 'MINI STRONGBOW' in desc:
+                                strong_cant += cant
+                            elif 'VIP' in desc or 'PRIVADO' in desc:
+                                vip_cant += cant
 
                 if penalizada:
                     extras = extras / 2.0
 
                 total_pagar = sueldo_base + extras
                 res_grupo_chicas.append({
-                    "ID": emp['id'], "Nombre": nombre, "Puesto": emp['tipo'],
-                    "Sueldo Base": sueldo_base, "Comisiones": extras, "Total a Pagar": total_pagar
+                    "ID": emp_id, 
+                    "Nombre": nombre, 
+                    "Puesto": emp['tipo'],
+                    "Boons": boons_cant,
+                    "Copa Lady": copa_cant,
+                    "Strongbow": strong_cant,
+                    "VIP / Privados": vip_cant,
+                    "Sueldo Base": sueldo_base, 
+                    "Comisiones": extras, 
+                    "Total a Pagar": total_pagar
                 })
+            
             df_res_gc = pd.DataFrame(res_grupo_chicas)
             st.dataframe(df_res_gc, use_container_width=True)
             st.metric("Subtotal Nómina Chicas y Bailarinas", f"${df_res_gc['Total a Pagar'].sum():,.2f}")
@@ -214,7 +240,6 @@ elif opcion == "3. Corte y Nómina Final":
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         penalizado = st.checkbox(f"¿Penalizar a {nombre}?", key=f"pen_mesero_{emp_id}")
                         if not ventas_emp.empty and 'propina_tarjeta' in ventas_emp.columns:
-                            # Sumar las propinas correspondientes para el cálculo del bono/comisión si aplica
                             total_propina = float(ventas_emp['propina_tarjeta'].sum() + ventas_emp['propina_efectivo'].sum())
                             tasa = 0.10 if not penalizado else 0.05
                             extras = total_propina * tasa
@@ -280,7 +305,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.markdown("---")
     st.markdown("### 📋 Resumen Financiero del Día (Estilo Dashboard)")
 
-    # Cálculo correcto sumando efectivo + propina_efectivo y tarjeta + propina_tarjeta + propina_vales
     efectivo_ventas = 0.0
     tarjeta_ventas = 0.0
     if not ventas_acumuladas.empty:
