@@ -110,55 +110,71 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
 
 
 def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
-    """Equivalente a historial_ventas.append(df_v)"""
+    """Limpia los registros del día actual e inserta el nuevo corte de ventas (sobrescribe)."""
     session = get_session()
-    for _, row in df_v.iterrows():
-        session.add(CorteVenta(
-            idmesero=row.get("idmesero"),
-            importe=row.get("importe", 0),
-            efectivo=row.get("efectivo", 0),
-            tarjeta=row.get("tarjeta", 0),
-            propina=row.get("propina", 0),
-            archivo_origen=archivo_origen,
-        ))
-    session.commit()
-    session.close()
+    try:
+        # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
+        session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
+        session.commit()
+
+        # 2. Insertar los nuevos registros del Excel
+        for _, row in df_v.iterrows():
+            session.add(CorteVenta(
+                idmesero=row.get("idmesero"),
+                importe=row.get("importe", 0),
+                efectivo=row.get("efectivo", 0),
+                tarjeta=row.get("tarjeta", 0),
+                propina=row.get("propina", 0),
+                archivo_origen=archivo_origen,
+            ))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
     """
-    Equivalente a historial_chicas.append(filas_chicas), guardando ya la comisión
-    calculada. Además, registra automáticamente a las personas nuevas detectadas
-    (igual que hacía el código original con session_state.empleados).
+    Limpia los registros del día actual de productos de chicas e inserta los nuevos (sobrescribe).
     """
-    nuevas_detectadas = []
-    for _, row in filas_chicas.iterrows():
-        desc = str(row["DESCRIPCION"])
-        prod_parte, chica_parte = desc.split(">")
-        nombre_persona = chica_parte.strip().upper()
-        comision_unit = calcular_comision_fn(prod_parte)
-        cantidad = float(row["CANTIDAD"]) if pd.notna(row.get("CANTIDAD")) else 1.0
-
-        empleado_id, creado = obtener_o_crear_empleado(nombre_persona)
-        if creado:
-            nuevas_detectadas.append(nombre_persona)
-
-        session = get_session()
-        session.add(ProductoChica(
-            clave=row.get("CLAVE"),
-            descripcion=desc,
-            grupo=row.get("GRUPO"),
-            precio=row.get("PRECIO"),
-            cantidad=cantidad,
-            empleado_nombre=nombre_persona,
-            empleado_id=empleado_id,
-            comision_unitaria=comision_unit,
-            archivo_origen=archivo_origen,
-        ))
+    session = get_session()
+    try:
+        # 1. Borrar los registros de la fecha actual antes de guardar
+        session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
         session.commit()
-        session.close()
 
-    return nuevas_detectadas
+        nuevas_detectadas = []
+        for _, row in filas_chicas.iterrows():
+            desc = str(row["DESCRIPCION"])
+            prod_parte, chica_parte = desc.split(">")
+            nombre_persona = chica_parte.strip().upper()
+            comision_unit = calcular_comision_fn(prod_parte)
+            cantidad = float(row["CANTIDAD"]) if pd.notna(row.get("CANTIDAD")) else 1.0
+
+            empleado_id, creado = obtener_o_crear_empleado(nombre_persona)
+            if creado:
+                nuevas_detectadas.append(nombre_persona)
+
+            session.add(ProductoChica(
+                clave=row.get("CLAVE"),
+                descripcion=desc,
+                grupo=row.get("GRUPO"),
+                precio=row.get("PRECIO"),
+                cantidad=cantidad,
+                empleado_nombre=nombre_persona,
+                empleado_id=empleado_id,
+                comision_unitaria=comision_unit,
+                archivo_origen=archivo_origen,
+            ))
+        session.commit()
+        return nuevas_detectadas
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
 def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66):
