@@ -25,7 +25,9 @@ PUESTOS_CATALOGO = {
 # --- REGLAS DE COMISIÓN PARA CHICAS / BAILARINAS ---
 def calcular_comision_chica(producto_str):
     p = producto_str.upper().strip()
-    if 'BOONS' in p:
+    if 'BOONS ARTISTA' in p:
+        return 700.0
+    elif 'BOONS' in p:
         return 700.0
     elif 'COPA LADY' in p:
         return 100.0
@@ -188,13 +190,18 @@ elif opcion == "3. Corte y Nómina Final":
                             desc = str(f_prod['descripcion']).upper()
                             cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
                             
-                            if 'BOONS' in desc:
+                            # Validaciones exactas para evitar cruces de nombres (ej: BOONS vs BOONS ARTISTA)
+                            if 'BOONS ARTISTA' in desc:
+                                pass # O manejarlo si requiere columna separada, pero aquí sumamos a boons o dejamos separado
+                            elif 'BOONS' in desc:
                                 boons_cant += cant
                             elif 'COPA LADY' in desc:
                                 copa_cant += cant
                             elif 'MINI STRONGBOW' in desc:
                                 strong_cant += cant
-                            elif 'VIP' in desc or 'PRIVADO' in desc:
+                            elif ('VIP' in desc or 'PRIVADO' in desc) and 'ARTISTA' not in desc:
+                                vip_cant += cant
+                            elif 'VIP' in desc and 'ARTISTA' in desc:
                                 vip_cant += cant
 
                 if penalizada:
