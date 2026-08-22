@@ -145,9 +145,10 @@ elif opcion == "2. Gestión y Edición de Empleados":
     
     empleados_df = cargar_empleados_df()
 
-    tab_gest_chicas, tab_gest_general = st.tabs([
+    tab_gest_chicas, tab_gest_general, tab_carga_masiva = st.tabs([
         "💃 Bailarinas y Chicas de Salón",
-        "📋 Personal Operativo y General"
+        "📋 Personal Operativo y General",
+        "📂 Alta Masiva por Excel"
     ])
 
     with tab_gest_chicas:
@@ -165,6 +166,72 @@ elif opcion == "2. Gestión y Edición de Empleados":
             st.dataframe(df_general_gen, use_container_width=True)
         else:
             st.info("No hay registros.")
+
+    with tab_carga_masiva:
+        st.markdown("### Importar o Actualizar Personal Masivamente")
+        st.info("Sube un archivo de Excel con las columnas: **Nombre**, **Puesto** y **Sueldo Base**.")
+
+        # Generar archivo de plantilla descargable
+        df_plantilla = pd.DataFrame([
+            {"Nombre": "Ejemplo Juan Pérez", "Puesto": "Mesero (Comisiones)", "Sueldo Base": 300.0},
+            {"Nombre": "Ejemplo María López", "Puesto": "Barman (Fijo)", "Sueldo Base": 400.0}
+        ])
+        buffer_plantilla = io.BytesIO()
+        with pd.ExcelWriter(buffer_plantilla, engine='openpyxl') as writer:
+            df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla_Personal')
+        buffer_plantilla.seek(0)
+
+        st.download_button(
+            label="📥 Descargar Plantilla de Excel de Ejemplo",
+            data=buffer_plantilla,
+            file_name="Plantilla_Alta_Empleados.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        st.markdown("---")
+        up_excel_personal = st.file_uploader("Sube tu archivo Excel de empleados", type=["xls", "xlsx"], key="subir_excel_personal")
+
+        if up_excel_personal is not None:
+            df_subido = pd.read_excel(up_excel_personal)
+            st.markdown("**Vista previa del archivo cargado:**")
+            st.dataframe(df_subido.head(), use_container_width=True)
+
+            if st.button("Procesar e Importar Personal"):
+                columnas_necesarias = {'Nombre', 'Puesto', 'Sueldo Base'}
+                if not columnas_necesarias.issubset(df_subido.columns):
+                    st.error(f"El archivo Excel debe contener exactamente las columnas: {', '.join(columnas_necesarias)}")
+                else:
+                    registrados = 0
+                    actualizados = 0
+                    empleados_actuales = cargar_empleados_df()
+                    nombres_existentes = empleados_actuales['nombre'].tolist() if not empleados_actuales.empty else []
+
+                    for _, row in df_subido.iterrows()... if 'nombre' in df_subido.columns else []:
+                        pass # Seguridad por si acaso
+
+                    for _, row in df_subido.iterrows():
+                        nombre_emp = str(row['Nombre']).strip()
+                        puesto_emp = str(row['Puesto']).strip()
+                        sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
+
+                        if not nombre_emp:
+                            continue
+
+                        if puesto_emp not in PUESTOS_CATALOGO:
+                            puesto_emp = "Mesero (Comisiones)" # Puesto por defecto si hay error de dedo
+
+                        if nombre_emp in nombres_existentes:
+                            # Actualizar si ya existe
+                            emp_encontrado = empleados_actuales[empleados_actuales['nombre'] == nombre_emp].iloc[0]
+                            actualizar_empleado(int(emp_encontrado['id']), puesto_emp, sueldo_emp)
+                            actualizados += 1
+                        else:
+                            # Agregar nuevo si no existe
+                            agregar_empleado(nombre_emp, puesto_emp, sueldo_emp)
+                            registrados += 1
+
+                    st.success(f"¡Importación completada con éxito! Nuevos agregados: {registrados} | Actualizados: {actualizados}")
+                    st.rerun()
 
     st.markdown("---")
     col_izq, col_der = st.columns(2)
