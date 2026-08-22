@@ -232,6 +232,18 @@ elif opcion == "3. Corte y Nómina Final":
             
             df_res_gc = pd.DataFrame(res_grupo_chicas)
             st.dataframe(df_res_gc, use_container_width=True)
+
+            # --- TOTALES DE PRODUCTOS VENDIDOS ---
+            st.markdown("##### 📦 Totales de Productos Vendidos en el Día")
+            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+            c1.metric("Boons", int(df_res_gc['Boons'].sum()))
+            c2.metric("Copa Lady", int(df_res_gc['Copa Lady'].sum()))
+            c3.metric("Strongbow", int(df_res_gc['Strongbow'].sum()))
+            c4.metric("VIP 3", int(df_res_gc['VIP 3'].sum()))
+            c5.metric("VIP 5/Priv", int(df_res_gc['VIP 5 / Privado'].sum()))
+            c6.metric("VIP 15", int(df_res_gc['VIP 15'].sum()))
+            c7.metric("VIP 30", int(df_res_gc['VIP 30'].sum()))
+
             st.metric("Subtotal Nómina Chicas y Bailarinas", f"${df_res_gc['Total a Pagar'].sum():,.2f}")
 
     # --- PESTAÑA 2: PERSONAL GENERAL Y OPERATIVO ---
