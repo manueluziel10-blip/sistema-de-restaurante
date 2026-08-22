@@ -1,10 +1,5 @@
 """
 Modelos SQLAlchemy + funciones de acceso a datos.
-
-Estas funciones reemplazan el uso de st.session_state por lecturas/escrituras
-reales en PostgreSQL, para que la información persista entre sesiones y
-usuarios (útil en Streamlit Cloud, donde cada usuario tiene su propia
-sesión en memoria y hoy se pierde todo al recargar).
 """
 
 from sqlalchemy import (
@@ -81,11 +76,10 @@ class GastoDiario(Base):
 
 
 # ---------------------------------------------------------
-# FUNCIONES DE ACCESO A DATOS (reemplazan session_state)
+# FUNCIONES DE ACCESO A DATOS
 # ---------------------------------------------------------
 
 def cargar_empleados_df() -> pd.DataFrame:
-    """Equivalente a leer st.session_state.empleados"""
     session = get_session()
     query = session.query(Empleado)
     df = pd.read_sql(query.statement, session.bind)
@@ -111,14 +105,11 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
 
 
 def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str):
-    """Limpia los registros del día actual e inserta el nuevo corte combinando ventas y propinas."""
     session = get_session()
     try:
-        # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
         session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
         session.commit()
 
-        # 2. Buscar un puesto que corresponda a meseros en el catálogo
         puesto_mesero = session.query(PuestoCatalogo).filter(
             func.lower(PuestoCatalogo.nombre).like("%meser%")
         ).first()
@@ -128,16 +119,13 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
             
         tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Meseros"
 
-        # 3. Combinar ambos DataFrames usando idmesero
         df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
         df_completo = df_completo.fillna(0)
 
-        # 4. Insertar los nuevos registros
         for _, row in df_completo.iterrows():
             idmesero = row.get("idmesero")
             nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", f"MESERO {idmesero}")))
 
-            # Verificar si el empleado existe por ID o por nombre
             emp = session.query(Empleado).filter(Empleado.id == idmesero).first()
             if not emp:
                 emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
@@ -175,9 +163,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
 
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
-    """
-    Limpia los registros del día actual de productos de chicas e inserta los nuevos (sobrescribe).
-    """
     session = get_session()
     try:
         session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
@@ -234,17 +219,19 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
 
 
 def cargar_ventas_df() -> pd.DataFrame:
-    """Todas las ventas de meseros acumuladas (reemplaza historial_ventas)"""
+    """Ventas de meseros del día actual"""
     session = get_session()
-    df = pd.read_sql(session.query(CorteVenta).statement, session.bind)
+    query = session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date())
+    df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
 
 
 def cargar_chicas_df() -> pd.DataFrame:
-    """Todos los productos de chicas/bailarinas acumulados (reemplaza historial_chicas)"""
+    """Productos de chicas del día actual"""
     session = get_session()
-    df = pd.read_sql(session.query(ProductoChica).statement, session.bind)
+    query = session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date())
+    df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
 
@@ -257,7 +244,6 @@ def cargar_gastos_hoy():
 
 
 def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0):
-    """Devuelve el id del empleado si existe; si no, lo crea (usado al detectar nombres nuevos en un corte)."""
     session = get_session()
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
     creado = False
