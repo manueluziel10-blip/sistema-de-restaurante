@@ -301,11 +301,11 @@ elif opcion == "3. Corte y Nómina Final":
         
         altura_tabla = min(max(len(df_res) * 45 + 40, 150), 900)
 
-        # Aplicamos estilo visual suave con colores alternados por filas para evitar la vista cansada
+        # Función corregida para alternar colores de filas con tonos suaves visuales
         def resaltar_filas(row):
             return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
 
-        df_estilizado = df_res[cols_mostrar].style.apply(resaltrar_filas if 'resaltrar_filas' else lambda r: ['background-color: #17212B']*len(r), axis=1)
+        df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1)
 
         df_editado = st.data_editor(
             df_estilizado,
