@@ -43,6 +43,7 @@ class CorteVenta(Base):
     propina_tarjeta = Column(Numeric(10, 2), default=0)
     vales = Column(Numeric(10, 2), default=0)
     propina_vales = Column(Numeric(10, 2), default=0)
+    otros = Column(Numeric(10, 2), default=0)  # <-- Columna "otros" añadida
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
 
@@ -134,7 +135,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         for _, row in df_completo.iterrows():
             nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
 
-            # Buscar empleado por nombre para evitar conflictos de ID estáticos del Excel
             emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero).first()
             
             if not emp:
@@ -160,6 +160,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 propina_tarjeta=row.get("propinatarjeta", 0),
                 vales=row.get("vales", 0),
                 propina_vales=row.get("propinavales", 0),
+                otros=row.get("otros", 0),  # <-- Se guarda el valor de la columna 'otros'
                 archivo_origen=archivo_origen,
             ))
         session.commit()
