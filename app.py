@@ -44,7 +44,7 @@ def calcular_comision_chica(producto_str):
     if 'PRIVADO ARTISTA' in p:
         return 300.0
     elif 'BOONS ARTISTA' in p:
-        return 700.0
+        return 1000.0
     elif 'BOONS' in p:
         return 700.0
     elif 'COPA LADY' in p:
