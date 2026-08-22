@@ -171,7 +171,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
         st.markdown("### Importar o Actualizar Personal Masivamente")
         st.info("Sube un archivo de Excel con las columnas: **Nombre**, **Puesto** y **Sueldo Base**.")
 
-        # Generar archivo de plantilla descargable
         df_plantilla = pd.DataFrame([
             {"Nombre": "Ejemplo Juan Pérez", "Puesto": "Mesero (Comisiones)", "Sueldo Base": 300.0},
             {"Nombre": "Ejemplo María López", "Puesto": "Barman (Fijo)", "Sueldo Base": 400.0}
@@ -206,9 +205,6 @@ elif opcion == "2. Gestión y Edición de Empleados":
                     empleados_actuales = cargar_empleados_df()
                     nombres_existentes = empleados_actuales['nombre'].tolist() if not empleados_actuales.empty else []
 
-                    for _, row in df_subido.iterrows()... if 'nombre' in df_subido.columns else []:
-                        pass # Seguridad por si acaso
-
                     for _, row in df_subido.iterrows():
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
@@ -218,15 +214,13 @@ elif opcion == "2. Gestión y Edición de Empleados":
                             continue
 
                         if puesto_emp not in PUESTOS_CATALOGO:
-                            puesto_emp = "Mesero (Comisiones)" # Puesto por defecto si hay error de dedo
+                            puesto_emp = "Mesero (Comisiones)"
 
                         if nombre_emp in nombres_existentes:
-                            # Actualizar si ya existe
                             emp_encontrado = empleados_actuales[empleados_actuales['nombre'] == nombre_emp].iloc[0]
                             actualizar_empleado(int(emp_encontrado['id']), puesto_emp, sueldo_emp)
                             actualizados += 1
                         else:
-                            # Agregar nuevo si no existe
                             agregar_empleado(nombre_emp, puesto_emp, sueldo_emp)
                             registrados += 1
 
