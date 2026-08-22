@@ -102,9 +102,27 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
 
 # --- SECCIÓN 2: GESTIÓN Y EDICIÓN DE EMPLEADOS ---
 elif opcion == "2. Gestión y Edición de Empleados":
-    st.subheader("Personal Registrado y Catálogo de Puestos")
+    st.subheader("Gestión y Catálogo de Personal")
+    
     empleados_df = cargar_empleados_df()
-    st.dataframe(empleados_df, use_container_width=True)
+
+    tab_gest_chicas, tab_gest_general = st.tabs([
+        "💃 Bailarinas y Chicas de Salón",
+        "📋 Personal Operativo y General"
+    ])
+
+    # Función auxiliar para renderizar la gestión de empleados por categoría
+    fn_es_chica = lambda t: any(x in str(t).upper() for x in ["BAILARINA", "CHICA", "COMISION"])
+
+    with tab_gest_chicas:
+        st.markdown("### Listado: Bailarinas y Chicas de Salón")
+        df_chicas_gen = empleados_df[empleados_df['tipo'].apply(fn_es_chica)] if not empleados_df.empty else pd.DataFrame()
+        st.dataframe(df_chicas_gen, use_container_width=True)
+
+    with tab_gest_general:
+        st.markdown("### Listado: Personal Operativo, Meseros y Fijos")
+        df_general_gen = empleados_df[~empleados_df['tipo'].apply(fn_es_chica)] if not empleados_df.empty else empleados_df
+        st.dataframe(df_general_gen, use_container_width=True)
 
     st.markdown("---")
     col_izq, col_der = st.columns(2)
@@ -122,7 +140,7 @@ elif opcion == "2. Gestión y Edición de Empleados":
                 if emp_actual['tipo'] in PUESTOS_CATALOGO else 0
             )
             sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
-            nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f")
+            nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
 
             if st.button("Actualizar Empleado"):
                 actualizar_empleado(emp_a_editar, nuevo_tipo_edit, nuevo_sueldo_edit)
@@ -134,7 +152,7 @@ elif opcion == "2. Gestión y Edición de Empleados":
         with st.form("form_empleado"):
             nuevo_nombre = st.text_input("Nombre Completo")
             nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()))
-            nuevo_sueldo = st.number_input("Sueldo Base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f")
+            nuevo_sueldo = st.number_input("Sueldo Base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
 
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
@@ -287,8 +305,7 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_bailarinas:
         st.markdown("### Nómina: Bailarinas")
         df_bailarinas = empleados_df[
-            empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas", case=False, na=False) &
-            ~empleados_df['tipo'].str.contains("Salón", case=False, na=False)
+            empleados_df['tipo'].str.contains("Bailarina", case=False, na=False)
         ]
         df_editado_b, sub_b = procesar_grupo_chicas(df_bailarinas, "Bailarinas", "bailarinas")
 
@@ -304,12 +321,11 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
         df_general_empleados = empleados_df[
-            ~empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas|Salón", case=False, na=False)
+            ~empleados_df['tipo'].str.contains("Bailarina|Salón", case=False, na=False)
         ]
 
         if df_general_empleados.empty:
             st.info("No hay personal general registrado.")
-            df_res_general = pd.DataFrame()
             sub_g = 0.0
         else:
             res_general = []
