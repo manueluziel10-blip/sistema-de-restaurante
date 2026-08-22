@@ -646,7 +646,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- RESUMEN DE VENTAS POR MESERO ---
+    # --- RESUMEN DE VENTAS POR MESERO ESTILIZADO ---
     st.markdown("---")
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
@@ -670,15 +670,23 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         
         resumen_meseros.columns = ['Mesero', 'Importe Total', 'Efectivo', 'Tarjeta', 'Vales', 'Otros']
         
+        # Altura dinámica y filas alternadas con el mismo estilo del sistema
+        altura_meseros = min(max(len(resumen_meseros) * 45 + 40, 150), 900)
+        
+        def resaltar_filas_meseros(row):
+            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+
+        resumen_estilizado = resumen_meseros.style.apply(resaltar_filas_meseros, axis=1).format({
+            "Importe Total": "${:,.2f}",
+            "Efectivo": "${:,.2f}",
+            "Tarjeta": "${:,.2f}",
+            "Vales": "${:,.2f}",
+            "Otros": "${:,.2f}"
+        })
+
         st.dataframe(
-            resumen_meseros,
-            column_config={
-                "Importe Total": st.column_config.NumberColumn("Importe Total ($)", format="$%.2f"),
-                "Efectivo": st.column_config.NumberColumn("Efectivo ($)", format="$%.2f"),
-                "Tarjeta": st.column_config.NumberColumn("Tarjeta ($)", format="$%.2f"),
-                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f"),
-                "Otros": st.column_config.NumberColumn("Otros ($)", format="$%.2f"),
-            },
+            resumen_estilizado,
+            height=altura_meseros,
             use_container_width=True,
             hide_index=True
         )
