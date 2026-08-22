@@ -194,7 +194,6 @@ elif opcion == "3. Corte y Nómina Final":
 
         res_grupo = []
         for _, emp in df_subgrupo.iterrows():
-            emp_id = emp['id'] if 'id' in emp else None
             nombre = emp['nombre']
             sueldo_base = float(emp['sueldo_base'])
 
@@ -215,9 +214,7 @@ elif opcion == "3. Corte y Nómina Final":
 
             if not chicas_totales.empty:
                 sus_filas = pd.DataFrame()
-                if emp_id is not None and 'empleado_id' in chicas_totales.columns:
-                    sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
-                if sus_filas.empty and 'nombre' in chicas_totales.columns:
+                if 'nombre' in chicas_totales.columns:
                     sus_filas = chicas_totales[chicas_totales['nombre'].astype(str).str.upper().str.strip() == nombre.upper().strip()]
 
                 if not sus_filas.empty:
@@ -390,7 +387,7 @@ elif opcion == "3. Corte y Nómina Final":
                 key="editor_sueldos_general"
             )
 
-            df_editado_gen['Total a Pagar'] = df_editado_gen['Sueludo Base'] if 'Sueludo Base' in df_editado_gen.columns else df_editado_gen['Sueldo Base'] + df_editado_gen['Comisiones / Extras']
+            df_editado_gen['Total a Pagar'] = df_editado_gen['Sueldo Base'] + df_editado_gen['Comisiones / Extras']
 
             for _, row_ed in df_editado_gen.iterrows():
                 nom = row_ed['Nombre']
@@ -454,7 +451,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     efectivo_ventas = 0.0
     tarjeta_ventas = 0.0
-    if not ventas_uname = ""
     if not ventas_acumuladas.empty:
         base_efectivo = float(ventas_acumuladas['efectivo'].sum()) if 'efectivo' in ventas_acumuladas.columns else 0.0
         prop_efectivo = float(ventas_acumuladas['propina_efectivo'].sum()) if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
