@@ -462,6 +462,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     efectivo_ventas = 0.0
     tarjeta_ventas = 0.0
     transferencia_ventas = 0.0
+    ventas_por_cobrar = 0.0
 
     if not ventas_acumuladas.empty:
         # Efectivo = base efectivo + propina efectivo
@@ -479,10 +480,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         prop_vales = float(ventas_acumuladas['propina_vales'].sum()) if 'propina_vales' in ventas_acumuladas.columns else 0.0
         transferencia_ventas = vales_monto + prop_vales
 
-    # Ventas Totales ahora suma Efectivo + Terminales + Transferencias correctamente
-    ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas
+        # Ventas Por Cobrar = columna 'otros' + columna 'propinacredito' (si existe en el df)
+        monto_otros = float(ventas_acumuladas['otros'].sum()) if 'otros' in ventas_acumuladas.columns else 0.0
+        monto_prop_credito = float(ventas_acumuladas['propinacredito'].sum()) if 'propinacredito' in ventas_acumuladas.columns else 0.0
+        ventas_por_cobrar = monto_otros + monto_prop_credito
 
-    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    # Ventas Totales sumando todos los conceptos de ingresos
+    ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
+
+    col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
     with col_d1:
         st.metric("VENTAS TOTALES", f"${ventas_totales_con_propinas:,.2f}")
     with col_d2:
@@ -491,6 +497,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         st.metric("VENTAS TERMINALES", f"${tarjeta_ventas:,.2f}")
     with col_d4:
         st.metric("VENTAS TRANSFERENCIAS", f"${transferencia_ventas:,.2f}")
+    with col_d5:
+        st.metric("VENTAS POR COBRAR", f"${ventas_por_cobrar:,.2f}")
 
     st.markdown("#### Desglose de Gastos y Nómina")
     nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
