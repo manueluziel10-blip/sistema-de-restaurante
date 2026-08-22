@@ -673,10 +673,33 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             parent=styles['Heading2'],
             fontSize=12,
             textColor=colors.HexColor("#334155"),
-            spaceBefore=10,
+            spaceBefore=12,
             spaceAfter=8
         )
         normal_style = styles['Normal']
+
+        card_title_style = ParagraphStyle(
+            'CardTitle',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor("#90A4AE"),
+            fontName='Helvetica-Bold'
+        )
+        card_total_style = ParagraphStyle(
+            'CardTotal',
+            parent=styles['Normal'],
+            fontSize=16,
+            textColor=colors.HexColor("#111827"),
+            fontName='Helvetica-Bold',
+            spaceAfter=4
+        )
+        card_body_style = ParagraphStyle(
+            'CardBody',
+            parent=styles['Normal'],
+            fontSize=8.5,
+            textColor=colors.HexColor("#374151"),
+            leading=12
+        )
 
         # Encabezado
         elementos.append(Paragraph("REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
@@ -721,9 +744,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos.append(t_gas)
         elementos.append(Spacer(1, 10))
 
-        # Ventas por Mesero
+        # Ventas por Mesero (Estilo Tarjetas en Cuadrícula)
         elementos.append(Paragraph("3. Resumen de Ventas por Mesero", sub_style))
         empleados_df = cargar_empleados_df()
+        
         if not ventas_acumuladas.empty and not empleados_df.empty:
             df_v_m = pd.merge(ventas_acumuladas, empleados_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
             
@@ -737,31 +761,59 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 'vales': 'sum', 'propina_vales': 'sum', 
                 'otros': 'sum', 'propinacredito': 'sum'
             }).reset_index()
+            
             res_m['total'] = (
                 res_m['efectivo'] + res_m['propina_efectivo'] + 
                 res_m['tarjeta'] + res_m['propina_tarjeta'] + 
                 res_m['vales'] + res_m['propina_vales'] + 
                 res_m['otros'] + res_m['propinacredito']
             )
+
+            filas_tarjetas = []
+            fila_actual = []
             
-            datos_meseros = [["Mesero", "Efect./Tarj.", "Trans./Cob.", "Total"]] + [
-                [
-                    row['nombre'], 
-                    f"E: ${row['efectivo']+row['propina_efectivo']:,.2f}\nT: ${row['tarjeta']+row['propina_tarjeta']:,.2f}", 
-                    f"Tr: ${row['vales']+row['propina_vales']:,.2f}\nC: ${row['otros']+row['propinacredito']:,.2f}", 
-                    f"${row['total']:,.2f}"
+            for _, row in res_m.iterrows():
+                efectivo_m = row['efectivo'] + row['propina_efectivo']
+                tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
+                transferencia_m = row['vales'] + row['propina_vales']
+                cobrar_m = row['otros'] + row['propinacredito']
+                
+                contenido_tarjeta = [
+                    Paragraph(f"MESERO: {row['nombre']}", card_title_style),
+                    Spacer(1, 3),
+                    Paragraph(f"${row['total']:,.2f}", card_total_style),
+                    Paragraph(
+                        f"<b>Efectivo:</b> ${efectivo_m:,.2f}<br/>"
+                        f"<b>Tarjeta:</b> ${tarjeta_m:,.2f}<br/>"
+                        f"<b>Transf:</b> ${transferencia_m:,.2f}<br/>"
+                        f"<b>Por Cobrar:</b> ${cobrar_m:,.2f}",
+                        card_body_style
+                    )
                 ]
-                for _, row in res_m.iterrows()
-            ]
-            t_mes = Table(datos_meseros, colWidths=[130, 130, 130, 110])
-            t_mes.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A2634")),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            elementos.append(t_mes)
+                fila_actual.append(contenido_tarjeta)
+                
+                if len(fila_actual) == 2:
+                    filas_tarjetas.append(fila_actual)
+                    fila_actual = []
+            
+            if fila_actual:
+                while len(fila_actual) < 2:
+                    fila_actual.append("")
+                filas_tarjetas.append(fila_actual)
+
+            if filas_tarjetas:
+                t_tarjetas = Table(filas_tarjetas, colWidths=[265, 265])
+                t_tarjetas.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F1F5F9")),
+                    ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                    ('INNERGRID', (0, 0), (-1, -1), 6, colors.HexColor("#FFFFFF")),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                elementos.append(t_tarjetas)
 
         doc.build(elementos)
         buffer.seek(0)
