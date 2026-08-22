@@ -12,7 +12,8 @@ st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 
 # --- LISTA OFICIAL DE PUESTOS Y SUELDOS BASE ---
 PUESTOS_CATALOGO = {
-    "Chicas / Bailarinas (Comisiones)": 300.0,
+    "Bailarina (Comisiones)": 300.0,
+    "Chica de Salón (Comisiones)": 300.0,
     "Mesero (Comisiones)": 300.0,
     "Seguridad (Fijo)": 500.0,
     "DJ (Fijo)": 600.0,
@@ -143,12 +144,13 @@ elif opcion == "2. Gestión y Edición de Empleados":
                 else:
                     st.error("El nombre no puede estar vacío.")
 
-# --- SECCIÓN 3: CORTE Y NÓMINA FINAL (UNIFICADO EN 2 PESTAÑAS) ---
+# --- SECCIÓN 3: CORTE Y NÓMINA FINAL (UNIFICADO EN PESTAÑAS) ---
 elif opcion == "3. Corte y Nómina Final":
     st.subheader("Cálculo de Nómina Semanal por Categorías")
 
-    tab_chicas_bailarinas, tab_general = st.tabs([
-        "💃 Chicas y Bailarinas",
+    tab_bailarinas, tab_salon, tab_general = st.tabs([
+        "💃 Bailarinas",
+        "🍸 Chicas de Salón",
         "📋 Personal Operativo y General"
     ])
 
@@ -156,149 +158,159 @@ elif opcion == "3. Corte y Nómina Final":
     ventas_totales = cargar_ventas_df()
     chicas_totales = cargar_chicas_df()
 
-    # --- PESTAÑA 1: CHICAS Y BAILARINAS UNIFICADAS ---
-    with tab_chicas_bailarinas:
-        st.markdown("### Nómina: Chicas, Bailarinas y Detalle de Productos")
-        st.info("💡 Tip: Puedes hacer clic directamente en la columna **Sueldo Base** de la tabla para editar el monto de cada chica. Al terminar, los cálculos se actualizan solos.")
-        
-        df_grupo_chicas = empleados_df[
-            empleados_df['tipo'].str.contains("Chicas / Bailarinas", case=False, na=False)
-        ]
+    def procesar_grupo_chicas(df_subgrupo, nombre_pestana, key_sufijo):
+        if df_subgrupo.empty:
+            st.info(f"No hay registros en {nombre_pestana}.")
+            return pd.DataFrame(), 0.0
 
-        if df_grupo_chicas.empty:
-            st.info("No hay chicas o bailarinas registradas.")
-        else:
-            res_grupo_chicas = []
-            for _, emp in df_grupo_chicas.iterrows():
-                emp_id = emp['id']
-                nombre = emp['nombre']
-                sueldo_base = float(emp['sueldo_base'])
+        res_grupo = []
+        for _, emp in df_subgrupo.iterrows():
+            emp_id = emp['id']
+            nombre = emp['nombre']
+            sueldo_base = float(emp['sueldo_base'])
 
-                penalizada = st.checkbox(
-                    f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
-                    key=f"pen_chicas_{emp_id}"
-                )
-
-                extras = 0.0
-                boons_cant = 0.0
-                copa_cant = 0.0
-                strong_cant = 0.0
-                vip3_cant = 0.0
-                vip5_priv_cant = 0.0
-                vip15_cant = 0.0
-                vip30_cant = 0.0
-                priv_artista_cant = 0.0
-
-                if not chicas_totales.empty:
-                    sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
-                    if not sus_filas.empty:
-                        extras = float((sus_filas['comision_unitaria'] * sus_filas['cantidad']).sum())
-                        
-                        for _, f_prod in sus_filas.iterrows():
-                            desc = str(f_prod['descripcion']).upper()
-                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                            
-                            if 'PRIVADO ARTISTA' in desc:
-                                priv_artista_cant += cant
-                            elif 'BOONS' in desc:
-                                boons_cant += cant
-                            elif 'COPA LADY' in desc:
-                                copa_cant += cant
-                            elif 'MINI STRONGBOW' in desc:
-                                strong_cant += cant
-                            elif 'VIP30' in desc:
-                                vip30_cant += cant
-                            elif 'VIP 15' in desc or 'VIP15' in desc:
-                                vip15_cant += cant
-                            elif 'VIP5' in desc or 'PRIVADO' in desc:
-                                vip5_priv_cant += cant
-                            elif 'VIP3' in desc:
-                                vip3_cant += cant
-
-                if penalizada:
-                    extras = extras / 2.0
-
-                total_pagar = sueldo_base + extras
-                res_grupo_chicas.append({
-                    "ID": emp_id, 
-                    "Nombre": nombre, 
-                    "Puesto": emp['tipo'],
-                    "Boons": int(boons_cant),
-                    "Copa Lady": int(copa_cant),
-                    "Strongbow": int(strong_cant),
-                    "VIP 3": int(vip3_cant),
-                    "VIP 5 / Privado": int(vip5_priv_cant),
-                    "VIP 15": int(vip15_cant),
-                    "VIP 30": int(vip30_cant),
-                    "Privado Artista": int(priv_artista_cant),
-                    "Sueldo Base": sueldo_base, 
-                    "Comisiones": extras, 
-                    "Total a Pagar": total_pagar
-                })
-            
-            df_res_gc = pd.DataFrame(res_grupo_chicas)
-            
-            # --- TABLA EDITABLE ---
-            df_editado = st.data_editor(
-                df_res_gc,
-                column_config={
-                    "Sueldo Base": st.column_config.NumberColumn(
-                        "Sueldo Base ($)",
-                        help="Haz clic para modificar el sueldo base directamente",
-                        min_value=0.0,
-                        format="$%.2f",
-                        required=True
-                    ),
-                    "Total a Pagar": st.column_config.NumberColumn(
-                        "Total a Pagar ($)",
-                        format="$%.2f",
-                        disabled=True
-                    ),
-                    "Comisiones": st.column_config.NumberColumn(
-                        "Comisiones ($)",
-                        format="$%.2f",
-                        disabled=True
-                    ),
-                },
-                disabled=["ID", "Nombre", "Puesto", "Boons", "Copa Lady", "Strongbow", "VIP 3", "VIP 5 / Privado", "VIP 15", "VIP 30", "Privado Artista", "Comisiones"],
-                use_container_width=True,
-                key="editor_sueldos_chicas"
+            penalizada = st.checkbox(
+                f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
+                key=f"pen_{key_sufijo}_{emp_id}"
             )
 
-            # Recalcular Total a Pagar dinámicamente si se modificó algún sueldo base en la tabla
-            df_editado['Total a Pagar'] = df_editado['Sueldo Base'] + df_editado['Comisiones']
+            extras = 0.0
+            boons_cant = 0.0
+            copa_cant = 0.0
+            strong_cant = 0.0
+            vip3_cant = 0.0
+            vip5_priv_cant = 0.0
+            vip15_cant = 0.0
+            vip30_cant = 0.0
+            priv_artista_cant = 0.0
 
-            # Guardar automáticamente los cambios de sueldo en la base de datos si cambiaron
-            for _, row_ed in df_editado.iterrows():
-                e_id = row_ed['ID']
-                nuevo_sb = float(row_ed['Sueldo Base'])
-                original_sb = float(df_res_gc[df_res_gc['ID'] == e_id]['Sueldo Base'].values[0])
-                if nuevo_sb != original_sb:
-                    actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+            if not chicas_totales.empty:
+                sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
+                if not sus_filas.empty:
+                    extras = float((sus_filas['comision_unitaria'] * sus_filas['cantidad']).sum())
+                    
+                    for _, f_prod in sus_filas.iterrows():
+                        desc = str(f_prod['descripcion']).upper()
+                        cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                        
+                        if 'PRIVADO ARTISTA' in desc:
+                            priv_artista_cant += cant
+                        elif 'BOONS' in desc:
+                            boons_cant += cant
+                        elif 'COPA LADY' in desc:
+                            copa_cant += cant
+                        elif 'MINI STRONGBOW' in desc:
+                            strong_cant += cant
+                        elif 'VIP30' in desc:
+                            vip30_cant += cant
+                        elif 'VIP 15' in desc or 'VIP15' in desc:
+                            vip15_cant += cant
+                        elif 'VIP5' in desc or 'PRIVADO' in desc:
+                            vip5_priv_cant += cant
+                        elif 'VIP3' in desc:
+                            vip3_cant += cant
 
-            # --- TOTALES DE PRODUCTOS VENDIDOS ---
-            st.markdown("##### 📦 Totales de Productos Vendidos en el Día")
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
-            c1.metric("Boons", int(df_editado['Boons'].sum()))
-            c2.metric("Copa Lady", int(df_editado['Copa Lady'].sum()))
-            c3.metric("Strongbow", int(df_editado['Strongbow'].sum()))
-            c4.metric("VIP 3", int(df_editado['VIP 3'].sum()))
-            c5.metric("VIP 5/Priv", int(df_editado['VIP 5 / Privado'].sum()))
-            c6.metric("VIP 15", int(df_editado['VIP 15'].sum()))
-            c7.metric("VIP 30", int(df_editado['VIP 30'].sum()))
-            c8.metric("Priv. Artista", int(df_editado['Privado Artista'].sum()))
+            if penalizada:
+                extras = extras / 2.0
 
-            st.metric("Subtotal Nómina Chicas y Bailarinas", f"${df_editado['Total a Pagar'].sum():,.2f}")
+            total_pagar = sueldo_base + extras
+            res_grupo.append({
+                "ID": emp_id, 
+                "Nombre": nombre, 
+                "Puesto": emp['tipo'],
+                "Boons": int(boons_cant),
+                "Copa Lady": int(copa_cant),
+                "Strongbow": int(strong_cant),
+                "VIP 3": int(vip3_cant),
+                "VIP 5 / Privado": int(vip5_priv_cant),
+                "VIP 15": int(vip15_cant),
+                "VIP 30": int(vip30_cant),
+                "Privado Artista": int(priv_artista_cant),
+                "Sueldo Base": sueldo_base, 
+                "Comisiones": extras, 
+                "Total a Pagar": total_pagar
+            })
+        
+        df_res = pd.DataFrame(res_grupo)
+        
+        df_editado = st.data_editor(
+            df_res,
+            column_config={
+                "Sueldo Base": st.column_config.NumberColumn(
+                    "Sueldo Base ($)",
+                    help="Haz clic para modificar el sueldo base directamente",
+                    min_value=0.0,
+                    format="$%.2f",
+                    required=True
+                ),
+                "Total a Pagar": st.column_config.NumberColumn(
+                    "Total a Pagar ($)",
+                    format="$%.2f",
+                    disabled=True
+                ),
+                "Comisiones": st.column_config.NumberColumn(
+                    "Comisiones ($)",
+                    format="$%.2f",
+                    disabled=True
+                ),
+            },
+            disabled=["ID", "Nombre", "Puesto", "Boons", "Copa Lady", "Strongbow", "VIP 3", "VIP 5 / Privado", "VIP 15", "VIP 30", "Privado Artista", "Comisiones"],
+            use_container_width=True,
+            key=f"editor_sueldos_{key_sufijo}"
+        )
 
-    # --- PESTAÑA 2: PERSONAL GENERAL Y OPERATIVO ---
+        df_editado['Total a Pagar'] = df_editado['Sueldo Base'] + df_editado['Comisiones']
+
+        for _, row_ed in df_editado.iterrows():
+            e_id = row_ed['ID']
+            nuevo_sb = float(row_ed['Sueldo Base'])
+            original_sb = float(df_res[df_res['ID'] == e_id]['Sueldo Base'].values[0])
+            if nuevo_sb != original_sb:
+                actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
+
+        st.markdown(f"##### 📦 Totales de Productos Vendidos - {nombre_pestana}")
+        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
+        c1.metric("Boons", int(df_editado['Boons'].sum()))
+        c2.metric("Copa Lady", int(df_editado['Copa Lady'].sum()))
+        c3.metric("Strongbow", int(df_editado['Strongbow'].sum()))
+        c4.metric("VIP 3", int(df_editado['VIP 3'].sum()))
+        c5.metric("VIP 5/Priv", int(df_editado['VIP 5 / Privado'].sum()))
+        c6.metric("VIP 15", int(df_editado['VIP 15'].sum()))
+        c7.metric("VIP 30", int(df_editado['VIP 30'].sum()))
+        c8.metric("Priv. Artista", int(df_editado['Privado Artista'].sum()))
+
+        subtotal = float(df_editado['Total a Pagar'].sum())
+        st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
+        return df_editado, subtotal
+
+    # --- PESTAÑA 1: BAILARINAS ---
+    with tab_bailarinas:
+        st.markdown("### Nómina: Bailarinas")
+        df_bailarinas = empleados_df[
+            empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas", case=False, na=False) &
+            ~empleados_df['tipo'].str.contains("Salón", case=False, na=False)
+        ]
+        df_editado_b, sub_b = procesar_grupo_chicas(df_bailarinas, "Bailarinas", "bailarinas")
+
+    # --- PESTAÑA 2: CHICAS DE SALÓN ---
+    with tab_salon:
+        st.markdown("### Nómina: Chicas de Salón")
+        df_salon = empleados_df[
+            empleados_df['tipo'].str.contains("Salón", case=False, na=False)
+        ]
+        df_editado_s, sub_s = procesar_grupo_chicas(df_salon, "Chicas de Salón", "salon")
+
+    # --- PESTAÑA 3: PERSONAL GENERAL Y OPERATIVO ---
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
         df_general_empleados = empleados_df[
-            ~empleados_df['tipo'].str.contains("Chicas / Bailarinas", case=False, na=False)
+            ~empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas|Salón", case=False, na=False)
         ]
 
         if df_general_empleados.empty:
             st.info("No hay personal general registrado.")
+            df_res_general = pd.DataFrame()
+            sub_g = 0.0
         else:
             res_general = []
             for _, emp in df_general_empleados.iterrows():
@@ -324,13 +336,12 @@ elif opcion == "3. Corte y Nómina Final":
                 })
             df_res_general = pd.DataFrame(res_general)
             st.dataframe(df_res_general, use_container_width=True)
-            st.metric("Subtotal Nómina Personal General", f"${df_res_general['Total a Pagar'].sum():,.2f}")
+            sub_g = float(df_res_general['Total a Pagar'].sum())
+            st.metric("Subtotal Nómina Personal General", f"${sub_g:,.2f}")
 
     st.markdown("---")
-    total_chicas_g = df_editado['Total a Pagar'].sum() if 'df_editado' in locals() and not df_grupo_chicas.empty else 0
-    total_gen = df_res_general['Total a Pagar'].sum() if 'df_res_general' in locals() and not df_general_empleados.empty else 0
-
-    st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${(total_chicas_g + total_gen):,.2f}")
+    total_general_semana = sub_b + sub_s + sub_g
+    st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja Diario (Dashboard)":
