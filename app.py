@@ -646,7 +646,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS ---
+    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (APILADO) ---
     st.markdown("---")
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
@@ -687,7 +687,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                     efectivo_m = row['efectivo'] + row['propina_efectivo']
                     tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
                     
-                    detalle_extra = f"Efect: ${efectivo_m:,.2f} | Tarj: ${tarjeta_m:,.2f}"
+                    # Usamos saltos de línea HTML en el delta para apilar los conceptos
+                    detalle_extra = f"Efectivo: ${efectivo_m:,.2f}<br>Tarjeta: ${tarjeta_m:,.2f}"
                     
                     with cols[j]:
                         st.metric(
