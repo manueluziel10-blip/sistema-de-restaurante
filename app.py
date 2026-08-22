@@ -488,6 +488,19 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     # Ventas Totales sumando todos los conceptos de ingresos
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
 
+    # --- CÁLCULO DE GASTOS Y NÓMINA TOTALES ---
+    nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
+    total_gastos_nomina = nomina_personal_fijo + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
+
+    # --- CÁLCULO DE EFECTIVO ENTREGADO Y UTILIDAD ---
+    # Efectivo entregado = Ventas en efectivo menos todos los gastos y nóminas del día
+    efectivo_entregado = efectivo_ventas - total_gastos_nomina
+
+    # Utilidad = Ventas totales menos gastos y nóminas
+    utilidad_monto = ventas_totales_con_propinas - total_gastos_nomina
+    utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
+
+    # Fila superior de métricas de ventas
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
     with col_d1:
         st.metric("VENTAS TOTALES", f"${ventas_totales_con_propinas:,.2f}")
@@ -500,10 +513,14 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_d5:
         st.metric("VENTAS POR COBRAR", f"${ventas_por_cobrar:,.2f}")
 
-    st.markdown("#### Desglose de Gastos y Nómina")
-    nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
-    total_gastos_nomina = nomina_personal_fijo + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
+    # Fila secundaria de Efectivo Entregado y Utilidad
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.metric("EFECTIVO ENTREGADO", f"${efectivo_entregado:,.2f}")
+    with col_e2:
+        st.metric("UTILIDAD ANTES DE COSTOS", f"${utilidad_monto:,.2f}", f"{utilidad_porcentaje:.1f}%")
 
+    st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_fijo},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
