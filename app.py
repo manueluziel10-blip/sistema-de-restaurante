@@ -726,6 +726,12 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         empleados_df = cargar_empleados_df()
         if not ventas_acumuladas.empty and not empleados_df.empty:
             df_v_m = pd.merge(ventas_acumuladas, empleados_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
+            
+            # Validación de seguridad para evitar KeyErrors si alguna columna falta
+            for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
+                if col not in df_v_m.columns:
+                    df_v_m[col] = 0.0
+
             res_m = df_v_m.groupby('nombre').agg({
                 'efectivo': 'sum', 'propina_efectivo': 'sum',
                 'tarjeta': 'sum', 'propina_tarjeta': 'sum',
@@ -786,6 +792,11 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             how='left'
         )
         
+        # Validación de seguridad para la vista de tarjetas en el dashboard
+        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
+            if col not in df_ventas_meseros.columns:
+                df_ventas_meseros[col] = 0.0
+
         resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
             'efectivo': 'sum',
             'propina_efectivo': 'sum',
