@@ -729,20 +729,32 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             res_m = df_v_m.groupby('nombre').agg({
                 'efectivo': 'sum', 'propina_efectivo': 'sum',
                 'tarjeta': 'sum', 'propina_tarjeta': 'sum',
-                'vales': 'sum', 'propina_vales': 'sum', 'otros': 'sum'
+                'vales': 'sum', 'propina_vales': 'sum', 
+                'otros': 'sum', 'propinacredito': 'sum'
             }).reset_index()
-            res_m['total'] = res_m['efectivo'] + res_m['propina_efectivo'] + res_m['tarjeta'] + res_m['propina_tarjeta'] + res_m['vales'] + res_m['propina_vales'] + res_m['otros']
+            res_m['total'] = (
+                res_m['efectivo'] + res_m['propina_efectivo'] + 
+                res_m['tarjeta'] + res_m['propina_tarjeta'] + 
+                res_m['vales'] + res_m['propina_vales'] + 
+                res_m['otros'] + res_m['propinacredito']
+            )
             
-            datos_meseros = [["Mesero", "Efectivo", "Tarjeta", "Total"]] + [
-                [row['nombre'], f"${row['efectivo']+row['propina_efectivo']:,.2f}", f"${row['tarjeta']+row['propina_tarjeta']:,.2f}", f"${row['total']:,.2f}"]
+            datos_meseros = [["Mesero", "Efect./Tarj.", "Trans./Cob.", "Total"]] + [
+                [
+                    row['nombre'], 
+                    f"E: ${row['efectivo']+row['propina_efectivo']:,.2f}\nT: ${row['tarjeta']+row['propina_tarjeta']:,.2f}", 
+                    f"Tr: ${row['vales']+row['propina_vales']:,.2f}\nC: ${row['otros']+row['propinacredito']:,.2f}", 
+                    f"${row['total']:,.2f}"
+                ]
                 for _, row in res_m.iterrows()
             ]
-            t_mes = Table(datos_meseros, colWidths=[150, 100, 100, 100])
+            t_mes = Table(datos_meseros, colWidths=[130, 130, 130, 110])
             t_mes.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A2634")),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ]))
             elementos.append(t_mes)
 
@@ -761,7 +773,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         use_container_width=True
     )
 
-    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (APILADO) ---
+    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (APILADO COMPLETO) ---
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
     empleados_df = cargar_empleados_df()
@@ -781,14 +793,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             'propina_tarjeta': 'sum',
             'vales': 'sum',
             'propina_vales': 'sum',
-            'otros': 'sum'
+            'otros': 'sum',
+            'propinacredito': 'sum'
         }).reset_index()
         
         resumen_meseros['importe_total'] = (
             resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
             resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
             resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
-            resumen_meseros['otros']
+            resumen_meseros['otros'] + resumen_meseros['propinacredito']
         )
         
         for i in range(0, len(resumen_meseros), 4):
@@ -800,18 +813,21 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                     importe_total = row['importe_total']
                     efectivo_m = row['efectivo'] + row['propina_efectivo']
                     tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
+                    transferencia_m = row['vales'] + row['propina_vales']
+                    cobrar_m = row['otros'] + row['propinacredito']
                     
-                    with cols[j]:
-                        st.markdown(
-                            f"""
-                            <div style="background-color: #141D26; padding: 15px; border-radius: 8px; border: 1px solid #1A2634; margin-bottom: 10px;">
-                                <span style="color: #90A4AE; font-size: 12px; font-weight: bold;">MESERO: {nombre_mesero}</span><br>
-                                <span style="color: #FFFFFF; font-size: 24px; font-weight: bold;">${importe_total:,.2f}</span><br>
-                                <span style="color: #00E676; font-size: 13px;">↑ Efectivo: ${efectivo_m:,.2f}</span><br>
-                                <span style="color: #00E676; font-size: 13px;">↑ Tarjeta: ${tarjeta_m:,.2f}</span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #141D26; padding: 15px; border-radius: 8px; border: 1px solid #1A2634; margin-bottom: 10px;">
+                            <span style="color: #90A4AE; font-size: 12px; font-weight: bold;">MESERO: {nombre_mesero}</span><br>
+                            <span style="color: #FFFFFF; font-size: 24px; font-weight: bold;">${importe_total:,.2f}</span><br>
+                            <span style="color: #00E676; font-size: 12px;">↑ Efectivo: ${efectivo_m:,.2f}</span><br>
+                            <span style="color: #00E676; font-size: 12px;">↑ Tarjeta: ${tarjeta_m:,.2f}</span><br>
+                            <span style="color: #00E676; font-size: 12px;">↑ Transf: ${transferencia_m:,.2f}</span><br>
+                            <span style="color: #00E676; font-size: 12px;">↑ Por Cobrar: ${cobrar_m:,.2f}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
     else:
         st.info("No hay registros de ventas de meseros disponibles para mostrar en el resumen de hoy.")
