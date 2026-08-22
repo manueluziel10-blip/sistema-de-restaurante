@@ -441,7 +441,10 @@ elif opcion == "3. Corte y Nómina Final":
         cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
         
         altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
-        editor_key_gen = f"editor_sueldos_{key_sufijo}"
+        
+        # --- CORRECCIÓN CLAVE AQUÍ: Usamos un key único garantizado por pestaña ---
+        editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
+        
         df_editado_gen = st.data_editor(
             df_res_general[cols_mostrar_gen],
             height=altura_tabla_gen,
@@ -504,11 +507,10 @@ elif opcion == "3. Corte y Nómina Final":
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
         _, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
-    # --- PESTAÑA 2: MESEROS Y AYUDANTES (SOLO MESEROS PURISTAS Y AYUDANTES) ---
+    # --- PESTAÑA 2: MESEROS Y AYUDANTES ---
     with tab_meseros:
         st.markdown("### Nómina: Meseros y Ayudantes de Mesero")
         if not empleados_df.empty:
-            # Filtramos estrictamente los puestos que digan mesero o ayudante, pero que NO sean capitanes
             mask_meseros = (
                 empleados_df['tipo'].astype(str).str.upper().str.contains("MESERO") &
                 ~empleados_df['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN")
@@ -516,7 +518,7 @@ elif opcion == "3. Corte y Nómina Final":
             df_meseros = empleados_df[mask_meseros]
         else:
             df_meseros = pd.DataFrame()
-        sub_m = procesar_grupo_general(df_meseros, "Meseros y Ayudantes", "meseros")
+        sub_m = procesar_grupo_general(df_meseros, "Meseros y Ayudantes", "meseros_ayudantes")
 
     # --- PESTAÑA 3: SEGURIDAD ---
     with tab_seguridad:
@@ -631,7 +633,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     col_e1, col_e2 = st.columns(2)
     with col_e1:
-        st.metric("EFECTIVO ENTregado", f"${efectivo_entregado:,.2f}")
+        st.metric("EFECTIVO ENTREGADO", f"${efectivo_entregado:,.2f}")
     with col_e2:
         st.metric("UTILIDAD ANTES DE COSTOS", f"${utilidad_monto:,.2f}", f"{utilidad_porcentaje:.1f}%")
 
