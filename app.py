@@ -357,7 +357,6 @@ elif opcion == "3. Corte y Nómina Final":
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         if not ventas_emp.empty:
-                            # Tarjeta con 16% de descuento (x 0.84), efectivo y vales/propinavales íntegros
                             prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
                             prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
@@ -427,11 +426,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ventas_acumuladas = cargar_ventas_df()
     chicas_acumuladas = cargar_chicas_df()
 
-    venta_total_calc = (
-        float(ventas_acumuladas['importe'].sum())
-        if not ventas_acumuladas.empty and 'importe' in ventas_acumuladas.columns else 0.0
-    )
-
     nomina_chicas_calc = 0.0
     if not chicas_acumuladas.empty:
         nomina_chicas_calc = float(
@@ -485,9 +479,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         prop_vales = float(ventas_acumuladas['propina_vales'].sum()) if 'propina_vales' in ventas_acumuladas.columns else 0.0
         transferencia_ventas = vales_monto + prop_vales
 
+    # Ventas Totales ahora suma Efectivo + Terminales + Transferencias correctamente
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas
 
-    # Dividimos en 4 columnas para mostrar cada método de forma independiente
     col_d1, col_d2, col_d3, col_d4 = st.columns(4)
     with col_d1:
         st.metric("VENTAS TOTALES", f"${ventas_totales_con_propinas:,.2f}")

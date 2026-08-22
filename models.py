@@ -41,6 +41,7 @@ class CorteVenta(Base):
     propina_efectivo = Column(Numeric(10, 2), default=0)
     tarjeta = Column(Numeric(10, 2), default=0)
     propina_tarjeta = Column(Numeric(10, 2), default=0)
+    vales = Column(Numeric(10, 2), default=0)        # <-- Columna agregada para transferencias/vales
     propina_vales = Column(Numeric(10, 2), default=0)
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
@@ -151,6 +152,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 propina_efectivo=row.get("propinaefectivo", 0),
                 tarjeta=row.get("tarjeta", 0),
                 propina_tarjeta=row.get("propinatarjeta", 0),
+                vales=row.get("vales", 0),                      # <-- Capturando los vales/transferencias
                 propina_vales=row.get("propinavales", 0),
                 archivo_origen=archivo_origen,
             ))
@@ -248,7 +250,6 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
     creado = False
     if not emp:
-        # Se omite el 'id' fijo para permitir que la base de datos autoincremente y evite colisiones de ID
         emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
         session.add(emp)
         session.commit()
