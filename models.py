@@ -110,7 +110,7 @@ def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
 
 
 def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
-    """Limpia los registros del día actual e inserta el nuevo corte de ventas (sobrescribe)."""
+    """Limpia los registros del día actual e inserta el nuevo corte de ventas validando empleados."""
     session = get_session()
     try:
         # 1. Borrar los registros de la fecha actual antes de guardar los nuevos
@@ -119,8 +119,28 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
 
         # 2. Insertar los nuevos registros del Excel
         for _, row in df_v.iterrows():
+            idmesero = row.get("idmesero")
+            nombre_mesero = str(row.get("nombre", f"MESERO {idmesero}"))
+
+            # Verificar si el empleado existe, si no, crearlo con su ID o nombre
+            emp = session.query(Empleado).filter(Empleado.id == idmesero).first()
+            if not emp:
+                # Si no existe por ID, intentamos buscarlo por nombre
+                emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
+            
+            if not emp:
+                # Si de plano no existe, lo creamos asignándole su ID del Excel
+                emp = Empleado(
+                    id=idmesero,
+                    nombre=nombre_mesero.upper(),
+                    tipo="Mesero",  # O el tipo de puesto correspondiente en tu catálogo
+                    sueldo_base=300.0
+                )
+                session.add(emp)
+                session.commit()
+
             session.add(CorteVenta(
-                idmesero=row.get("idmesero"),
+                idmesero=emp.id,
                 importe=row.get("importe", 0),
                 efectivo=row.get("efectivo", 0),
                 tarjeta=row.get("tarjeta", 0),
@@ -133,7 +153,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, archivo_origen: str):
         raise e
     finally:
         session.close()
-
 
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
     """
