@@ -213,25 +213,14 @@ elif opcion == "3. Corte y Nómina Final":
 
             extras = 0.0
             
-            # Cantidades de productos
-            boons_cant = 0.0
-            copa_cant = 0.0
-            strong_cant = 0.0
-            vip3_cant = 0.0
-            vip5_priv_cant = 0.0
-            vip15_cant = 0.0
-            vip30_cant = 0.0
-            priv_artista_cant = 0.0
-
-            # Montos en dinero de comisión por producto
-            boons_monto = 0.0
-            copa_monto = 0.0
-            strong_monto = 0.0
-            vip3_monto = 0.0
-            vip5_priv_monto = 0.0
-            vip15_monto = 0.0
-            vip30_monto = 0.0
-            priv_artista_monto = 0.0
+            boons_cant, boons_monto = 0.0, 0.0
+            copa_cant, copa_monto = 0.0, 0.0
+            strong_cant, strong_monto = 0.0, 0.0
+            vip3_cant, vip3_monto = 0.0, 0.0
+            vip5_priv_cant, vip5_priv_monto = 0.0, 0.0
+            vip15_cant, vip15_monto = 0.0, 0.0
+            vip30_cant, vip30_monto = 0.0, 0.0
+            priv_artista_cant, priv_artista_monto = 0.0, 0.0
 
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
@@ -281,35 +270,41 @@ elif opcion == "3. Corte y Nómina Final":
                 priv_artista_monto /= 2.0
 
             total_pagar = sueldo_base + extras
+            
+            # Formato combinado Cantidad | Monto para evitar exceso de columnas horizontales
             res_grupo.append({
                 "ID": emp_id,
                 "Nombre": nombre, 
                 "Puesto": emp['tipo'],
-                "Boons": int(boons_cant),
-                "$ Boons": boons_monto,
-                "Copa Lady": int(copa_cant),
-                "$ Copa Lady": copa_monto,
-                "Strongbow": int(strong_cant),
-                "$ Strongbow": strong_monto,
-                "VIP 3": int(vip3_cant),
-                "$ VIP 3": vip3_monto,
-                "VIP 5 / Privado": int(vip5_priv_cant),
-                "$ VIP 5 / Priv": vip5_priv_monto,
-                "VIP 15": int(vip15_cant),
-                "$ VIP 15": vip15_monto,
-                "VIP 30": int(vip30_cant),
-                "$ VIP 30": vip30_monto,
-                "Privado Artista": int(priv_artista_cant),
-                "$ Priv. Artista": priv_artista_monto,
+                "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
+                "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
+                "Strongbow": f"{int(strong_cant)} (${strong_monto:,.2f})",
+                "VIP 3": f"{int(vip3_cant)} (${vip3_monto:,.2f})",
+                "VIP 5 / Priv": f"{int(vip5_priv_cant)} (${vip5_priv_monto:,.2f})",
+                "VIP 15": f"{int(vip15_cant)} (${vip15_monto:,.2f})",
+                "VIP 30": f"{int(vip30_cant)} (${vip30_monto:,.2f})",
+                "Priv. Artista": f"{int(priv_artista_cant)} (${priv_artista_monto:,.2f})",
                 "Sueldo Base": sueldo_base, 
                 "Comisiones": extras, 
-                "Total a Pagar": total_pagar
+                "Total a Pagar": total_pagar,
+                # Guardamos los totales numéricos ocultos/auxiliares para métricas inferiores
+                "_b_cant": boons_cant, "_b_m": boons_monto,
+                "_c_cant": copa_cant, "_c_m": copa_monto,
+                "_s_cant": strong_cant, "_s_m": strong_monto,
+                "_v3_cant": vip3_cant, "_v3_m": vip3_monto,
+                "_v5_cant": vip5_priv_cant, "_v5_m": vip5_priv_monto,
+                "_v15_cant": vip15_cant, "_v15_m": vip15_monto,
+                "_v30_cant": vip30_cant, "_v30_m": vip30_monto,
+                "_pa_cant": priv_artista_cant, "_pa_m": priv_artista_monto
             })
         
         df_res = pd.DataFrame(res_grupo)
         
+        # Ocultar columnas auxiliares internas para la visualización del editor
+        cols_mostrar = [c for c in df_res.columns if not c.startswith("_")]
+        
         df_editado = st.data_editor(
-            df_res,
+            df_res[cols_mostrar],
             column_config={
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
@@ -318,41 +313,19 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
-                "$ Boons": st.column_config.NumberColumn("$ Boons", format="$%.2f", disabled=True),
-                "$ Copa Lady": st.column_config.NumberColumn("$ Copa Lady", format="$%.2f", disabled=True),
-                "$ Strongbow": st.column_config.NumberColumn("$ Strongbow", format="$%.2f", disabled=True),
-                "$ VIP 3": st.column_config.NumberColumn("$ VIP 3", format="$%.2f", disabled=True),
-                "$ VIP 5 / Priv": st.column_config.NumberColumn("$ VIP 5 / Priv", format="$%.2f", disabled=True),
-                "$ VIP 15": st.column_config.NumberColumn("$ VIP 15", format="$%.2f", disabled=True),
-                "$ VIP 30": st.column_config.NumberColumn("$ VIP 30", format="$%.2f", disabled=True),
-                "$ Priv. Artista": st.column_config.NumberColumn("$ Priv. Artista", format="$%.2f", disabled=True),
-                "Total a Pagar": st.column_config.NumberColumn(
-                    "Total a Pagar ($)",
-                    format="$%.2f",
-                    disabled=True
-                ),
-                "Comisiones": st.column_config.NumberColumn(
-                    "Comisiones ($)",
-                    format="$%.2f",
-                    disabled=True
-                ),
+                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=[
-                "ID", "Nombre", "Puesto", "Boons", "$ Boons", "Copa Lady", "$ Copa Lady", 
-                "Strongbow", "$ Strongbow", "VIP 3", "$ VIP 3", "VIP 5 / Privado", "$ VIP 5 / Priv", 
-                "VIP 15", "$ VIP 15", "VIP 30", "$ VIP 30", "Privado Artista", "$ Priv. Artista", "Comisiones"
-            ],
+            disabled=[c for c in cols_mostrar if c != "Sueldo Base"],
             use_container_width=True,
             key=f"editor_sueldos_{key_sufijo}"
         )
 
-        df_editado['Total a Pagar'] = df_editado['Sueldo Base'] + df_editado['Comisiones']
-
         actualizado_flag = False
-        for _, row_ed in df_editado.iterrows():
+        for idx, row_ed in df_editado.iterrows():
             e_id = row_ed['ID']
             nuevo_sb = float(row_ed['Sueldo Base'])
-            original_sb = float(df_res[df_res['ID'] == e_id]['Sueldo Base'].values[0])
+            original_sb = float(df_res.loc[df_res['ID'] == e_id, 'Sueldo Base'].values[0])
             if nuevo_sb != original_sb:
                 actualizar_empleado(row_ed['Nombre'], row_ed['Puesto'], nuevo_sb)
                 actualizado_flag = True
@@ -362,16 +335,16 @@ elif opcion == "3. Corte y Nómina Final":
 
         st.markdown(f"##### 📦 Totales de Productos Vendidos y Comisiones - {nombre_pestana}")
         c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
-        c1.metric("Boons", int(df_editado['Boons'].sum()), f"${df_editado['$ Boons'].sum():,.2f}")
-        c2.metric("Copa Lady", int(df_editado['Copa Lady'].sum()), f"${df_editado['$ Copa Lady'].sum():,.2f}")
-        c3.metric("Strongbow", int(df_editado['Strongbow'].sum()), f"${df_editado['$ Strongbow'].sum():,.2f}")
-        c4.metric("VIP 3", int(df_editado['VIP 3'].sum()), f"${df_editado['$ VIP 3'].sum():,.2f}")
-        c5.metric("VIP 5/Priv", int(df_editado['VIP 5 / Privado'].sum()), f"${df_editado['$ VIP 5 / Priv'].sum():,.2f}")
-        c6.metric("VIP 15", int(df_editado['VIP 15'].sum()), f"${df_editado['$ VIP 15'].sum():,.2f}")
-        c7.metric("VIP 30", int(df_editado['VIP 30'].sum()), f"${df_editado['$ VIP 30'].sum():,.2f}")
-        c8.metric("Priv. Artista", int(df_editado['Privado Artista'].sum()), f"${df_editado['$ Priv. Artista'].sum():,.2f}")
+        c1.metric("Boons", int(df_res['_b_cant'].sum()), f"${df_res['_b_m'].sum():,.2f}")
+        c2.metric("Copa Lady", int(df_res['_c_cant'].sum()), f"${df_res['_c_m'].sum():,.2f}")
+        c3.metric("Strongbow", int(df_res['_s_cant'].sum()), f"${df_res['_s_m'].sum():,.2f}")
+        c4.metric("VIP 3", int(df_res['_v3_cant'].sum()), f"${df_res['_v3_m'].sum():,.2f}")
+        c5.metric("VIP 5/Priv", int(df_res['_v5_cant'].sum()), f"${df_res['_v5_m'].sum():,.2f}")
+        c6.metric("VIP 15", int(df_res['_v15_cant'].sum()), f"${df_res['_v15_m'].sum():,.2f}")
+        c7.metric("VIP 30", int(df_res['_v30_cant'].sum()), f"${df_res['_v30_m'].sum():,.2f}")
+        c8.metric("Priv. Artista", int(df_res['_pa_cant'].sum()), f"${df_res['_pa_m'].sum():,.2f}")
 
-        subtotal = float(df_editado['Total a Pagar'].sum())
+        subtotal = float(df_res['Total a Pagar'].sum())
         st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         return df_editado, subtotal
 
@@ -431,23 +404,13 @@ elif opcion == "3. Corte y Nómina Final":
                         format="$%.2f",
                         required=True
                     ),
-                    "Total a Pagar": st.column_config.NumberColumn(
-                        "Total a Pagar ($)",
-                        format="$%.2f",
-                        disabled=True
-                    ),
-                    "Comisiones / Extras": st.column_config.NumberColumn(
-                        "Comisiones / Extras ($)",
-                        format="$%.2f",
-                        disabled=True
-                    ),
+                    "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                    "Comisiones / Extras": st.column_config.NumberColumn("Comisiones / Extras ($)", format="$%.2f", disabled=True),
                 },
                 disabled=["ID", "Nombre", "Puesto", "Comisiones / Extras"],
                 use_container_width=True,
                 key="editor_sueldos_general"
             )
-
-            df_editado_gen['Total a Pagar'] = df_editado_gen['Sueldo Base'] + df_editado_gen['Comisiones / Extras']
 
             actualizado_gen_flag = False
             for _, row_ed in df_editado_gen.iterrows():
