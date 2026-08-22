@@ -352,12 +352,13 @@ elif opcion == "3. Corte y Nómina Final":
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         if not ventas_emp.empty:
-                            total_propina = float(
-                                (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) + 
-                                (ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0) +
-                                (ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0)
-                            )
-                            extras = total_propina * 0.50
+                            # Descontar 16% de IVA a la propina con tarjeta (multiplicar por 0.84)
+                            prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                            prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                            prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                            
+                            total_propinaable = prop_tarj + prop_efec + prop_vale
+                            extras = total_propinaable * 0.50
 
                 total_pagar = sueldo_base + extras
                 res_general.append({
