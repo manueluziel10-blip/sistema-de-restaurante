@@ -23,7 +23,7 @@ class PuestoCatalogo(Base):
 
 class Empleado(Base):
     __tablename__ = "empleados"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String, unique=True, nullable=False)
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
@@ -132,22 +132,20 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         df_completo = df_completo.fillna(0)
 
         for _, row in df_completo.iterrows():
-            idmesero = row.get("idmesero")
-            nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", f"MESERO {idmesero}")))
+            nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
 
-            emp = session.query(Empleado).filter(Empleado.id == idmesero).first()
-            if not emp:
-                emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero.upper()).first()
+            # Buscar empleado por nombre para evitar conflictos de ID estáticos del Excel
+            emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero).first()
             
             if not emp:
                 emp = Empleado(
-                    id=idmesero,
-                    nombre=nombre_mesero.upper(),
+                    nombre=nombre_mesero,
                     tipo=tipo_por_defecto,
                     sueldo_base=300.0
                 )
                 session.add(emp)
                 session.commit()
+                session.refresh(emp)
             else:
                 if "CHICA" in emp.tipo.upper() or "BAILARINA" in emp.tipo.upper():
                     emp.tipo = tipo_por_defecto
