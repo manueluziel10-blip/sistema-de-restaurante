@@ -41,7 +41,7 @@ class CorteVenta(Base):
     propina_efectivo = Column(Numeric(10, 2), default=0)
     tarjeta = Column(Numeric(10, 2), default=0)
     propina_tarjeta = Column(Numeric(10, 2), default=0)
-    vales = Column(Numeric(10, 2), default=0)        # Columna de transferencias/vales
+    vales = Column(Numeric(10, 2), default=0)
     propina_vales = Column(Numeric(10, 2), default=0)
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
@@ -118,7 +118,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         if not puesto_mesero:
             puesto_mesero = session.query(PuestoCatalogo).first()
             
-        tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Meseros"
+        tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Mesero (Comisiones)"
 
         df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
         df_completo = df_completo.fillna(0)
@@ -261,11 +261,24 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
 
 
 def reiniciar_base_de_datos():
-    """Elimina y recrea todas las tablas para actualizar esquemas nuevos."""
+    """Elimina, recrea tablas y puebla el catálogo inicial de puestos."""
     session = get_session()
     try:
         Base.metadata.drop_all(session.bind)
         Base.metadata.create_all(session.bind)
+        
+        # Poblar el catálogo inicial para evitar errores de llave foránea
+        puestos_iniciales = [
+            PuestoCatalogo(nombre="Chicas / Bailarinas (Comisiones)", sueldo_base=300.0, es_comision=True),
+            PuestoCatalogo(nombre="Mesero (Comisiones)", sueldo_base=300.0, es_comision=True),
+            PuestoCatalogo(nombre="Seguridad (Fijo)", sueldo_base=500.0, es_comision=False),
+            PuestoCatalogo(nombre="DJ (Fijo)", sueldo_base=600.0, es_comision=False),
+            PuestoCatalogo(nombre="Animador (Fijo)", sueldo_base=400.0, es_comision=False),
+            PuestoCatalogo(nombre="Gerente (Fijo)", sueldo_base=500.0, es_comision=False),
+            PuestoCatalogo(nombre="Capitán de Mesero (Fijo)", sueldo_base=400.0, es_comision=False),
+            PuestoCatalogo(nombre="Ayudante de Mesero (Fijo)", sueldo_base=300.0, es_comision=False),
+        ]
+        session.add_all(puestos_iniciales)
         session.commit()
     except Exception as e:
         session.rollback()
