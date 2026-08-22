@@ -661,12 +661,21 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         )
         
         resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
-            'importe': 'sum',
             'efectivo': 'sum',
+            'propina_efectivo': 'sum',
             'tarjeta': 'sum',
+            'propina_tarjeta': 'sum',
             'vales': 'sum',
+            'propina_vales': 'sum',
             'otros': 'sum'
         }).reset_index()
+        
+        resumen_meseros['importe_total'] = (
+            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
+            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
+            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
+            resumen_meseros['otros']
+        )
         
         for i in range(0, len(resumen_meseros), 4):
             cols = st.columns(4)
@@ -674,9 +683,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 if i + j < len(resumen_meseros):
                     row = resumen_meseros.iloc[i + j]
                     nombre_mesero = row['nombre']
-                    importe_total = row['importe']
-                    efectivo_m = row['efectivo']
-                    tarjeta_m = row['tarjeta']
+                    importe_total = row['importe_total']
+                    efectivo_m = row['efectivo'] + row['propina_efectivo']
+                    tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
                     
                     detalle_extra = f"Efect: ${efectivo_m:,.2f} | Tarj: ${tarjeta_m:,.2f}"
                     
