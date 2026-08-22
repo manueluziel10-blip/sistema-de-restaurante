@@ -441,8 +441,6 @@ elif opcion == "3. Corte y Nómina Final":
         cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
         
         altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
-        
-        # --- CORRECCIÓN CLAVE AQUÍ: Usamos un key único garantizado por pestaña ---
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
         
         df_editado_gen = st.data_editor(

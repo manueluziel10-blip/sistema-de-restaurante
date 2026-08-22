@@ -87,7 +87,7 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
-    query = session.query(Empleado)
+    query = session.query(Empleado).order_by(Empleado.id)  # Orden estable por ID
     df = pd.read_sql(query.statement, session.bind)
     if not df.empty and 'sueldo_base' in df.columns:
         df['sueldo_base'] = df['sueldo_base'].astype(float)
