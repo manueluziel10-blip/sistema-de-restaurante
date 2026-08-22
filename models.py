@@ -41,7 +41,7 @@ class CorteVenta(Base):
     propina_efectivo = Column(Numeric(10, 2), default=0)
     tarjeta = Column(Numeric(10, 2), default=0)
     propina_tarjeta = Column(Numeric(10, 2), default=0)
-    vales = Column(Numeric(10, 2), default=0)        # <-- Columna agregada para transferencias/vales
+    vales = Column(Numeric(10, 2), default=0)        # Columna de transferencias/vales
     propina_vales = Column(Numeric(10, 2), default=0)
     archivo_origen = Column(String)
     cargado_en = Column(DateTime, server_default=func.now())
@@ -152,7 +152,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 propina_efectivo=row.get("propinaefectivo", 0),
                 tarjeta=row.get("tarjeta", 0),
                 propina_tarjeta=row.get("propinatarjeta", 0),
-                vales=row.get("vales", 0),                      # <-- Capturando los vales/transferencias
+                vales=row.get("vales", 0),
                 propina_vales=row.get("propinavales", 0),
                 archivo_origen=archivo_origen,
             ))
@@ -261,13 +261,11 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
 
 
 def reiniciar_base_de_datos():
-    """Borra todos los registros de ventas, comisiones, gastos y empleados para empezar desde cero."""
+    """Elimina y recrea todas las tablas para actualizar esquemas nuevos."""
     session = get_session()
     try:
-        session.query(CorteVenta).delete()
-        session.query(ProductoChica).delete()
-        session.query(GastoDiario).delete()
-        session.query(Empleado).delete()
+        Base.metadata.drop_all(session.bind)
+        Base.metadata.create_all(session.bind)
         session.commit()
     except Exception as e:
         session.rollback()
