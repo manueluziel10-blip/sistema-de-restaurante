@@ -77,6 +77,18 @@ class GastoDiario(Base):
 
 
 # ---------------------------------------------------------
+# FUNCIONES DE AUXILIO PARA CATÁLOGOS
+# ---------------------------------------------------------
+def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300.0, es_comision: bool = True):
+    """Garantiza que el puesto exista en el catálogo para evitar errores de FK."""
+    puesto = session.query(PuestoCatalogo).filter(PuestoCatalogo.nombre == nombre_puesto).first()
+    if not puesto:
+        puesto = PuestoCatalogo(nombre=nombre_puesto, sueldo_base=sueldo_base, es_comision=es_comision)
+        session.add(puesto)
+        session.commit()
+
+
+# ---------------------------------------------------------
 # FUNCIONES DE ACCESO A DATOS
 # ---------------------------------------------------------
 
@@ -90,6 +102,7 @@ def cargar_empleados_df() -> pd.DataFrame:
 
 def agregar_empleado(nombre, tipo, sueldo_base):
     session = get_session()
+    asegurar_puesto_existe(session, tipo)
     emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
     session.add(emp)
     session.commit()
@@ -98,6 +111,7 @@ def agregar_empleado(nombre, tipo, sueldo_base):
 
 def actualizar_empleado(nombre, nuevo_tipo, nuevo_sueldo):
     session = get_session()
+    asegurar_puesto_existe(session, nuevo_tipo)
     session.query(Empleado).filter(Empleado.nombre == nombre).update(
         {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
     )
@@ -111,14 +125,8 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
         session.commit()
 
-        puesto_mesero = session.query(PuestoCatalogo).filter(
-            func.lower(PuestoCatalogo.nombre).like("%meser%")
-        ).first()
-        
-        if not puesto_mesero:
-            puesto_mesero = session.query(PuestoCatalogo).first()
-            
-        tipo_por_defecto = puesto_mesero.nombre if puesto_mesero else "Mesero (Comisiones)"
+        tipo_por_defecto = "Mesero (Comisiones)"
+        asegurar_puesto_existe(session, tipo_por_defecto)
 
         df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
         df_completo = df_completo.fillna(0)
@@ -247,6 +255,7 @@ def cargar_gastos_hoy():
 
 def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0):
     session = get_session()
+    asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
     creado = False
     if not emp:
@@ -267,7 +276,6 @@ def reiniciar_base_de_datos():
         Base.metadata.drop_all(session.bind)
         Base.metadata.create_all(session.bind)
         
-        # Poblar el catálogo inicial para evitar errores de llave foránea
         puestos_iniciales = [
             PuestoCatalogo(nombre="Chicas / Bailarinas (Comisiones)", sueldo_base=300.0, es_comision=True),
             PuestoCatalogo(nombre="Mesero (Comisiones)", sueldo_base=300.0, es_comision=True),
