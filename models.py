@@ -89,6 +89,8 @@ def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
     query = session.query(Empleado)
     df = pd.read_sql(query.statement, session.bind)
+    if not df.empty and 'sueldo_base' in df.columns:
+        df['sueldo_base'] = df['sueldo_base'].astype(float)
     session.close()
     return df
 
@@ -108,7 +110,6 @@ def agregar_empleado(nombre, tipo, sueldo_base):
 
 
 def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo):
-    """Actualiza al empleado utilizando su ID único para evitar cambios masivos."""
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     session.query(Empleado).filter(Empleado.id == emp_id).update(
