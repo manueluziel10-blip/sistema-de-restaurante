@@ -73,16 +73,20 @@ up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['x
 if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
 up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
 
-if up_ventas is not None and up_propinas is not None:
-    df_v = pd.read_excel(up_ventas)
-    df_p = pd.read_excel(up_propinas)
-    
-    st.success("¡Archivos cargados correctamente!")
-    st.dataframe(df_v.head(), width=700)
-    
-    if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
-        guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name)
-        st.success("¡Corte de meseros y propinas guardado correctamente en la base de datos!")
+if up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=['xls', 'xlsx'], key="subir_ventas_meseros")
+up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=['xls', 'xlsx'], key="subir_cheques_propinas")
+
+if up_ventas is not None:
+    if up_propinas is not None:
+        df_v = pd.read_excel(up_ventas)
+        df_p = pd.read_excel(up_propinas)
+        
+        st.success("¡Archivos cargados correctamente!")
+        st.dataframe(df_v.head(), width=700)
+        
+        if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
+            guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name)
+            st.success("¡Corte de meseros y propinas guardado correctamente en la base de datos!")
 
     if up_chicas is not None:
         df_c = pd.read_excel(up_chicas, skiprows=4)
