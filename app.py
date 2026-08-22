@@ -271,7 +271,6 @@ elif opcion == "3. Corte y Nómina Final":
 
             total_pagar = sueldo_base + extras
             
-            # Formato combinado Cantidad | Monto para evitar exceso de columnas horizontales
             res_grupo.append({
                 "ID": emp_id,
                 "Nombre": nombre, 
@@ -287,7 +286,6 @@ elif opcion == "3. Corte y Nómina Final":
                 "Sueldo Base": sueldo_base, 
                 "Comisiones": extras, 
                 "Total a Pagar": total_pagar,
-                # Guardamos los totales numéricos ocultos/auxiliares para métricas inferiores
                 "_b_cant": boons_cant, "_b_m": boons_monto,
                 "_c_cant": copa_cant, "_c_m": copa_monto,
                 "_s_cant": strong_cant, "_s_m": strong_monto,
@@ -299,12 +297,14 @@ elif opcion == "3. Corte y Nómina Final":
             })
         
         df_res = pd.DataFrame(res_grupo)
-        
-        # Ocultar columnas auxiliares internas para la visualización del editor
         cols_mostrar = [c for c in df_res.columns if not c.startswith("_")]
         
+        # Altura dinámica calculada para evitar la barra de desplazamiento vertical (aprox 45px por fila + cabecera)
+        altura_tabla = min(max(len(df_res) * 45 + 40, 150), 800)
+
         df_editado = st.data_editor(
             df_res[cols_mostrar],
+            height=altura_tabla,
             column_config={
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
@@ -394,8 +394,10 @@ elif opcion == "3. Corte y Nómina Final":
                 })
             df_res_general = pd.DataFrame(res_general)
             
+            altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 800)
             df_editado_gen = st.data_editor(
                 df_res_general,
+                height=altura_tabla_gen,
                 column_config={
                     "Sueldo Base": st.column_config.NumberColumn(
                         "Sueldo Base ($)",
