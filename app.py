@@ -12,8 +12,7 @@ st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 
 # --- LISTA OFICIAL DE PUESTOS Y SUELDOS BASE ---
 PUESTOS_CATALOGO = {
-    "Bailarina (Comisiones)": 300.0,
-    "Chica de Salón (Comisiones)": 300.0,
+    "Chicas / Bailarinas (Comisiones)": 300.0,
     "Mesero (Comisiones)": 300.0,
     "Seguridad (Fijo)": 500.0,
     "DJ (Fijo)": 600.0,
@@ -111,18 +110,26 @@ elif opcion == "2. Gestión y Edición de Empleados":
         "📋 Personal Operativo y General"
     ])
 
-    # Función auxiliar para renderizar la gestión de empleados por categoría
-    fn_es_chica = lambda t: any(x in str(t).upper() for x in ["BAILARINA", "CHICA", "COMISION"])
+    # Filtro flexible: Detecta cualquier puesto que maneje comisiones de chicas o contenga 'CHICA' / 'BAILARINA'
+    def es_chica_o_bailarina(tipo_str):
+        t = str(tipo_str).upper()
+        return ('CHICA' in t) or ('BAILARINA' in t) or ('COMISIONES' in t and 'MESERO' not in t)
 
     with tab_gest_chicas:
         st.markdown("### Listado: Bailarinas y Chicas de Salón")
-        df_chicas_gen = empleados_df[empleados_df['tipo'].apply(fn_es_chica)] if not empleados_df.empty else pd.DataFrame()
-        st.dataframe(df_chicas_gen, use_container_width=True)
+        if not empleados_df.empty:
+            df_chicas_gen = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)]
+            st.dataframe(df_chicas_gen, use_container_width=True)
+        else:
+            st.info("No hay registros.")
 
     with tab_gest_general:
         st.markdown("### Listado: Personal Operativo, Meseros y Fijos")
-        df_general_gen = empleados_df[~empleados_df['tipo'].apply(fn_es_chica)] if not empleados_df.empty else empleados_df
-        st.dataframe(df_general_gen, use_container_width=True)
+        if not empleados_df.empty:
+            df_general_gen = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)]
+            st.dataframe(df_general_gen, use_container_width=True)
+        else:
+            st.info("No hay registros.")
 
     st.markdown("---")
     col_izq, col_der = st.columns(2)
@@ -305,7 +312,8 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_bailarinas:
         st.markdown("### Nómina: Bailarinas")
         df_bailarinas = empleados_df[
-            empleados_df['tipo'].str.contains("Bailarina", case=False, na=False)
+            empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas", case=False, na=False) &
+            ~empleados_df['tipo'].str.contains("Salón", case=False, na=False)
         ]
         df_editado_b, sub_b = procesar_grupo_chicas(df_bailarinas, "Bailarinas", "bailarinas")
 
@@ -321,7 +329,7 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_general:
         st.markdown("### Nómina: Personal Operativo, Meseros y Gerencia")
         df_general_empleados = empleados_df[
-            ~empleados_df['tipo'].str.contains("Bailarina|Salón", case=False, na=False)
+            ~empleados_df['tipo'].str.contains("Bailarina|Chicas / Bailarinas|Salón", case=False, na=False)
         ]
 
         if df_general_empleados.empty:
