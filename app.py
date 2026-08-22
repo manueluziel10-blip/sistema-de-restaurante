@@ -357,7 +357,7 @@ elif opcion == "3. Corte y Nómina Final":
                     if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                         if not ventas_emp.empty:
-                            # Tarjeta con 16% de descuento (x 0.84), efectivo y vales/transferencias íntegros
+                            # Tarjeta con 16% de descuento (x 0.84), efectivo y vales/propinavales íntegros
                             prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
                             prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
@@ -468,14 +468,19 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     efectivo_ventas = 0.0
     tarjeta_ventas = 0.0
     if not ventas_acumuladas.empty:
+        # Efectivo = base efectivo + propina efectivo
         base_efectivo = float(ventas_acumuladas['efectivo'].sum()) if 'efectivo' in ventas_acumuladas.columns else 0.0
         prop_efectivo = float(ventas_acumuladas['propina_efectivo'].sum()) if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
         efectivo_ventas = base_efectivo + prop_efectivo
 
+        # Terminales = base tarjeta + propina tarjeta + vales (transferencias) + propina vales (propinasvales)
         base_tarjeta = float(ventas_acumuladas['tarjeta'].sum()) if 'tarjeta' in ventas_acumuladas.columns else 0.0
         prop_tarjeta = float(ventas_acumuladas['propina_tarjeta'].sum()) if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
+        
+        vales_monto = float(ventas_acumuladas['vales'].sum()) if 'vales' in ventas_acumuladas.columns else 0.0
         prop_vales = float(ventas_acumuladas['propina_vales'].sum()) if 'propina_vales' in ventas_acumuladas.columns else 0.0
-        tarjeta_ventas = base_tarjeta + prop_tarjeta + prop_vales
+        
+        tarjeta_ventas = base_tarjeta + prop_tarjeta + vales_monto + prop_vales
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas
 
@@ -485,7 +490,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_d2:
         st.metric("VENTAS EFECTIVO (Inc. Propina)", f"${efectivo_ventas:,.2f}")
     with col_d3:
-        st.metric("VENTAS TERMINALES (Inc. Propinas)", f"${tarjeta_ventas:,.2f}")
+        st.metric("VENTAS TERMINALES / TRANSFERENCIAS", f"${tarjeta_ventas:,.2f}")
 
     st.markdown("#### Desglose de Gastos y Nómina")
     nomina_personal_fijo = float(gasto_previo.nomina_personal_fijo) if gasto_previo else 4483.66
