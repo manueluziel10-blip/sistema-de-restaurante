@@ -638,7 +638,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_fijo},
-        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicano if 'nomina_chicas_calc' in locals() else nomina_chicas_calc},
+        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales", "Monto": gasto_vales},
@@ -646,13 +646,12 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- NUEVA TABLA: RESUMEN DE VENTAS POR MESERO ---
+    # --- RESUMEN DE VENTAS POR MESERO ---
     st.markdown("---")
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
     empleados_df = cargar_empleados_df()
     if not ventas_acumuladas.empty and not empleados_df.empty:
-        # Cruzar la tabla de ventas con los nombres de empleados
         df_ventas_meseros = pd.merge(
             ventas_acumuladas, 
             empleados_df[['id', 'nombre']], 
@@ -661,7 +660,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             how='left'
         )
         
-        # Agrupar por nombre del mesero y sumar sus importes y formas de pago
         resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
             'importe': 'sum',
             'efectivo': 'sum',
