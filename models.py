@@ -248,6 +248,7 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
     creado = False
     if not emp:
+        # Se omite el 'id' fijo para permitir que la base de datos autoincremente y evite colisiones de ID
         emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
         session.add(emp)
         session.commit()
