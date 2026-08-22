@@ -389,7 +389,6 @@ elif opcion == "3. Corte y Nómina Final":
                 tipo = emp['tipo']
                 sueldo_base = float(emp['sueldo_base'])
                 
-                # Definir porcentaje por defecto según el puesto indicado
                 puesto_upper_check = tipo.upper()
                 if "SEGURIDAD" in puesto_upper_check:
                     porcentaje_propina = 0.0
@@ -400,13 +399,12 @@ elif opcion == "3. Corte y Nómina Final":
                 elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     porcentaje_propina = 8.0
                 else:
-                    porcentaje_propina = 50.0 # Meseros por defecto
+                    porcentaje_propina = 50.0
 
                 propinas = 0.0
                 comisiones_prod = 0.0
-
-                # 1. Cálculo base de la bolsa de propinas (restando el 16% a las tarjetas)
                 total_propinaable = 0.0
+
                 if not ventas_totales.empty and 'idmesero' in ventas_totales.columns:
                     if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
                         ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
@@ -416,7 +414,6 @@ elif opcion == "3. Corte y Nómina Final":
                             prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                             total_propinaable = prop_tarj + prop_efec + prop_vale
                     else:
-                        # Para Gerentes, Capitanes, Cajeros, Barman, Seguridad y Ayudantes, se toma la bolsa total general de propinas
                         prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
                         prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
                         prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
@@ -424,7 +421,6 @@ elif opcion == "3. Corte y Nómina Final":
 
                     propinas = total_propinaable * (porcentaje_propina / 100.0)
 
-                # 2. Cálculo de Comisiones por Productos (para Gerentes, Capitanes, Cajeros, etc.)
                 if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     if not chicas_totales.empty:
                         for _, f_prod in chicas_totales.iterrows():
@@ -439,7 +435,7 @@ elif opcion == "3. Corte y Nómina Final":
                     "Nombre": nombre, 
                     "Puesto": tipo,
                     "Sueldo Base": sueldo_base, 
-                    "% Propinas": f"↑ {porcentaje_propina:.1f}%",
+                    "% Prop.": f"↑ {porcentaje_propina:.1f}%",
                     "Propinas": propinas, 
                     "Comisiones": comisiones_prod, 
                     "Total a Pagar": total_pagar,
@@ -448,7 +444,9 @@ elif opcion == "3. Corte y Nómina Final":
                 })
 
             df_res_general = pd.DataFrame(res_general)
-            cols_mostrar_gen = [c for c in df_res_general.columns if not c.startswith("_")]
+            
+            # Reordenar columnas para que "% Prop." esté junto a "Propinas"
+            cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "% Prop.", "Propinas", "Comisiones", "Total a Pagar"]
             
             altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
             df_editado_gen = st.data_editor(
@@ -462,8 +460,8 @@ elif opcion == "3. Corte y Nómina Final":
                         format="$%.2f",
                         required=True
                     ),
-                    "% Propinas": st.column_config.TextColumn(
-                        "% Propinas",
+                    "% Prop.": st.column_config.TextColumn(
+                        "% Prop.",
                         help="Modifica el porcentaje de propinas (ej: 50%, 10%, 8%, 5%, 0%)",
                         required=True
                     ),
@@ -476,13 +474,12 @@ elif opcion == "3. Corte y Nómina Final":
                 key="editor_sueldos_general"
             )
 
-            # Recalcular Propinas y Total a Pagar en tiempo real si se edita el porcentaje o sueldo base
             actualizado_gen_flag = False
             for idx, row_ed in df_editado_gen.iterrows():
                 e_id = row_ed['ID']
                 nuevo_sb = float(row_ed['Sueldo Base'])
                 
-                raw_pct_str = str(row_ed['% Propinas']).replace('↑', '').replace('%', '').strip()
+                raw_pct_str = str(row_ed['% Prop.']).replace('↑', '').replace('%', '').strip()
                 try:
                     nuevo_pct = float(raw_pct_str)
                 except ValueError:
@@ -498,15 +495,26 @@ elif opcion == "3. Corte y Nómina Final":
                 
                 if nuevo_pct != original_pct_num:
                     propina_calculada = float(orig_row['_propinaable']) * (nuevo_pct / 100.0)
-                    df_editado_gen.loc[idx, '% Propinas'] = f"↑ {nuevo_pct:.1f}%"
+                    df_editado_gen.loc[idx, '% Prop.'] = f"↑ {nuevo_pct:.1f}%"
                     df_editado_gen.loc[idx, 'Propinas'] = propina_calculada
                     df_editado_gen.loc[idx, 'Total a Pagar'] = nuevo_sb + propina_calculada + float(row_ed['Comisiones'])
 
             if actualizado_gen_flag:
                 st.rerun()
 
+            # --- MÉTRICAS DE TOTALES ABAJO DE LA TABLA GENERAL ---
+            st.markdown("---")
+            st.markdown("##### 📊 Totales de Nómina General")
+            tot_sb = float(df_editado_gen['Sueldo Base'].sum())
+            tot_prop = float(df_editado_gen['Propinas'].sum())
+            tot_com = float(df_editado_gen['Comisiones'].sum())
             sub_g = float(df_editado_gen['Total a Pagar'].sum())
-            st.metric("Subtotal Nómina Personal General", f"${sub_g:,.2f}")
+
+            col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+            col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
+            col_t2.metric("Total Propinas", f"${tot_prop:,.2f}")
+            col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
+            col_t4.metric("Subtotal Nómina General", f"${sub_g:,.2f}")
 
     st.markdown("---")
     total_general_semana = sub_b + sub_g
