@@ -226,6 +226,12 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         f_ant = datetime.strptime(fecha_antigua_str, "%Y-%m-%d").date()
         f_nue = datetime.strptime(fecha_nueva_str, "%Y-%m-%d").date()
         
+        # Eliminamos registros previos en la fecha destino para evitar conflictos de llave única
+        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_nue).delete()
+        session.query(GastoDiario).filter(GastoDiario.fecha == f_nue).delete()
+        session.commit()
+
+        # Actualizamos las fechas en las tablas correspondientes
         session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue})
         session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue})
         session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue})
