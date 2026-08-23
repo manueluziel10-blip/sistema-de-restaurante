@@ -297,6 +297,7 @@ elif opcion == "3. Corte y Nómina Final":
             nombre = emp['nombre']
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
+            descuento_emp = float(emp.get('descuento_nomina', 100.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
             penalizada_cambiada = st.checkbox(
@@ -306,7 +307,7 @@ elif opcion == "3. Corte y Nómina Final":
             )
 
             if penalizada_cambiada != penalizada_actual:
-                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada)
+                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp)
                 st.rerun()
 
             extras = 0.0
@@ -366,7 +367,7 @@ elif opcion == "3. Corte y Nómina Final":
                 vip30_monto /= 2.0
 
             total_bruto = sueldo_base + extras
-            total_pagar = max(0.0, total_bruto - vales_emp)
+            total_pagar = max(0.0, total_bruto - vales_emp - descuento_emp)
             
             res_grupo.append({
                 "ID": emp_id,
@@ -375,6 +376,7 @@ elif opcion == "3. Corte y Nómina Final":
                 "Total a Pagar": total_pagar,
                 "Sueldo Base": sueldo_base,
                 "Vales": vales_emp,
+                "Descuento": descuento_emp,
                 "Comisiones": extras, 
                 "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
                 "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
@@ -423,9 +425,16 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
+                "Descuento": st.column_config.NumberColumn(
+                    "Descuento ($)",
+                    help="Modifica el descuento predeterminado de $100.00",
+                    min_value=0.0,
+                    format="$%.2f",
+                    required=True
+                ),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=[c for c in cols_mostrar if c not in ["Sueldo Base", "Vales"]],
+            disabled=[c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Descuento"]],
             use_container_width=True,
             key=editor_key
         )
@@ -439,10 +448,11 @@ elif opcion == "3. Corte y Nómina Final":
                 
                 nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
+                nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
                 puesto_emp = fila_modificada['Puesto']
                 penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd)
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc)
                 actualizado_flag = True
 
         if actualizado_flag:
@@ -460,12 +470,15 @@ elif opcion == "3. Corte y Nómina Final":
 
         subtotal = float(df_res['Total a Pagar'].sum())
         total_vales_grupo = float(df_res['Vales'].sum())
+        total_descuento_grupo = float(df_res['Descuento'].sum())
 
-        col_m1, col_m2 = st.columns(2)
+        col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
         with col_m2:
             st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_grupo:,.2f}")
+        with col_m3:
+            st.metric(f"Total Descuentos {nombre_pestana}", f"${total_descuento_grupo:,.2f}")
 
         return df_editado, subtotal
 
@@ -586,8 +599,9 @@ elif opcion == "3. Corte y Nómina Final":
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
                 puesto_emp = fila_mod_gen['Puesto']
                 penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
+                descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
                 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd)
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd)
                 actualizado_gen_flag = True
 
         if actualizado_gen_flag:
@@ -607,7 +621,7 @@ elif opcion == "3. Corte y Nómina Final":
         col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
         col_t4.metric(f"Subtotal {nombre_pestana}", f"${sub_g:,.2f}")
 
-        col_m1, col_m2 = st.columns(2)
+        col_m1, _ = st.columns([1, 3])
         with col_m1:
             st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_gen:,.2f}")
 
@@ -733,6 +747,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         for _, emp in df_chicas_lista.iterrows():
             emp_id = emp['id']
             vales_emp = float(emp.get('vales_nomina', 0.0))
+            descuento_emp = float(emp.get('descuento_nomina', 100.0))
             vales_chicas_total += vales_emp
             
             penalizada_chica = bool(emp.get('penalizada', False))
@@ -757,7 +772,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 comisiones_chica_ind = comisiones_chica_ind / 2.0
 
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
-            nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp)
+            nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp - descuento_emp)
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     gasto_previo = cargar_gastos_hoy()
@@ -846,7 +861,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_n4:
         st.metric("Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}")
 
-    # --- NUEVA FILA CON CONTEOS DE MULTAS Y SUELDOS DE BAILARINAS ---
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         st.metric("Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}")

@@ -28,6 +28,7 @@ class Empleado(Base):
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
     vales_nomina = Column(Numeric(10, 2), default=0.0)
+    descuento_nomina = Column(Numeric(10, 2), default=100.0)  # <-- NUEVA COLUMNA DE DESCUENTO
     penalizada = Column(Boolean, default=False)
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
@@ -90,12 +91,14 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
     
-    # Verificar y agregar columnas faltantes de manera automática en SQLite/PostgreSQL
     try:
         inspector = inspect(session.bind)
         columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
         if 'vales_nomina' not in columnas_tabla:
             session.execute(db_text("ALTER TABLE empleados ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            session.commit()
+        if 'descuento_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
             session.commit()
         if 'penalizada' not in columnas_tabla:
             session.execute(db_text("ALTER TABLE empleados ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
@@ -112,6 +115,10 @@ def cargar_empleados_df() -> pd.DataFrame:
             df['vales_nomina'] = df['vales_nomina'].astype(float)
         else:
             df['vales_nomina'] = 0.0
+        if 'descuento_nomina' in df.columns:
+            df['descuento_nomina'] = df['descuento_nomina'].astype(float)
+        else:
+            df['descuento_nomina'] = 100.0
         if 'penalizada' in df.columns:
             df['penalizada'] = df['penalizada'].astype(bool)
         else:
@@ -128,13 +135,13 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         emp.tipo = tipo
         emp.sueldo_base = sueldo_base
     else:
-        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, penalizada=False)
+        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, descuento_nomina=100.0, penalizada=False)
         session.add(emp)
     session.commit()
     session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     datos = {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
@@ -142,6 +149,8 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         datos["vales_nomina"] = nuevo_vales
     if nueva_penalizacion is not None:
         datos["penalizada"] = nueva_penalizacion
+    if nuevo_descuento is not None:
+        datos["descuento_nomina"] = nuevo_descuento
     session.query(Empleado).filter(Empleado.id == emp_id).update(datos)
     session.commit()
     session.close()
@@ -170,6 +179,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                     tipo=tipo_por_defecto,
                     sueldo_base=300.0,
                     vales_nomina=0.0,
+                    descuento_nomina=100.0,
                     penalizada=False
                 )
                 session.add(emp)
@@ -207,7 +217,7 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
         emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
         creado = False
         if not emp:
-            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, penalizada=False)
+            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, descuento_nomina=100.0, penalizada=False)
             session.add(emp)
             session.commit()
             session.refresh(emp)
