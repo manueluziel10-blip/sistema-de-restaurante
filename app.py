@@ -1138,7 +1138,42 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    def generar_pdf():
+    # --- PROCESAMIENTO DE VENTAS POR MESERO PARA PANTALLA Y PDF ---
+    empleados_df = cargar_empleados_df()
+    resumen_meseros = pd.DataFrame()
+    
+    if not ventas_acumuladas.empty and not empleados_df.empty:
+        df_ventas_meseros = pd.merge(
+            ventas_acumuladas, 
+            empleados_df[['id', 'nombre']], 
+            left_on='idmesero', 
+            right_on='id', 
+            how='left'
+        )
+        
+        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
+            if col not in df_ventas_meseros.columns:
+                df_ventas_meseros[col] = 0.0
+
+        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
+            'efectivo': 'sum',
+            'propina_efectivo': 'sum',
+            'tarjeta': 'sum',
+            'propina_tarjeta': 'sum',
+            'vales': 'sum',
+            'propina_vales': 'sum',
+            'otros': 'sum',
+            'propinacredito': 'sum'
+        }).reset_index()
+        
+        resumen_meseros['importe_total'] = (
+            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
+            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
+            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
+            resumen_meseros['otros'] + resumen_meseros['propinacredito']
+        )
+
+    def generar_pdf(empleados_df, resumen_meseros):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer, 
@@ -1151,7 +1186,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos = []
         
         styles = getSampleStyleSheet()
-        
         color_acento = colors.HexColor("#1A2634")
         color_texto = colors.HexColor("#334155")
         
@@ -1254,7 +1288,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos.append(Spacer(1, 6))
 
         # 4. Resumen de Ventas por Mesero
-        if not ventas_acumuladas.empty and not empleados_df.empty:
+        if not ventas_acumuladas.empty and not empleados_df.empty and not resumen_meseros.empty:
             elementos.append(Paragraph("4. Resumen de Ventas por Mesero", sub_style))
             datos_meseros = [["Mesero", "Efectivo", "Tarjeta", "Transf.", "Por Cobrar", "Total"]]
             
@@ -1285,7 +1319,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         return buffer
 
     st.markdown("---")
-    pdf_buffer = generar_pdf()
+    pdf_buffer = generar_pdf(empleados_df, resumen_meseros)
     st.download_button(
         label="📄 Descargar Reporte de Cierre en PDF",
         data=pdf_buffer,
@@ -1296,38 +1330,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
-    empleados_df = cargar_empleados_df()
-    if not ventas_acumuladas.empty and not empleados_df.empty:
-        df_ventas_meseros = pd.merge(
-            ventas_acumuladas, 
-            empleados_df[['id', 'nombre']], 
-            left_on='idmesero', 
-            right_on='id', 
-            how='left'
-        )
-        
-        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
-            if col not in df_ventas_meseros.columns:
-                df_ventas_meseros[col] = 0.0
-
-        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
-            'efectivo': 'sum',
-            'propina_efectivo': 'sum',
-            'tarjeta': 'sum',
-            'propina_tarjeta': 'sum',
-            'vales': 'sum',
-            'propina_vales': 'sum',
-            'otros': 'sum',
-            'propinacredito': 'sum'
-        }).reset_index()
-        
-        resumen_meseros['importe_total'] = (
-            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
-            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
-            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
-            resumen_meseros['otros'] + resumen_meseros['propinacredito']
-        )
-        
+    if not resumen_meseros.empty:
         num_columnas = 3
         for i in range(0, len(resumen_meseros), num_columnas):
             cols = st.columns(num_columnas)
