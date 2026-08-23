@@ -366,9 +366,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "ID": emp_id,
                 "Nombre": nombre, 
                 "Puesto": emp['tipo'],
-                "Total a Pagar": total_pagar,      # <-- Columna 1
-                "Sueldo Base": sueldo_base,        # <-- Columna 2
-                "Vales": vales_emp,                # <-- Columna 3 (Editable)
+                "Total a Pagar": total_pagar,
+                "Sueldo Base": sueldo_base,
+                "Vales": vales_emp,
                 "Comisiones": extras, 
                 "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
                 "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
@@ -519,9 +519,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "ID": emp_id, 
                 "Nombre": nombre, 
                 "Puesto": tipo,
-                "Total a Pagar": total_pagar,   # <-- Columna 1
-                "Sueldo Base": sueldo_base,     # <-- Columna 2
-                "Vales": vales_emp,             # <-- Columna 3 (Editable)
+                "Total a Pagar": total_pagar,
+                "Sueldo Base": sueldo_base,
+                "Vales": vales_emp,
                 "Propina (%)": propina_str,
                 "Comisiones": comisiones_prod, 
                 "_propinas_num": propinas
@@ -645,7 +645,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
+    # Cálculos detallados para personal general y bailarinas (incluyendo sus vales)
     nomina_personal_p_total = 0.0
+    vales_personal_total = 0.0
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_operativo_dash.iterrows():
@@ -653,6 +655,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             tipo = emp['tipo']
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
+            vales_personal_total += vales_emp
             puesto_upper_check = tipo.upper()
             
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
@@ -700,13 +703,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             nomina_personal_p_total += max(0.0, total_bruto_emp - vales_emp)
 
     nomina_chicas_calc = 0.0
-    if not chicas_acumuladas.empty and not empleados_dashboard_df.empty:
+    vales_chicas_total = 0.0
+    if not empleados_dashboard_df.empty:
         df_chicas_lista = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_chicas_lista.iterrows():
             emp_id = emp['id']
             vales_emp = float(emp.get('vales_nomina', 0.0))
+            vales_chicas_total += vales_emp
             
-            sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id]
+            sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
             comisiones_chica_ind = 0.0
             for _, r in sus_filas.iterrows():
                 desc = str(r['descripcion']).upper()
@@ -768,9 +773,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         ventas_por_cobrar = monto_otros + monto_prop_credito
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-
     total_gastos_nomina = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
-
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
     
     utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
@@ -794,13 +797,27 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_e2:
         st.metric("UTILIDAD ANTES DE COSTOS", f"${utilidad_monto:,.2f}", f"{utilidad_porcentaje:.1f}%")
 
+    # --- NUEVOS RESÚMENES SOLICITADOS (NÓMINA Y VALES POR SEPARADO) ---
+    st.markdown("---")
+    st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
+    
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    with col_n1:
+        st.metric("Nómina - Personal General", f"${nomina_personal_p_total:,.2f}")
+    with col_n2:
+        st.metric("Nómina - Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}")
+    with col_n3:
+        st.metric("Vales - Personal General", f"${vales_personal_total:,.2f}")
+    with col_n4:
+        st.metric("Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}")
+
     st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_p_total},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
-        {"Concepto": "Vales", "Monto": gasto_vales},
+        {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
@@ -865,7 +882,11 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             ["Ventas Transferencias", f"${transferencia_ventas:,.2f}"],
             ["Ventas por Cobrar", f"${ventas_por_cobrar:,.2f}"],
             ["Efectivo Entregado", f"${efectivo_entregado:,.2f}"],
-            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f}"]
+            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f}"],
+            ["Nómina Personal General", f"${nomina_personal_p_total:,.2f}"],
+            ["Nómina Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}"],
+            ["Vales Personal General", f"${vales_personal_total:,.2f}"],
+            ["Vales Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"]
         ]
         t_fin = Table(datos_fin, colWidths=[200, 150])
         t_fin.setStyle(TableStyle([
@@ -891,76 +912,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         ]))
         elementos.append(t_gas)
         elementos.append(Spacer(1, 10))
-
-        elementos.append(Paragraph("3. Resumen de Ventas por Mesero", sub_style))
-        empleados_df = cargar_empleados_df()
-        
-        if not ventas_acumuladas.empty and not empleados_df.empty:
-            df_v_m = pd.merge(ventas_acumuladas, empleados_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
-            
-            for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
-                if col not in df_v_m.columns:
-                    df_v_m[col] = 0.0
-
-            res_m = df_v_m.groupby('nombre').agg({
-                'efectivo': 'sum', 'propina_efectivo': 'sum',
-                'tarjeta': 'sum', 'propina_tarjeta': 'sum',
-                'vales': 'sum', 'propina_vales': 'sum', 
-                'otros': 'sum', 'propinacredito': 'sum'
-            }).reset_index()
-            
-            res_m['total'] = (
-                res_m['efectivo'] + res_m['propina_efectivo'] + 
-                res_m['tarjeta'] + res_m['propina_tarjeta'] + 
-                res_m['vales'] + res_m['propina_vales'] + 
-                res_m['otros'] + res_m['propinacredito']
-            )
-
-            filas_tarjetas = []
-            fila_actual = []
-            
-            for _, row in res_m.iterrows():
-                efectivo_m = row['efectivo'] + row['propina_efectivo']
-                tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
-                transferencia_m = row['vales'] + row['propina_vales']
-                cobrar_m = row['otros'] + row['propinacredito']
-                
-                contenido_tarjeta = [
-                    Paragraph(f"MESERO: {row['nombre']}", card_title_style),
-                    Spacer(1, 3),
-                    Paragraph(f"${row['total']:,.2f}", card_total_style),
-                    Paragraph(
-                        f"<b>Efectivo:</b> ${efectivo_m:,.2f}<br/>"
-                        f"<b>Tarjeta:</b> ${tarjeta_m:,.2f}<br/>"
-                        f"<b>Transf:</b> ${transferencia_m:,.2f}<br/>"
-                        f"<b>Por Cobrar:</b> ${cobrar_m:,.2f}",
-                        card_body_style
-                    )
-                ]
-                fila_actual.append(contenido_tarjeta)
-                
-                if len(fila_actual) == 2:
-                    filas_tarjetas.append(fila_actual)
-                    fila_actual = []
-            
-            if fila_actual:
-                while len(fila_actual) < 2:
-                    fila_actual.append("")
-                filas_tarjetas.append(fila_actual)
-
-            if filas_tarjetas:
-                t_tarjetas = Table(filas_tarjetas, colWidths=[265, 265])
-                t_tarjetas.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F1F5F9")),
-                    ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-                    ('INNERGRID', (0, 0), (-1, -1), 6, colors.HexColor("#FFFFFF")),
-                    ('TOPPADDING', (0, 0), (-1, -1), 8),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ]))
-                elementos.append(t_tarjetas)
 
         doc.build(elementos)
         buffer.seek(0)
