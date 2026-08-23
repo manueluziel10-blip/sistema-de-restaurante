@@ -7,7 +7,6 @@ def inicializar_base_datos():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Tabla de empleados con soporte para vales, penalización, descuento y transferencia
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS empleados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +20,6 @@ def inicializar_base_datos():
         )
     ''')
     
-    # Tabla de ventas de meseros
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ventas_meseros (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +36,6 @@ def inicializar_base_datos():
         )
     ''')
 
-    # Tabla de productos de chicas / bailarinas
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS productos_chicas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +51,6 @@ def inicializar_base_datos():
         )
     ''')
 
-    # Tabla de gastos diarios
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS gastos_diarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,14 +64,12 @@ def inicializar_base_datos():
     conn.commit()
     conn.close()
 
-# Asegurar que la BD y columnas existan al importar
 inicializar_base_datos()
 
 def cargar_empleados_df():
     conn = sqlite3.connect(DB_NAME)
     try:
         df = pd.read_sql_query("SELECT * FROM empleados", conn)
-        # Migración automática si faltan columnas nuevas en bases de datos existentes
         if 'transferencia_nomina' not in df.columns:
             conn.execute("ALTER TABLE empleados ADD COLUMN transferencia_nomina REAL DEFAULT 0.0")
             conn.commit()
@@ -124,7 +118,6 @@ def guardar_corte_ventas(df_v, df_p, archivo_origen):
             vales = float(row.get('vales', 0.0))
             otros = float(row.get('otros', 0.0))
             
-            # Buscar propinas correspondientes del otro dataframe si existen
             prop_efec, prop_tarj, prop_vale, prop_cred = 0.0, 0.0, 0.0, 0.0
             if not df_p.empty and 'idmesero' in df_p.columns:
                 match = df_p[df_p['idmesero'] == idmesero]
@@ -136,7 +129,7 @@ def guardar_corte_ventas(df_v, df_p, archivo_origen):
                     prop_cred = float(m_row.get('propinacredito', 0.0))
 
             cursor.execute('''
-                INSERT INTO ventas_meseros (idmesero, efectivo, propina_efectivo, tarjeta, propina_tarjeta, vales, propina_vales, otros, propinacredito, archivo_origen)
+                INSERT INTO ventas_meseros (idmesero, efectivo, propina_efectivo, tarjeta, propina_tarjeta, vales, propina_vales,otros, propinacredito, archivo_origen)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (idmesero, efectivo, prop_efec, tarjeta, prop_tarj, vales, prop_vale, otros, prop_cred, archivo_origen))
         
@@ -147,8 +140,6 @@ def guardar_corte_ventas(df_v, df_p, archivo_origen):
 def guardar_corte_chicas(filas_chicas, funcion_comision, archivo_origen):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    empleados_actuales = cargar_empleados_df()
-    nombres_registrados = empleados_actuales['nombre'].tolist() if not empleados_actuales.empty else []
     
     nuevas_detectadas = set()
     try:
@@ -166,20 +157,21 @@ def guardar_corte_chicas(filas_chicas, funcion_comision, archivo_origen):
             cantidad = float(row['CANTIDAD']) if pd.notna(row['CANTIDAD']) else 0.0
             comision_unit = funcion_comision(nombre_prod)
 
-            # Registrar automáticamente si la chica no existe en el catálogo
-            if nombre_chica not in nombres_registrados and nombre_chica not in nuevas_detectadas:
+            # Buscar si el empleado ya existe (haciendo limpieza de espacios y mayúsculas)
+            cursor.execute("SELECT id FROM empleados WHERE TRIM(UPPER(nombre)) = ?", (nombre_chica,))
+            res_id = cursor.fetchone()
+
+            if res_id:
+                emp_id = res_id[0]
+            else:
+                # Si no existe, lo registramos automáticamente como bailarina
                 cursor.execute('''
                     INSERT INTO empleados (nombre, tipo, sueldo_base, vales_nomina, penalizada, descuento_nomina, transferencia_nomina)
                     VALUES (?, 'Chicas / Bailarinas (Comisiones)', 300.0, 0.0, 0, 100.0, 0.0)
                 ''', (nombre_chica,))
                 conn.commit()
+                emp_id = cursor.lastrowid
                 nuevas_detectadas.add(nombre_chica)
-                nombres_registrados.append(nombre_chica)
-
-            # Obtener ID del empleado
-            cursor.execute("SELECT id FROM empleados WHERE nombre = ?", (nombre_chica,))
-            res_id = cursor.fetchone()
-            emp_id = res_id[0] if res_id else None
 
             if emp_id:
                 cursor.execute('''
