@@ -28,7 +28,8 @@ class Empleado(Base):
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
     vales_nomina = Column(Numeric(10, 2), default=0.0)
-    descuento_nomina = Column(Numeric(10, 2), default=100.0)  # <-- NUEVA COLUMNA DE DESCUENTO
+    descuento_nomina = Column(Numeric(10, 2), default=100.0)
+    transferencia_nomina = Column(Numeric(10, 2), default=0.0)  # <-- NUEVA COLUMNA DE TRANSFERENCIA
     penalizada = Column(Boolean, default=False)
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
@@ -100,6 +101,9 @@ def cargar_empleados_df() -> pd.DataFrame:
         if 'descuento_nomina' not in columnas_tabla:
             session.execute(db_text("ALTER TABLE empleados ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
             session.commit()
+        if 'transferencia_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            session.commit()
         if 'penalizada' not in columnas_tabla:
             session.execute(db_text("ALTER TABLE empleados ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
             session.commit()
@@ -119,6 +123,10 @@ def cargar_empleados_df() -> pd.DataFrame:
             df['descuento_nomina'] = df['descuento_nomina'].astype(float)
         else:
             df['descuento_nomina'] = 100.0
+        if 'transferencia_nomina' in df.columns:
+            df['transferencia_nomina'] = df['transferencia_nomina'].astype(float)
+        else:
+            df['transferencia_nomina'] = 0.0
         if 'penalizada' in df.columns:
             df['penalizada'] = df['penalizada'].astype(bool)
         else:
@@ -135,13 +143,21 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         emp.tipo = tipo
         emp.sueldo_base = sueldo_base
     else:
-        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, descuento_nomina=100.0, penalizada=False)
+        emp = Empleado(
+            nombre=nombre.upper(),
+            tipo=tipo,
+            sueldo_base=sueldo_base,
+            vales_nomina=0.0,
+            descuento_nomina=100.0,
+            transferencia_nomina=0.0,
+            penalizada=False
+        )
         session.add(emp)
     session.commit()
     session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     datos = {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
@@ -151,6 +167,8 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         datos["penalizada"] = nueva_penalizacion
     if nuevo_descuento is not None:
         datos["descuento_nomina"] = nuevo_descuento
+    if nueva_transferencia is not None:
+        datos["transferencia_nomina"] = nueva_transferencia
     session.query(Empleado).filter(Empleado.id == emp_id).update(datos)
     session.commit()
     session.close()
@@ -180,6 +198,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                     sueldo_base=300.0,
                     vales_nomina=0.0,
                     descuento_nomina=100.0,
+                    transferencia_nomina=0.0,
                     penalizada=False
                 )
                 session.add(emp)
@@ -217,7 +236,15 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
         emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
         creado = False
         if not emp:
-            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0, descuento_nomina=100.0, penalizada=False)
+            emp = Empleado(
+                nombre=nombre.upper(),
+                tipo=tipo,
+                sueldo_base=sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            )
             session.add(emp)
             session.commit()
             session.refresh(emp)
