@@ -299,7 +299,6 @@ elif opcion == "3. Corte y Nómina Final":
             vales_emp = float(emp.get('vales_nomina', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
-            # Checkbox con persistencia en base de datos
             penalizada_cambiada = st.checkbox(
                 f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
                 value=penalizada_actual,
@@ -731,6 +730,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             emp_id = emp['id']
             vales_emp = float(emp.get('vales_nomina', 0.0))
             vales_chicas_total += vales_emp
+            penalizada_chica = bool(emp.get('penalizada', False))  # <-- VERIFICA SI ESTÁ MULTADA/PENALIZADA
             
             sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
             comisiones_chica_ind = 0.0
@@ -740,6 +740,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 com = 300.0 if 'PRIVADO ARTISTA' in desc else float(r['comision_unitaria'])
                 comisiones_chica_ind += cant * com
             
+            if penalizada_chica:
+                comisiones_chica_ind = comisiones_chica_ind / 2.0  # <-- APLICA LA MITAD DE COMISIONES SI TIENE MULTA
+
             sueldo_chica = float(emp['sueldo_base'])
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
             nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp)
@@ -865,29 +868,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             spaceAfter=8
         )
         normal_style = styles['Normal']
-
-        card_title_style = ParagraphStyle(
-            'CardTitle',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=colors.HexColor("#90A4AE"),
-            fontName='Helvetica-Bold'
-        )
-        card_total_style = ParagraphStyle(
-            'CardTotal',
-            parent=styles['Normal'],
-            fontSize=16,
-            textColor=colors.HexColor("#111827"),
-            fontName='Helvetica-Bold',
-            spaceAfter=4
-        )
-        card_body_style = ParagraphStyle(
-            'CardBody',
-            parent=styles['Normal'],
-            fontSize=8.5,
-            textColor=colors.HexColor("#374151"),
-            leading=12
-        )
 
         elementos.append(Paragraph("REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
         elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
