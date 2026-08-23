@@ -4,7 +4,7 @@ Modelos SQLAlchemy + funciones de acceso a datos.
 
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
-    ForeignKey, func, inspect
+    ForeignKey, func, inspect, text as db_text
 )
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
@@ -89,7 +89,7 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
     
-    # Verificación de seguridad para asegurar la columna vales_nomina si la BD ya existía
+    # Intenta verificar e incorporar la columna vales_nomina de forma segura si la tabla ya existía
     try:
         inspector = inspect(session.bind)
         columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
