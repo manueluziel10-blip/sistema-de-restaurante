@@ -518,7 +518,7 @@ elif opcion == "3. Corte y Nómina Final":
                 porcentaje_propina = 50.0
 
             propinas = 0.0
-            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
+            if not ventas_totales.empty and porcentaje_propina > 0.0:
                 prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
                 prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
                 prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
@@ -599,7 +599,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     with tab_bailarinas:
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
-        process_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
+        procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
     with tab_meseros:
         if not empleados_df.empty:
@@ -628,8 +628,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ventas_acumuladas = cargar_ventas_df(fecha_activa)
     chicas_acumuladas = cargar_chicas_df(fecha_activa)
     empleados_dashboard_df = cargar_empleados_df()
-
-    chicas_con_descuento_dash = len(empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]) if not empleados_dashboard_df.empty else 0
 
     nomina_personal_p_total = 0.0
     vales_personal_total = 0.0
@@ -699,13 +697,26 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         st.rerun()
 
     st.markdown("---")
+    
+    # --- CÁLCULO SEGURO DE VENTAS (EVITA KEYERROR) ---
     efectivo_ventas = tarjeta_ventas = transferencia_ventas = ventas_por_cobrar = 0.0
 
     if not ventas_acumuladas.empty:
-        efectivo_ventas = float(ventas_acumuladas['efectivo'].sum() + ventas_acumuladas['propina_efectivo'].sum())
-        tarjeta_ventas = float(ventas_acumuladas['tarjeta'].sum() + ventas_acumuladas['propina_tarjeta'].sum())
-        transferencia_ventas = float(ventas_acumuladas['vales'].sum() + ventas_acumuladas['propina_vales'].sum())
-        ventas_por_cobrar = float(ventas_acumuladas['otros'].sum() + ventas_acumuladas['propinacredito'].sum())
+        col_efec = ventas_acumuladas['efectivo'] if 'efectivo' in ventas_acumuladas.columns else 0.0
+        col_pefec = ventas_acumuladas['propina_efectivo'] if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
+        efectivo_ventas = float((col_efec + col_pefec).sum())
+
+        col_tarj = ventas_acumuladas['tarjeta'] if 'tarjeta' in ventas_acumuladas.columns else 0.0
+        col_ptarj = ventas_acumuladas['propina_tarjeta'] if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
+        tarjeta_ventas = float((col_tarj + col_ptarj).sum())
+
+        col_val = ventas_acumuladas['vales'] if 'vales' in ventas_acumuladas.columns else 0.0
+        col_pval = ventas_acumuladas['propina_vales'] if 'propina_vales' in ventas_acumuladas.columns else 0.0
+        transferencia_ventas = float((col_val + col_pval).sum())
+
+        col_otros = ventas_acumuladas['otros'] if 'otros' in ventas_acumuladas.columns else 0.0
+        col_pcred = ventas_acumuladas['propinacredito'] if 'propinacredito' in ventas_acumuladas.columns else 0.0
+        ventas_por_cobrar = float((col_otros + col_pcred).sum())
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
@@ -744,7 +755,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # Procesar ventas por mesero para pantalla y PDF
     resumen_meseros = pd.DataFrame()
     if not ventas_acumuladas.empty and not empleados_dashboard_df.empty:
         df_vm = pd.merge(ventas_acumuladas, empleados_dashboard_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
@@ -761,7 +771,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         
         titulo_style = ParagraphStyle('T', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1A2634"), spaceAfter=4, alignment=1, fontName='Helvetica-Bold')
         sub_style = ParagraphStyle('ST', parent=styles['Heading2'], fontSize=10, textColor=colors.HexColor("#1A2634"), spaceBefore=8, spaceAfter=3, fontName='Helvetica-Bold')
-        normal_style = ParagraphStyle('TN', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#334155"))
 
         elementos.append(Paragraph(f"ZULLYS MENS CLUB - REPORTE DE CIERRE ({fecha_activa})", titulo_style))
         elementos.append(Spacer(1, 6))
