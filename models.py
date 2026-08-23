@@ -82,14 +82,12 @@ class GastoDiario(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
-# --- NUEVOS MODELOS: USUARIOS Y BLOQUEOS DE CORTES ---
-
 class UsuarioSistema(Base):
     __tablename__ = "usuarios_sistema"
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
-    rol = Column(String, nullable=False)  # "admin" o "cajero"
+    rol = Column(String, nullable=False)
     creado_en = Column(DateTime, server_default=func.now())
 
 
@@ -214,6 +212,25 @@ def desbloquear_corte_fecha(fecha_str: str):
     try:
         f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
+    session = get_session()
+    try:
+        f_ant = datetime.strptime(fecha_antigua_str, "%Y-%m-%d").date()
+        f_nue = datetime.strptime(fecha_nueva_str, "%Y-%m-%d").date()
+        
+        session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue})
+        session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue})
+        session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue})
+        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue})
+        
         session.commit()
     except Exception as e:
         session.rollback()
@@ -360,7 +377,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
             session.add(CorteVenta(**kwargs))
         session.commit()
 
-        # BLOQUEAR AUTOMÁTICAMENTE EL DÍA AL GUARDAR
         bloquear_corte_fecha(f_filtro_str, usuario_nombre)
 
     except Exception as e:
@@ -546,8 +562,6 @@ def reiniciar_base_de_datos():
         ]
         session.add_all(puestos_iniciales)
         session.commit()
-        
-        # Inicializar usuarios por defecto
         inicializar_usuarios_por_defecto()
     except Exception as e:
         session.rollback()

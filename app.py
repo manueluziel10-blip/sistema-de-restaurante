@@ -14,7 +14,8 @@ from models import (
     cargar_ventas_df, cargar_chicas_df,
     guardar_gastos_del_dia, cargar_gastos_hoy,
     reiniciar_base_de_datos, obtener_fechas_disponibles,
-    validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales
+    validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
+    cambiar_fecha_corte  # <-- Importamos la nueva función para cambiar fecha
 )
 
 st.set_page_config(layout="wide")
@@ -52,9 +53,8 @@ if not st.session_state["autenticado"]:
             else:
                 st.error("Usuario o contraseña incorrectos")
     
-    st.stop()  # Detiene la ejecución hasta que inicie sesión
+    st.stop()
 
-# Si ya está autenticado, mostramos el botón de cerrar sesión en la barra lateral
 st.sidebar.markdown(f"Sesión activa: **{st.session_state['usuario_actual']} ({st.session_state['rol_actual'].upper()})**")
 if st.sidebar.button("Cerrar Sesión"):
     st.session_state["autenticado"] = False
@@ -64,7 +64,6 @@ if st.sidebar.button("Cerrar Sesión"):
 
 st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 
-# --- ESTILOS CSS GLOBALES PARA TABLAS Y EDITORES OSCUROS ---
 st.markdown("""
     <style>
         [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
@@ -80,7 +79,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- LISTA OFICIAL DE PUESTOS Y SUELDOS BASE ---
 PUESTOS_CATALOGO = {
     "Chicas / Bailarinas (Comisiones)": 300.0,
     "Mesero (Comisiones)": 300.0,
@@ -94,12 +92,10 @@ PUESTOS_CATALOGO = {
     "Cajero (Fijo)": 400.0
 }
 
-# --- FUNCIÓN GLOBAL DE FILTRADO PARA CHICAS / BAILARINAS ---
 def es_chica_o_bailarina(tipo_str):
     t = str(tipo_str).upper()
     return ('CHICA' in t) or ('BAILARINA' in t)
 
-# --- REGLAS DE COMISIÓN PARA CHICAS / BAILARINAS ---
 def calcular_comision_chica(producto_str):
     p = producto_str.upper().strip()
     if 'PRIVADO ARTISTA' in p:
@@ -122,7 +118,6 @@ def calcular_comision_chica(producto_str):
         return 50.0
     return 0.0
 
-# --- REGLAS DE COMISIÓN DE PRODUCTOS PARA GERENTES, CAPITANES Y CAJEROS ---
 def calcular_comision_gerencia_caja(producto_str):
     p = producto_str.upper().strip()
     if 'MOET IMPERIAL' in p:
@@ -137,24 +132,29 @@ def calcular_comision_gerencia_caja(producto_str):
         return 5.0
     return 0.0
 
-# --- MENÚ LATERAL Y BÚSQUEDA DE HISTORIAL ---
+# --- MENÚ LATERAL Y SELECCIÓN DE FECHA (RESTRINGIDO PARA ADMIN) ---
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
-modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
 
-fecha_activa = None
-if modo_fecha == "🔍 Buscar Corte Histórico":
-    if fechas_disponibles:
-        fecha_activa = st.sidebar.selectbox("Selecciona la fecha del reporte", fechas_disponibles)
-        st.sidebar.warning(f"⚠️ Visualizando histórico: {fecha_activa}")
+# Si es ADMIN, puede elegir fecha de carga/historial libremente. Si es cajero/otro, se fija al día actual.
+if st.session_state["rol_actual"].lower() == "admin":
+    modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
+    fecha_activa = None
+    if modo_fecha == "🔍 Buscar Corte Histórico":
+        if fechas_disponibles:
+            fecha_activa = st.sidebar.selectbox("Selecciona la fecha del reporte", fechas_disponibles)
+            st.sidebar.warning(f"⚠️ Visualizando histórico: {fecha_activa}")
+        else:
+            st.sidebar.info("No hay cortes históricos registrados aún.")
+            fecha_activa = datetime.now().strftime('%Y-%m-%d')
     else:
-        st.sidebar.info("No hay cortes históricos registrados aún.")
-        fecha_activa = datetime.now().strftime('%Y-%m-%d')
+        fecha_activa = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now()).strftime('%Y-%m-%d')
 else:
-    fecha_activa = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now()).strftime('%Y-%m-%d')
+    # Cajeros y operativas solo operan el día actual
+    fecha_activa = datetime.now().strftime('%Y-%m-%d')
+    st.sidebar.info(f"Fecha de Operación: **{fecha_activa}**")
 
-# Opciones base del menú
 opciones_menu = [
     "1. Subir Cortes Diarios (Excel)",
     "2. Gestión y Edición de Empleados",
@@ -162,13 +162,11 @@ opciones_menu = [
     "4. Cierre de Caja Diario (Dashboard)"
 ]
 
-# Si el usuario actual es admin, agregamos la sección de administración de usuarios
 if st.session_state["rol_actual"].lower() == "admin":
     opciones_menu.append("5. Gestión de Usuarios y Accesos")
 
 opcion = st.sidebar.selectbox("Selecciona una sección", opciones_menu, key="menu_seccion_principal")
 
-# --- BOTÓN DE REINICIO EN LA BARRA LATERAL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚠️ Zona de Peligro")
 if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
@@ -200,7 +198,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         st.dataframe(df_v.head(), width=700)
         
         if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
-            guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa)
+            guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=str(fecha_activa), usuario_nombre=st.session_state["usuario_actual"])
             st.success(f"¡Corte de meseros y propinas guardado correctamente para el día {fecha_activa}!")
 
     if up_chicas is not None:
@@ -213,7 +211,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                 filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
 
                 nuevas_detectadas = guardar_corte_chicas(
-                    filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa
+                    filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=str(fecha_activa), usuario_nombre=st.session_state["usuario_actual"]
                 )
                 st.success(
                     f"¡Corte procesado y guardado para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} "
@@ -366,8 +364,8 @@ elif opcion == "3. Corte y Nómina Final":
     ])
 
     empleados_df = cargar_empleados_df()
-    ventas_totales = cargar_ventas_df(fecha_activa)
-    chicas_totales = cargar_chicas_df(fecha_activa)
+    ventas_totales = cargar_ventas_df(str(fecha_activa))
+    chicas_totales = cargar_chicas_df(str(fecha_activa))
 
     def procesar_grupo_chicas(df_subgrupo, nombre_pestana, key_sufijo):
         if df_subgrupo.empty:
@@ -768,13 +766,11 @@ elif opcion == "3. Corte y Nómina Final":
 
         return sub_g
 
-    # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
     with tab_bailarinas:
         st.markdown("### Nómina: Bailarinas y Chicas")
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
         _, sub_b = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
-    # --- PESTAÑA 2: MESEROS Y AYUDANTES ---
     with tab_meseros:
         st.markdown("### Nómina: Meseros y Ayudantes de Mesero")
         if not empleados_df.empty:
@@ -787,13 +783,11 @@ elif opcion == "3. Corte y Nómina Final":
             df_meseros = pd.DataFrame()
         sub_m = procesar_grupo_general(df_meseros, "Meseros y Ayudantes", "meseros_ayudantes")
 
-    # --- PESTAÑA 3: SEGURIDAD ---
     with tab_seguridad:
         st.markdown("### Nómina: Personal de Seguridad")
         df_seguridad = empleados_df[empleados_df['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")] if not empleados_df.empty else pd.DataFrame()
         sub_s = procesar_grupo_general(df_seguridad, "Seguridad", "seguridad")
 
-    # --- PESTAÑA 4: PERSONAL GENERAL, FIJO Y CAPITANES ---
     with tab_general:
         st.markdown("### Nómina: Personal General, Gerencia y Capitanes")
         if not empleados_df.empty:
@@ -808,100 +802,13 @@ elif opcion == "3. Corte y Nómina Final":
             
         sub_o = procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
-    st.markdown("---")
-    
-    # --- CÁLCULO DE NÓMINA REAL DE LA SEMANA ---
-    total_bailarinas_semana = 0.0
-    df_chicas_nomina_calc = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
-    if not df_chicas_nomina_calc.empty:
-        for _, emp in df_chicas_nomina_calc.iterrows():
-            emp_id = emp['id']
-            sueldo_base = float(emp['sueldo_base'])
-            descuento_emp = float(emp.get('descuento_nomina', 100.0))
-            penalizada = bool(emp.get('penalizada', False))
-            
-            comisiones_emp = 0.0
-            sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id] if not chicas_totales.empty else pd.DataFrame()
-            for _, r in sus_filas.iterrows():
-                desc = str(r['descripcion']).upper()
-                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
-                com = 300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria'])))
-                comisiones_emp += cant * com
-            if penalizada:
-                comisiones_emp /= 2.0
-                
-            bruto_chica = sueldo_base + comisiones_emp
-            neto_chica = bruto_chica - descuento_emp
-            total_bailarinas_semana += neto_chica
-
-    total_personal_general_semana = 0.0
-    df_operativo_todos = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
-    chicas_con_descuento_count = len(df_chicas_nomina_calc[df_chicas_nomina_calc['descuento_nomina'] > 0.0]) if not df_chicas_nomina_calc.empty else 0
-
-    if not df_operativo_todos.empty:
-        for _, emp in df_operativo_todos.iterrows():
-            emp_id = emp['id']
-            tipo = emp['tipo']
-            sueldo_base = float(emp['sueldo_base'])
-            puesto_upper_check = tipo.upper()
-            
-            comisiones_prod = 0.0
-            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
-                porcentaje_propina = 0.0
-                comisiones_prod = chicas_con_descuento_count * 40.0
-            elif "SEGURIDAD" in puesto_upper_check:
-                porcentaje_propina = 0.0
-            elif "BARMAN" in puesto_upper_check:
-                porcentaje_propina = 10.0
-            elif "AYUDANTE" in puesto_upper_check:
-                porcentaje_propina = 5.0
-            elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                porcentaje_propina = 8.0
-            else:
-                porcentaje_propina = 50.0
-
-            propinas = 0.0
-            total_propinaable = 0.0
-            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
-                if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
-                    ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
-                    if not ventas_emp.empty:
-                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
-                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
-                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
-                        total_propinaable = prop_tarj + prop_efec + prop_vale
-                else:
-                    prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
-                    prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
-                    prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
-                    total_propinaable = prop_tarj + prop_efec + prop_vale
-                propinas = total_propinaable * (porcentaje_propina / 100.0)
-
-            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                if not chicas_totales.empty:
-                    for _, f_prod in chicas_totales.iterrows():
-                        comisiones_prod += float(f_prod['cantidad']) * calcular_comision_gerencia_caja(f_prod['descripcion'])
-
-            bruto_gen = sueldo_base + propinas + comisiones_prod
-            total_personal_general_semana += bruto_gen
-
-    total_general_semana = total_personal_general_semana + total_bailarinas_semana
-
-    st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
-    
-    col_sep1, col_sep2 = st.columns(2)
-    with col_sep1:
-        st.metric("📋 Total Personal General", f"${total_personal_general_semana:,.2f}")
-    with col_sep2:
-        st.metric("💃 Total Bailarinas / Chicas", f"${total_bailarinas_semana:,.2f}")
-
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
     st.info("Este panel consolida las ventas totales, terminales, efectivo, propinas, gastos y nómina diaria basados en tus archivos cargados.")
 
-    ventas_acumuladas = cargar_ventas_df(fecha_activa)
-    chicas_acumuladas = cargar_chicas_df(fecha_activa)
+    ventas_acumuladas = cargar_ventas_df(str(fecha_activa))
+    chicas_acumuladas = cargar_chicas_df(str(fecha_activa))
     empleados_dashboard_df = cargar_empleados_df()
 
     chicas_con_descuento_dash = 0
@@ -1025,7 +932,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             nomina_chicas_calc += neto_chica
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
-    gasto_previo = cargar_gastos_hoy(fecha_activa)
+    gasto_previo = cargar_gastos_hoy(str(fecha_activa))
     
     g_cocina_val = float(gasto_previo.gasto_cocina) if gasto_previo else 0.0
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
@@ -1040,374 +947,20 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key="input_gasto_vales")
 
     if st.button("Guardar Gastos del Día"):
-        guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa)
+        guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=str(fecha_activa), usuario_nombre=st.session_state["usuario_actual"])
         st.success(f"¡Gastos del día guardados para la fecha {fecha_activa}!")
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("### 📋 Resumen Financiero del Día (Estilo Dashboard)")
-
-    efectivo_ventas = 0.0
-    tarjeta_ventas = 0.0
-    transferencia_ventas = 0.0
-    ventas_por_cobrar = 0.0
-
-    if not ventas_acumuladas.empty:
-        col_efec = ventas_acumuladas['efectivo'] if 'efectivo' in ventas_acumuladas.columns else 0.0
-        col_pefec = ventas_acumuladas['propina_efectivo'] if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
-        efectivo_ventas = float((col_efec + col_pefec).sum())
-
-        col_tarj = ventas_acumuladas['tarjeta'] if 'tarjeta' in ventas_acumuladas.columns else 0.0
-        col_ptarj = ventas_acumuladas['propina_tarjeta'] if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
-        tarjeta_ventas = float((col_tarj + col_ptarj).sum())
-
-        col_val = ventas_acumuladas['vales'] if 'vales' in ventas_acumuladas.columns else 0.0
-        col_pval = ventas_acumuladas['propina_vales'] if 'propina_vales' in ventas_acumuladas.columns else 0.0
-        transferencia_ventas = float((col_val + col_pval).sum())
-
-        col_otros = ventas_acumuladas['otros'] if 'otros' in ventas_acumuladas.columns else 0.0
-        col_pcred = ventas_acumuladas['propinacredito'] if 'propinacredito' in ventas_acumuladas.columns else 0.0
-        ventas_por_cobrar = float((col_otros + col_pcred).sum())
-
-    ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-    
-    nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
-    nomina_chicas_efectivo = nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
-    
-    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
-    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
-    
-    nomina_total_general_dash = nomina_personal_p_total + nomina_chicas_calc
-    utilidad_monto = ventas_totales_con_propinas - (nomina_total_general_dash + gasto_cocina)
-    utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
-
-    st.markdown("#### 💰 Resumen de Ventas y Efectivo")
-    col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
-    
-    ventas_cards = [
-        ("VENTAS TOTALES", ventas_totales_con_propinas),
-        ("VENTAS EFECTIVO", efectivo_ventas),
-        ("VENTAS TERMINALES", tarjeta_ventas),
-        ("VENTAS TRANSFERENCIAS", transferencia_ventas),
-        ("VENTAS POR COBRAR", ventas_por_cobrar)
-    ]
-    
-    cols = [col_d1, col_d2, col_d3, col_d4, col_d5]
-    for idx, (titulo, valor) in enumerate(ventas_cards):
-        with cols[idx]:
-            st.markdown(
-                f"""
-                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{titulo}</div>
-                    <div style="color: #FFFFFF; font-size: 18px; font-weight: bold; margin-top: 6px;">${valor:,.2f}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col_e1, col_e2 = st.columns(2)
-    with col_e1:
-        st.markdown(
-            f"""
-            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #00E676; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">EFECTIVO ENTREGADO</div>
-                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${efectivo_entregado:,.2f}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    with col_e2:
-        st.markdown(
-            f"""
-            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #29B6F6; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">UTILIDAD ANTES DE COSTOS ({utilidad_porcentaje:.1f}%)</div>
-                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${utilidad_monto:,.2f}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown("---")
-    st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
-    
-    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
-    nomina_cards = [
-        ("Nómina - Personal General", nomina_personal_p_total),
-        ("Nómina - Bailarinas / Chicas", nomina_chicas_calc),
-        ("Vales - Personal General", vales_personal_total),
-        ("Vales - Bailarinas / Chicas", vales_chicas_total)
-    ]
-    
-    cols_n = [col_n1, col_n2, col_n3, col_n4]
-    for idx, (titulo, valor) in enumerate(nomina_cards):
-        with cols_n[idx]:
-            st.markdown(
-                f"""
-                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937;">
-                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase;">{titulo}</div>
-                    <div style="color: #FFFFFF; font-size: 20px; font-weight: bold; margin-top: 5px;">${valor:,.2f}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    col_c1, col_c2, col_c3 = st.columns(3)
-    with col_c1:
-        st.metric("Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}")
-    with col_c2:
-        st.metric("Bailarinas con Sueldo Base", f"{conteo_con_sueldo}")
-    with col_c3:
-        st.metric("Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}")
-
-    st.markdown("#### Desglose de Gastos y Nómina en Efectivo")
-    tabla_gastos = pd.DataFrame([
-        {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_efectivo},
-        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_efectivo},
-        {"Concepto": "Cocina", "Monto": gasto_cocina},
-        {"Concepto": "Compras", "Monto": gasto_compras},
-        {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
-        {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
-    ])
-    st.dataframe(tabla_gastos, use_container_width=True)
-
-    empleados_df = cargar_empleados_df()
-    resumen_meseros = pd.DataFrame()
-    
-    if not ventas_acumuladas.empty and not empleados_df.empty:
-        df_ventas_meseros = pd.merge(
-            ventas_acumuladas, 
-            empleados_df[['id', 'nombre']], 
-            left_on='idmesero', 
-            right_on='id', 
-            how='left'
-        )
-        
-        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
-            if col not in df_ventas_meseros.columns:
-                df_ventas_meseros[col] = 0.0
-
-        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
-            'efectivo': 'sum',
-            'propina_efectivo': 'sum',
-            'tarjeta': 'sum',
-            'propina_tarjeta': 'sum',
-            'vales': 'sum',
-            'propina_vales': 'sum',
-            'otros': 'sum',
-            'propinacredito': 'sum'
-        }).reset_index()
-        
-        resumen_meseros['importe_total'] = (
-            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
-            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
-            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
-            resumen_meseros['otros'] + resumen_meseros['propinacredito']
-        )
-
-    def generar_pdf(empleados_df, resumen_meseros):
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer, 
-            pagesize=letter, 
-            rightMargin=25, 
-            leftMargin=25, 
-            topMargin=25, 
-            bottomMargin=25
-        )
-        elementos = []
-        
-        styles = getSampleStyleSheet()
-        color_acento = colors.HexColor("#1A2634")
-        color_texto = colors.HexColor("#334155")
-        
-        titulo_style = ParagraphStyle(
-            'TituloReporte',
-            parent=styles['Heading1'],
-            fontSize=14,
-            textColor=color_acento,
-            spaceAfter=4,
-            alignment=1,
-            fontName='Helvetica-Bold'
-        )
-        
-        sub_style = ParagraphStyle(
-            'SubTituloReporte',
-            parent=styles['Heading2'],
-            fontSize=10,
-            textColor=color_acento,
-            spaceBefore=8,
-            spaceAfter=3,
-            fontName='Helvetica-Bold'
-        )
-        
-        normal_style = ParagraphStyle(
-            'TextoNormal',
-            parent=styles['Normal'],
-            fontSize=8,
-            textColor=color_texto
-        )
-
-        elementos.append(Paragraph(f"ZULLYS MENS CLUB - REPORTE DE CIERRE DE CAJA ({fecha_activa})", titulo_style))
-        elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
-        elementos.append(Spacer(1, 6))
-
-        elementos.append(Paragraph("1. Resumen de Ventas y Flujo Principal", sub_style))
-        datos_ventas = [
-            ["Concepto", "Monto"],
-            ["Ventas Totales", f"${ventas_totales_con_propinas:,.2f}"],
-            ["Ventas Efectivo", f"${efectivo_ventas:,.2f}"],
-            ["Ventas Terminales", f"${tarjeta_ventas:,.2f}"],
-            ["Ventas Transferencias", f"${transferencia_ventas:,.2f}"],
-            ["Ventas por Cobrar", f"${ventas_por_cobrar:,.2f}"],
-            ["Efectivo Entregado a Caja", f"${efectivo_entregado:,.2f}"],
-            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f} ({utilidad_porcentaje:.1f}%)"]
-        ]
-        t_ventas = Table(datos_ventas, colWidths=[270, 270])
-        t_ventas.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (1, 0), color_acento),
-            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
-        elementos.append(t_ventas)
-        elementos.append(Spacer(1, 6))
-
-        elementos.append(Paragraph("2. Resumen Detallado de Nómina y Vales por Grupo", sub_style))
-        datos_nomina = [
-            ["Concepto", "Monto / Conteo"],
-            ["Nómina - Personal General", f"${nomina_personal_p_total:,.2f}"],
-            ["Nómina - Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}"],
-            ["Vales - Personal General", f"${vales_personal_total:,.2f}"],
-            ["Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"],
-            ["Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}"],
-            ["Bailarinas con Sueldo Base", f"{conteo_con_sueldo}"],
-            ["Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}"]
-        ]
-        t_nom = Table(datos_nomina, colWidths=[270, 270])
-        t_nom.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (1, 0), color_acento),
-            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
-        elementos.append(t_nom)
-        elementos.append(Spacer(1, 6))
-
-        elementos.append(Paragraph("3. Desglose de Gastos y Nómina en Efectivo", sub_style))
-        datos_gastos = [["Concepto", "Monto"]] + [[row["Concepto"], f"${row['Monto']:,.2f}"] for _, row in tabla_gastos.iterrows()]
-        t_gas = Table(datos_gastos, colWidths=[270, 270])
-        t_gas.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (1, 0), color_acento),
-            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
-        elementos.append(t_gas)
-        elementos.append(Spacer(1, 6))
-
-        if not ventas_acumuladas.empty and not empleados_df.empty and not resumen_meseros.empty:
-            elementos.append(Paragraph("4. Resumen de Ventas por Mesero", sub_style))
-            datos_meseros = [["Mesero", "Efectivo", "Tarjeta", "Transf.", "Por Cobrar", "Total"]]
-            
-            for _, row in resumen_meseros.iterrows():
-                datos_meseros.append([
-                    str(row['nombre']),
-                    f"${row['efectivo'] + row['propina_efectivo']:,.2f}",
-                    f"${row['tarjeta'] + row['propina_tarjeta']:,.2f}",
-                    f"${row['vales'] + row['propina_vales']:,.2f}",
-                    f"${row['otros'] + row['propinacredito']:,.2f}",
-                    f"${row['importe_total']:,.2f}"
-                ])
-            
-            t_mes = Table(datos_meseros, colWidths=[110, 85, 85, 85, 85, 90])
-            t_mes.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), color_acento),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 7.5),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ]))
-            elementos.append(t_mes)
-
-        doc.build(elementos)
-        buffer.seek(0)
-        return buffer
-
-    st.markdown("---")
-    pdf_buffer = generar_pdf(empleados_df, resumen_meseros)
-    st.download_button(
-        label=f"📄 Descargar Reporte de Cierre en PDF ({fecha_activa})",
-        data=pdf_buffer,
-        file_name=f"Cierre_Caja_{fecha_activa}.pdf",
-        mime="application/pdf",
-        use_container_width=True
-    )
-
-    st.markdown(f"#### 👥 Resumen de Ventas por Mesero (Fecha: {fecha_activa})")
-    
-    if not resumen_meseros.empty:
-        num_columnas = 3
-        for i in range(0, len(resumen_meseros), num_columnas):
-            cols = st.columns(num_columnas)
-            for j in range(num_columnas):
-                if i + j < len(resumen_meseros):
-                    row = resumen_meseros.iloc[i + j]
-                    nombre_mesero = row['nombre']
-                    importe_total = row['importe_total']
-                    efectivo_m = row['efectivo'] + row['propina_efectivo']
-                    tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
-                    transferencia_m = row['vales'] + row['propina_vales']
-                    cobrar_m = row['otros'] + row['propinacredito']
-                    
-                    with cols[j]:
-                        st.markdown(
-                            f"""
-                            <div style="background-color: #141D26; padding: 16px; border-radius: 10px; border: 1px solid #1A2634; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">MESERO: {nombre_mesero}</div>
-                                <div style="color: #FFFFFF; font-size: 22px; font-weight: bold; margin: 6px 0 10px 0;">${importe_total:,.2f}</div>
-                                <hr style="border: none; border-top: 1px solid #1F2937; margin: 8px 0;">
-                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span>Efectivo:</span> <b>${efectivo_m:,.2f}</b>
-                                </div>
-                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span>Tarjeta:</span> <b>${tarjeta_m:,.2f}</b>
-                                </div>
-                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
-                                </div>
-                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between;">
-                                    <span>Por Cobrar:</span> <b>${cobrar_m:,.2f}</b>
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-    else:
-        st.info(f"No hay registros de ventas de meseros disponibles para mostrar en el resumen de la fecha {fecha_activa}.")
-
-# --- SECCIÓN 5: GESTIÓN DE USUARIOS Y ACCESOS ---
+# --- SECCIÓN 5: GESTIÓN DE USUARIOS Y ACCESOS (Y REASIGNACIÓN DE FECHAS) ---
 elif opcion == "5. Gestión de Usuarios y Accesos":
-    st.subheader("🔐 Gestión de Usuarios del Sistema")
-    st.info("Aquí puedes registrar nuevos usuarios o modificar las credenciales de acceso.")
+    st.subheader("🔐 Gestión de Usuarios y Accesos del Sistema")
+    st.info("Aquí puedes registrar nuevos usuarios, modificar credenciales y reasignar fechas de cortes existentes.")
 
-    tab_ver_usuarios, tab_nuevo_usuario, tab_editar_usuario = st.tabs([
+    tab_ver_usuarios, tab_nuevo_usuario, tab_editar_usuario, tab_cambiar_fecha = st.tabs([
         "📋 Usuarios Registrados",
         "➕ Registrar Nuevo Usuario",
-        "✏️ Modificar Credenciales"
+        "✏️ Modificar Credenciales",
+        "📅 Reasignar Fecha de Corte"
     ])
 
     with tab_ver_usuarios:
@@ -1458,3 +1011,25 @@ elif opcion == "5. Gestión de Usuarios y Accesos":
                     st.rerun()
         else:
             st.info("No hay usuarios para editar.")
+
+    with tab_cambiar_fecha:
+        st.markdown("### Reasignar Fecha a un Corte Existente")
+        st.info("Selecciona una fecha registrada actualmente para mover todos sus datos y ventas a otra fecha nueva.")
+        
+        fechas_existentes = obtener_fechas_disponibles()
+        if fechas_existentes:
+            with st.form("form_cambiar_fecha"):
+                fecha_origen = st.selectbox("Fecha Origen (A cambiar)", fechas_existentes)
+                fecha_destino_input = st.date_input("Fecha Nueva (Destino)")
+                
+                btn_reasignar = st.form_submit_button("Actualizar Fecha del Corte")
+                if btn_reasignar:
+                    fecha_destino_str = fecha_destino_input.strftime('%Y-%m-%d')
+                    if fecha_origen == fecha_destino_str:
+                        st.warning("La fecha de origen y destino son la misma.")
+                    else:
+                        cambiar_fecha_corte(fecha_origen, fecha_destino_str)
+                        st.success(f"¡Todos los registros de la fecha {fecha_origen} se movieron con éxito a {fecha_destino_str}!")
+                        st.rerun()
+        else:
+            st.info("No hay fechas de corte registradas para modificar.")
