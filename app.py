@@ -136,8 +136,9 @@ def calcular_comision_gerencia_caja(producto_str):
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
-
 rol_actual_lower = st.session_state["rol_actual"].lower()
+hoy_str = datetime.now().strftime('%Y-%m-%d')
+
 if rol_actual_lower in ["admin", "cajero"]:
     modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
     fecha_activa_obj = None
@@ -155,6 +156,10 @@ else:
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
 
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
+
+# Validación de permisos: El cajero solo puede modificar si es el día actual. El admin siempre puede.
+es_dia_actual = (fecha_activa == hoy_str)
+puede_modificar = (rol_actual_lower == "admin") or es_dia_actual
 
 opciones_menu = [
     "1. Subir Cortes Diarios (Excel)",
@@ -178,48 +183,51 @@ if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
 # --- SECCIÓN 1: SUBIR ARCHIVOS DIARIOS ---
 if opcion == "1. Subir Cortes Diarios (Excel)":
     st.subheader(f"Carga de Archivos Diarios para la fecha: {fecha_activa}")
-    st.info("Sube los archivos correspondientes al corte del día seleccionado.")
+    if not puede_modificar:
+        st.warning("🔒 Modo de solo lectura: No se pueden subir ni modificar archivos en cortes históricos anteriores.")
+    else:
+        st.info("Sube los archivos correspondientes al corte del día seleccionado.")
 
-    col_1, col_2, col_3 = st.columns(3)
-    with col_1:
-        up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
-    with col_2:
-        up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=["xls", "xlsx"], key="subir_cheques_propinas")
-    with col_3:
-        up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"], key="subir_productos_chicas")
+        col_1, col_2, col_3 = st.columns(3)
+        with col_1:
+            up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
+        with col_2:
+            up_propinas = st.file_uploader("Subir 'chequesconpropinaincluida.xls'", type=["xls", "xlsx"], key="subir_cheques_propinas")
+        with col_3:
+            up_chicas = st.file_uploader("Subir 'PRODUCTOSVENDIDOSPERIODO.XLS'", type=["xls", "xlsx"], key="subir_productos_chicas")
 
-    if up_ventas is not None and up_propinas is not None:
-        df_v = pd.read_excel(up_ventas)
-        df_p = pd.read_excel(up_propinas)
-        
-        df_v['idmesero'] = pd.to_numeric(df_v['idmesero'], errors='coerce').fillna(0).astype(int)
-        df_p['idmesero'] = pd.to_numeric(df_p['idmesero'], errors='coerce').fillna(0).astype(int)
+        if up_ventas is not None and up_propinas is not None:
+            df_v = pd.read_excel(up_ventas)
+            df_p = pd.read_excel(up_propinas)
+            
+            df_v['idmesero'] = pd.to_numeric(df_v['idmesero'], errors='coerce').fillna(0).astype(int)
+            df_p['idmesero'] = pd.to_numeric(df_p['idmesero'], errors='coerce').fillna(0).astype(int)
 
-        st.success("¡Archivos de ventas y propinas cargados correctamente!")
-        st.dataframe(df_v.head(), width=700)
-        
-        if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
-            guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-            st.success(f"¡Corte de meseros y propinas guardado correctamente para el día {fecha_activa}!")
+            st.success("¡Archivos de ventas y propinas cargados correctamente!")
+            st.dataframe(df_v.head(), width=700)
+            
+            if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
+                guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
+                st.success(f"¡Corte de meseros y propinas guardado correctamente para el día {fecha_activa}!")
 
-    if up_chicas is not None:
-        df_c = pd.read_excel(up_chicas, skiprows=4)
-        st.success("¡Archivo de productos cargado!")
+        if up_chicas is not None:
+            df_c = pd.read_excel(up_chicas, skiprows=4)
+            st.success("¡Archivo de productos cargado!")
 
-        if st.button("Procesar y Guardar Comisiones del Día", key="btn_guardar_chicas"):
-            if len(df_c.columns) >= 5:
-                df_c.columns = ['CLAVE', 'DESCRIPCION', 'GRUPO', 'PRECIO', 'CANTIDAD'] + list(df_c.columns[5:])
-                filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
+            if st.button("Procesar y Guardar Comisiones del Día", key="btn_guardar_chicas"):
+                if len(df_c.columns) >= 5:
+                    df_c.columns = ['CLAVE', 'DESCRIPCION', 'GRUPO', 'PRECIO', 'CANTIDAD'] + list(df_c.columns[5:])
+                    filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
 
-                nuevas_detectadas = guardar_corte_chicas(
-                    filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
-                )
-                st.success(
-                    f"¡Corte procesado y guardado para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} "
-                    f"personas nuevas automáticamente."
-                )
-            else:
-                st.error("El archivo no tiene el formato esperado (menos de 5 columnas).")
+                    nuevas_detectadas = guardar_corte_chicas(
+                        filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
+                    )
+                    st.success(
+                        f"¡Corte procesado y guardado para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} "
+                        f"personas nuevas automáticamente."
+                    )
+                else:
+                    st.error("El archivo no tiene el formato esperado (menos de 5 columnas).")
 
 # --- SECCIÓN 2: GESTIÓN Y EDICIÓN DE EMPLEADOS ---
 elif opcion == "2. Gestión y Edición de Empleados":
@@ -386,10 +394,11 @@ elif opcion == "3. Corte y Nómina Final":
             penalizada_cambiada = st.checkbox(
                 f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
                 value=penalizada_actual,
-                key=f"pen_{key_sufijo}_{emp_id}"
+                key=f"pen_{key_sufijo}_{emp_id}",
+                disabled=not puede_modificar
             )
 
-            if penalizada_cambiada != penalizada_actual:
+            if puede_modificar and (penalizada_cambiada != penalizada_actual):
                 actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp)
                 st.rerun()
 
@@ -499,6 +508,12 @@ elif opcion == "3. Corte y Nómina Final":
         )
 
         editor_key = f"editor_sueldos_{key_sufijo}"
+        
+        # Deshabilitar edición si no puede modificar
+        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento"]]
+        if not puede_modificar:
+            columnas_deshabilitadas = cols_mostrar
+
         df_editado = st.data_editor(
             df_estilizado,
             height=altura_tabla,
@@ -531,13 +546,13 @@ elif opcion == "3. Corte y Nómina Final":
                 ),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=[c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento"]],
+            disabled=columnas_deshabilitadas,
             use_container_width=True,
             key=editor_key
         )
 
         actualizado_flag = False
-        if editor_key in st.session_state:
+        if puede_modificar and (editor_key in st.session_state):
             cambios = st.session_state[editor_key].get("edited_rows", {})
             for row_idx, edits in cambios.items():
                 fila_modificada = df_res.iloc[int(row_idx)]
@@ -692,6 +707,10 @@ elif opcion == "3. Corte y Nómina Final":
             pintar_negativos_gen, subset=['Total a Pagar']
         )
         
+        cols_disabled_gen = ["ID", "Nombre", "Puesto", "Propina (%)", "Comisiones", "Total a Pagar"]
+        if not puede_modificar:
+            cols_disabled_gen = cols_mostrar_gen
+
         df_editado_gen = st.data_editor(
             df_estilizado_gen,
             height=altura_tabla_gen,
@@ -719,13 +738,13 @@ elif opcion == "3. Corte y Nómina Final":
                 "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=["ID", "Nombre", "Puesto", "Propina (%)", "Comisiones", "Total a Pagar"],
+            disabled=cols_disabled_gen,
             use_container_width=True,
             key=editor_key_gen
         )
 
         actualizado_gen_flag = False
-        if editor_key_gen in st.session_state:
+        if puede_modificar and (editor_key_gen in st.session_state):
             cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
             for row_idx, edits in cambios_gen.items():
                 fila_mod_gen = df_res_general.iloc[int(row_idx)]
@@ -933,6 +952,9 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             nomina_chicas_calc += neto_chica
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
+    if not puede_modificar:
+        st.warning(f"🔒 Modo de solo lectura: Visualizando el corte histórico del {fecha_activa}. No se pueden editar los gastos.")
+
     gasto_previo = cargar_gastos_hoy(fecha_activa)
     
     g_cocina_val = float(gasto_previo.gasto_cocina) if gasto_previo else 0.0
@@ -941,16 +963,17 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     col_g1, col_g2, col_g3 = st.columns(3)
     with col_g1:
-        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", key=f"input_gasto_cocina_{fecha_activa}")
+        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", key=f"input_gasto_cocina_{fecha_activa}", disabled=not puede_modificar)
     with col_g2:
-        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", key=f"input_gasto_compras_{fecha_activa}")
+        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", key=f"input_gasto_compras_{fecha_activa}", disabled=not puede_modificar)
     with col_g3:
-        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key=f"input_gasto_vales_{fecha_activa}")
+        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key=f"input_gasto_vales_{fecha_activa}", disabled=not puede_modificar)
 
-    if st.button("Guardar Gastos del Día", key=f"btn_guardar_gastos_{fecha_activa}"):
-        guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-        st.success(f"¡Gastos del día guardados para la fecha {fecha_activa}!")
-        st.rerun()
+    if puede_modificar:
+        if st.button("Guardar Gastos del Día", key=f"btn_guardar_gastos_{fecha_activa}"):
+            guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
+            st.success(f"¡Gastos del día guardados para la fecha {fecha_activa}!")
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### 📋 Resumen Financiero del Día (Estilo Dashboard)")
