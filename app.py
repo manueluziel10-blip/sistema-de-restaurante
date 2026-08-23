@@ -943,11 +943,11 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     col_g1, col_g2, col_g3 = st.columns(3)
     with col_g1:
-        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", key="input_gasto_cocina")
+        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", key=f"input_gasto_cocina_{fecha_activa}")
     with col_g2:
-        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", key="input_gasto_compras")
+        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", key=f"input_gasto_compras_{fecha_activa}")
     with col_g3:
-        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key="input_gasto_vales")
+        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key=f"input_gasto_vales_{fecha_activa}")
 
     if st.button("Guardar Gastos del Día"):
         guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
