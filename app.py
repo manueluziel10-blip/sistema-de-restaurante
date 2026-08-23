@@ -511,6 +511,15 @@ elif opcion == "3. Corte y Nómina Final":
             st.info(f"No hay registros en {nombre_pestana}.")
             return 0.0
 
+        # Contar cuántas chicas/bailarinas tienen descuento aplicado (> 0.0)
+        chicas_con_descuento_count = 0
+        if not empleados_df.empty:
+            df_chicas_todas = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)]
+            if 'descuento_nomina' in df_chicas_todas.columns:
+                chicas_con_descuento_count = len(df_chicas_todas[df_chicas_todas['descuento_nomina'] > 0.0])
+            else:
+                chicas_con_descuento_count = len(df_chicas_todas)
+
         res_general = []
         for _, emp in df_subgrupo.iterrows():
             emp_id = emp['id']
@@ -522,8 +531,10 @@ elif opcion == "3. Corte y Nómina Final":
             
             puesto_upper_check = tipo.upper()
             
+            comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
+                comisiones_prod = chicas_con_descuento_count * 40.0  # $40 por cada chica con descuento activo
             elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
@@ -536,7 +547,6 @@ elif opcion == "3. Corte y Nómina Final":
                 porcentaje_propina = 50.0
 
             propinas = 0.0
-            comisiones_prod = 0.0
             total_propinaable = 0.0
 
             if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
@@ -717,6 +727,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
+    # Contar cuántas chicas tienen descuento aplicado para el cálculo del DJ/Animador en el dashboard
+    chicas_con_descuento_dash = 0
+    if not empleados_dashboard_df.empty:
+        df_chicas_dash = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
+        if 'descuento_nomina' in df_chicas_dash.columns:
+            chicas_con_descuento_dash = len(df_chicas_dash[df_chicas_dash['descuento_nomina'] > 0.0])
+        else:
+            chicas_con_descuento_dash = len(df_chicas_dash)
+
     nomina_personal_p_total = 0.0
     vales_personal_total = 0.0
     if not empleados_dashboard_df.empty:
@@ -730,8 +749,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             vales_personal_total += vales_emp
             puesto_upper_check = tipo.upper()
             
+            comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
+                comisiones_prod = chicas_con_descuento_dash * 40.0
             elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
@@ -744,7 +765,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 porcentaje_propina = 50.0
 
             propinas = 0.0
-            comisiones_prod = 0.0
             total_propinaable = 0.0
 
             if not ventas_acumuladas.empty and 'idmesero' in ventas_acumuladas.columns and porcentaje_propina > 0.0:
