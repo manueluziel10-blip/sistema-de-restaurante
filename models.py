@@ -337,11 +337,9 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
     session = get_session()
     try:
         f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
+        f_filtro_date = datetime.strptime(f_filtro_str, "%Y-%m-%d").date()
         
-        if fecha_corte:
-            session.query(CorteVenta).filter(CorteVenta.fecha == fecha_corte).delete()
-        else:
-            session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
+        session.query(CorteVenta).filter(CorteVenta.fecha == f_filtro_date).delete()
         session.commit()
 
         tipo_por_defecto = "Mesero (Comisiones)"
@@ -373,6 +371,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                     session.commit()
 
             kwargs = {
+                "fecha": f_filtro_date,
                 "idmesero": emp.id,
                 "importe": row.get("importe_x", row.get("importe", 0)),
                 "efectivo": row.get("efectivo", 0),
@@ -384,8 +383,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 "otros": row.get("otros", 0),
                 "archivo_origen": archivo_origen,
             }
-            if fecha_corte:
-                kwargs["fecha"] = datetime.strptime(fecha_corte, "%Y-%m-%d").date()
 
             session.add(CorteVenta(**kwargs))
         session.commit()
@@ -429,11 +426,9 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
     session = get_session()
     try:
         f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
+        f_filtro_date = datetime.strptime(f_filtro_str, "%Y-%m-%d").date()
         
-        if fecha_corte:
-            session.query(ProductoChica).filter(ProductoChica.fecha == fecha_corte).delete()
-        else:
-            session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
+        session.query(ProductoChica).filter(ProductoChica.fecha == f_filtro_date).delete()
         session.commit()
 
         nuevas_detectadas = []
@@ -454,6 +449,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
                 nuevas_detectadas.append(nombre_persona)
 
             kwargs = {
+                "fecha": f_filtro_date,
                 "clave": row.get("CLAVE"),
                 "descripcion": desc,
                 "grupo": row.get("GRUPO"),
@@ -464,8 +460,6 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
                 "comision_unitaria": comision_unit,
                 "archivo_origen": archivo_origen,
             }
-            if fecha_corte:
-                kwargs["fecha"] = datetime.strptime(fecha_corte, "%Y-%m-%d").date()
 
             session.add(ProductoChica(**kwargs))
         session.commit()
@@ -482,12 +476,9 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
 def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66, fecha_corte=None, usuario_nombre="sistema"):
     session = get_session()
     f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
-    f_filtro = datetime.strptime(fecha_corte, "%Y-%m-%d").date() if fecha_corte else None
+    f_filtro_date = datetime.strptime(f_filtro_str, "%Y-%m-%d").date()
     
-    if f_filtro:
-        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == f_filtro).first()
-    else:
-        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
+    hoy = session.query(GastoDiario).filter(GastoDiario.fecha == f_filtro_date).first()
 
     if hoy:
         hoy.gasto_cocina = gasto_cocina
@@ -495,13 +486,12 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
         hoy.gasto_vales = gasto_vales
     else:
         kwargs = {
+            "fecha": f_filtro_date,
             "gasto_cocina": gasto_cocina,
             "gasto_compras": gasto_compras,
             "gasto_vales": gasto_vales,
             "nomina_personal_fijo": nomina_personal_fijo,
         }
-        if f_filtro:
-            kwargs["fecha"] = f_filtro
         session.add(GastoDiario(**kwargs))
     session.commit()
 
@@ -525,10 +515,10 @@ def obtener_fechas_disponibles() -> list:
 
 def cargar_ventas_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
-    if fecha_str:
-        query = session.query(CorteVenta).filter(CorteVenta.fecha == fecha_str)
-    else:
-        query = session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date())
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+    
+    query = session.query(CorteVenta).filter(CorteVenta.fecha == f_date)
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
@@ -536,10 +526,10 @@ def cargar_ventas_df(fecha_str: str = None) -> pd.DataFrame:
 
 def cargar_chicas_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
-    if fecha_str:
-        query = session.query(ProductoChica).filter(ProductoChica.fecha == fecha_str)
-    else:
-        query = session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date())
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+    
+    query = session.query(ProductoChica).filter(ProductoChica.fecha == f_date)
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
@@ -547,10 +537,10 @@ def cargar_chicas_df(fecha_str: str = None) -> pd.DataFrame:
 
 def cargar_gastos_hoy(fecha_str: str = None):
     session = get_session()
-    if fecha_str:
-        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == fecha_str).first()
-    else:
-        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+    
+    hoy = session.query(GastoDiario).filter(GastoDiario.fecha == f_date).first()
     session.close()
     return hoy
 
