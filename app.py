@@ -452,7 +452,14 @@ elif opcion == "3. Corte y Nómina Final":
         c7.metric("VIP 30", int(df_res['_v30_cant'].sum()), f"${df_res['_v30_m'].sum():,.2f}")
 
         subtotal = float(df_res['Total a Pagar'].sum())
-        st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
+        total_vales_grupo = float(df_res['Vales'].sum())
+
+        col_sub1, col_sub2 = st.columns(2)
+        with col_sub1:
+            st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
+        with col_sub2:
+            st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_grupo:,.2f}")
+
         return df_editado, subtotal
 
     def procesar_grupo_general(df_subgrupo, nombre_pestana, key_sufijo):
@@ -584,12 +591,18 @@ elif opcion == "3. Corte y Nómina Final":
         tot_prop = float(df_res_general['_propinas_num'].sum())
         tot_com = float(df_editado_gen['Comisiones'].sum())
         sub_g = float(df_editado_gen['Total a Pagar'].sum())
+        total_vales_gen = float(df_editado_gen['Vales'].sum())
 
         col_t1, col_t2, col_t3, col_t4 = st.columns(4)
         col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
         col_t2.metric("Total Propinas", f"${tot_prop:,.2f}")
         col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
         col_t4.metric(f"Subtotal {nombre_pestana}", f"${sub_g:,.2f}")
+
+        col_val1, _ = st.columns([1, 3])
+        with col_val1:
+            st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_gen:,.2f}")
+
         return sub_g
 
     # --- PESTAÑA 1: BAILARINAS Y CHICAS ---
@@ -645,7 +658,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
-    # Cálculos detallados para personal general y bailarinas (incluyendo sus vales)
     nomina_personal_p_total = 0.0
     vales_personal_total = 0.0
     if not empleados_dashboard_df.empty:
@@ -797,7 +809,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_e2:
         st.metric("UTILIDAD ANTES DE COSTOS", f"${utilidad_monto:,.2f}", f"{utilidad_porcentaje:.1f}%")
 
-    # --- NUEVOS RESÚMENES SOLICITADOS (NÓMINA Y VALES POR SEPARADO) ---
     st.markdown("---")
     st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
     
