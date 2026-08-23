@@ -132,12 +132,14 @@ def calcular_comision_gerencia_caja(producto_str):
         return 5.0
     return 0.0
 
-# --- MENÚ LATERAL Y SELECCIÓN DE FECHA (RESTRINGIDO PARA ADMIN) ---
+# --- MENÚ LATERAL Y SELECCIÓN DE FECHA (ADMIN Y CAJERO) ---
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
 
-if st.session_state["rol_actual"].lower() == "admin":
+# Permitimos que tanto admin como cajero puedan buscar históricos o ver otras fechas
+rol_actual_lower = st.session_state["rol_actual"].lower()
+if rol_actual_lower in ["admin", "cajero"]:
     modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
     fecha_activa_obj = None
     if modo_fecha == "🔍 Buscar Corte Histórico":
@@ -163,7 +165,7 @@ opciones_menu = [
     "4. Cierre de Caja Diario (Dashboard)"
 ]
 
-if st.session_state["rol_actual"].lower() == "admin":
+if rol_actual_lower == "admin":
     opciones_menu.append("5. Gestión de Usuarios y Accesos")
 
 opcion = st.sidebar.selectbox("Selecciona una sección", opciones_menu, key="menu_seccion_principal")
