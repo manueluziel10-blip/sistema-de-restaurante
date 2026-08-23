@@ -40,8 +40,14 @@ if not st.session_state["autenticado"]:
             user_data = validar_login(usuario_input, pass_input)
             if user_data:
                 st.session_state["autenticado"] = True
-                st.session_state["usuario_actual"] = user_data.username
-                st.session_state["rol_actual"] = user_data.rol
+                # Manejo seguro por si user_data es diccionario u objeto
+                if isinstance(user_data, dict):
+                    st.session_state["usuario_actual"] = user_data.get("username", "admin")
+                    st.session_state["rol_actual"] = user_data.get("rol", "admin")
+                else:
+                    st.session_state["usuario_actual"] = getattr(user_data, "username", "admin")
+                    st.session_state["rol_actual"] = getattr(user_data, "rol", "admin")
+                
                 st.success("¡Bienvenido!")
                 st.rerun()
             else:
