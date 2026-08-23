@@ -890,9 +890,12 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         ventas_por_cobrar = monto_otros + monto_prop_credito
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
+    
+    # Total de gastos y nómina en efectivo para descontar del efectivo entregado
     total_gastos_nomina_efectivo = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
+    # CÁLCULO DE UTILIDAD ORIGINAL: Ventas Totales con Propinas - (Nómina Personal General + Nómina Chicas + Gasto Cocina)
     utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
