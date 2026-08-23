@@ -821,7 +821,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             comisiones_chica_ind = 0.0
             for _, r in sus_filas.iterrows():
                 desc = str(r['descripcion']).upper()
-                cant = float(r['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
                 
                 if 'PRIVADO ARTISTA' in desc:
                     com = 300.0
@@ -893,18 +893,21 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     total_gastos_nomina_efectivo = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
-    # --- CÁLCULO DE LA NÓMINA DE TODO EL PERSONAL SOLO RESTANDO DESCUENTOS (MULTAS) ---
-    nomina_total_solo_descuentos = 0.0
+    # --- CÁLCULO DE NÓMINA TOTAL DE TODO EL PERSONAL (SOLO RESTANDO DESCUENTOS/MULTAS, SIN VALES NI TRANSFERENCIAS) ---
+    nomina_total_sin_vales_ni_transf = 0.0
     if not empleados_dashboard_df.empty:
         for _, emp in empleados_dashboard_df.iterrows():
             emp_id = emp['id']
-            sueldo = float(emp['sueldo_base'])
-            descuento = float(emp.get('descuento_nomina', 100.0)) if es_chica_o_bailarina(emp['tipo']) else 0.0
+            tipo_str = emp['tipo']
+            sueldo_base = float(emp['sueldo_base'])
+            descuento_emp = float(emp.get('descuento_nomina', 100.0 if es_chica_o_bailarina(tipo_str) else 0.0))
             penalizada = bool(emp.get('penalizada', False))
             
-            # Sumar comisiones si es chica
+            puesto_upper = str(tipo_str).upper()
             comisiones_emp = 0.0
-            if es_chica_o_bailarina(emp['tipo']):
+            propinas_emp = 0.0
+            
+            if es_chica_o_bailarina(tipo_str):
                 sus_f = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
                 for _, r in sus_f.iterrows():
                     desc = str(r['descripcion']).upper()
@@ -914,22 +917,47 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 if penalizada:
                     comisiones_emp /= 2.0
             else:
-                # Comisiones de operativo (si aplica según tu lógica de puestos)
-                puesto_up = str(emp['tipo']).upper()
-                if any(p in puesto_up for p in ["DJ", "ANIMADOR"]):
+                if any(p in puesto_upper for p in ["DJ", "ANIMADOR"]):
+                    porcentaje_propina = 0.0
                     comisiones_emp = chicas_con_descuento_dash * 40.0
-                elif any(p in puesto_up for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    if not chicas_acumuladas.empty:
-                        for _, f_p in chicas_acumuladas.iterrows():
-                            comisiones_emp += float(f_p['cantidad']) * calcular_comision_gerencia_caja(f_p['descripcion'])
-            
-            # Bruto menos únicamente su descuento (multa)
-            bruto_emp = sueldo + comisiones_emp
-            neto_sin_vales = max(0.0, bruto_emp - descuento)
-            nomina_total_solo_descuentos += neto_sin_vales
+                elif "SEGURIDAD" in puesto_upper:
+                    porcentaje_propina = 0.0
+                elif "BARMAN" in puesto_upper:
+                    porcentaje_propina = 10.0
+                elif "AYUDANTE" in puesto_upper:
+                    porcentaje_propina = 5.0
+                elif any(p in puesto_upper for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    porcentaje_propina = 8.0
+                else:
+                    porcentaje_propina = 50.0
+                
+                total_propinaable = 0.0
+                if not ventas_acumuladas.empty and 'idmesero' in ventas_acumuladas.columns and porcentaje_propina > 0.0:
+                    if "MESERO" in puesto_upper and "AYUDANTE" not in puesto_upper and "CAPITÁN" not in puesto_upper and "CAPITAN" not in puesto_upper:
+                        ventas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
+                        if not ventas_emp.empty:
+                            prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                            prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                            prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                            total_propinaable = prop_tarj + prop_efec + prop_vale
+                    else:
+                        prop_tarj = (ventas_acumuladas['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0) * 0.84
+                        prop_efec = ventas_acumuladas['propina_efectivo'].sum() if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
+                        prop_vale = ventas_acumuladas['propina_vales'].sum() if 'propina_vales' in ventas_acumuladas.columns else 0.0
+                        total_propinaable = prop_tarj + prop_efec + prop_vale
+                    propinas_emp = total_propinaable * (porcentaje_propina / 100.0)
 
-    # FORMULA FINAL: Venta Total - Nómina Total (con solo descuentos) - Cocina
-    utilidad_monto = ventas_totales_con_propinas - (nomina_total_solo_descuentos + gasto_cocina)
+                if any(p in puesto_upper for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    if not chicas_acumuladas.empty:
+                        for _, f_prod in chicas_acumuladas.iterrows():
+                            comisiones_emp += float(f_prod['cantidad']) * calcular_comision_gerencia_caja(f_prod['descripcion'])
+
+            bruto = sueldo_base + comisiones_emp + propinas_emp
+            neto_sin_vales_ni_transf = max(0.0, bruto - descuento_emp)
+            nomina_total_sin_vales_ni_transf += neto_sin_vales_ni_transf
+
+    # FORMULA FINAL EXACTA
+    utilidad_monto = ventas_totales_con_propinas - (nomina_total_sin_vales_ni_transf + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
