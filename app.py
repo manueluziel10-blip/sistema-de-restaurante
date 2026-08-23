@@ -44,9 +44,9 @@ def calcular_comision_chica(producto_str):
     if 'PRIVADO ARTISTA' in p:
         return 300.0
     elif 'BOONS ARTISTA' in p:
-        return 1000.0  # <-- PRIMERO BOONS ARTISTA ($1000)
+        return 1000.0
     elif 'BOONS' in p:
-        return 700.0   # <-- LUEGO BOONS GENERAL ($700)
+        return 700.0
     elif 'COPA LADY' in p:
         return 100.0
     elif 'MINI STRONGBOW' in p:
@@ -332,6 +332,9 @@ elif opcion == "3. Corte y Nómina Final":
                         if 'PRIVADO ARTISTA' in desc:
                             vip5_priv_art_cant += cant
                             vip5_priv_art_monto += subtotal_prod
+                        elif 'BOONS ARTISTA' in desc:
+                            boons_cant += cant
+                            boons_monto += subtotal_prod
                         elif 'BOONS' in desc:
                             boons_cant += cant
                             boons_monto += subtotal_prod
@@ -468,6 +471,7 @@ elif opcion == "3. Corte y Nómina Final":
         c6.metric("VIP 15", int(df_res['_v15_cant'].sum()), f"${df_res['_v15_m'].sum():,.2f}")
         c7.metric("VIP 30", int(df_res['_v30_cant'].sum()), f"${df_res['_v30_m'].sum():,.2f}")
 
+        # Subtotal ahora suma estrictamente la columna 'Total a Pagar'
         subtotal = float(df_res['Total a Pagar'].sum())
         total_vales_grupo = float(df_res['Vales'].sum())
         total_descuento_grupo = float(df_res['Descuento'].sum())
@@ -774,7 +778,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 desc = str(r['descripcion']).upper()
                 cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
                 
-                # REGLA ACTUALIZADA TAMBIÉN EN EL DASHBOARD
                 if 'PRIVADO ARTISTA' in desc:
                     com = 300.0
                 elif 'BOONS ARTISTA' in desc:
@@ -1042,7 +1045,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                                 </div>
                                 <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>Tarjeta:</span> <b>${tarjeta_m:,.2f}</b>
-                                    </div>
+                                </div>
                                 <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
                                 </div>
