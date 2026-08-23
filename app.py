@@ -724,13 +724,26 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     nomina_chicas_calc = 0.0
     vales_chicas_total = 0.0
+    conteo_penalizadas = 0
+    conteo_con_sueldo = 0
+    conteo_sin_sueldo = 0
+
     if not empleados_dashboard_df.empty:
         df_chicas_lista = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_chicas_lista.iterrows():
             emp_id = emp['id']
             vales_emp = float(emp.get('vales_nomina', 0.0))
             vales_chicas_total += vales_emp
-            penalizada_chica = bool(emp.get('penalizada', False))  # <-- VERIFICA SI ESTÁ MULTADA/PENALIZADA
+            
+            penalizada_chica = bool(emp.get('penalizada', False))
+            if penalizada_chica:
+                conteo_penalizadas += 1
+            
+            sueldo_chica = float(emp['sueldo_base'])
+            if sueldo_chica > 0.0:
+                conteo_con_sueldo += 1
+            else:
+                conteo_sin_sueldo += 1
             
             sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
             comisiones_chica_ind = 0.0
@@ -741,9 +754,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 comisiones_chica_ind += cant * com
             
             if penalizada_chica:
-                comisiones_chica_ind = comisiones_chica_ind / 2.0  # <-- APLICA LA MITAD DE COMISIONES SI TIENE MULTA
+                comisiones_chica_ind = comisiones_chica_ind / 2.0
 
-            sueldo_chica = float(emp['sueldo_base'])
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
             nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp)
 
@@ -834,6 +846,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_n4:
         st.metric("Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}")
 
+    # --- NUEVA FILA CON CONTEOS DE MULTAS Y SUELDOS DE BAILARINAS ---
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        st.metric("Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}")
+    with col_c2:
+        st.metric("Bailarinas con Sueldo Base", f"{conteo_con_sueldo}")
+    with col_c3:
+        st.metric("Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}")
+
     st.markdown("#### Desglose de Gastos y Nómina")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_p_total},
@@ -886,7 +907,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             ["Nómina Personal General", f"${nomina_personal_p_total:,.2f}"],
             ["Nómina Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}"],
             ["Vales Personal General", f"${vales_personal_total:,.2f}"],
-            ["Vales Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"]
+            ["Vales Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"],
+            ["Bailarinas Penalizadas", f"{conteo_penalizadas}"],
+            ["Bailarinas con Sueldo Base", f"{conteo_con_sueldo}"],
+            ["Bailarinas sin Sueldo", f"{conteo_sin_sueldo}"]
         ]
         t_fin = Table(datos_fin, colWidths=[200, 150])
         t_fin.setStyle(TableStyle([
