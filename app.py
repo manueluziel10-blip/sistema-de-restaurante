@@ -714,8 +714,19 @@ elif opcion == "3. Corte y Nómina Final":
         sub_o = procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
     st.markdown("---")
-    total_general_semana = sub_b + sub_m + sub_s + sub_o
+    
+    # Separación y totales de nómina final
+    total_personal_general_semana = sub_m + sub_s + sub_o
+    total_bailarinas_semana = sub_b
+    total_general_semana = total_personal_general_semana + total_bailarinas_semana
+
     st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
+    
+    col_sep1, col_sep2 = st.columns(2)
+    with col_sep1:
+        st.metric("📋 Total Personal General", f"${total_personal_general_semana:,.2f}")
+    with col_sep2:
+        st.metric("💃 Total Bailarinas / Chicas", f"${total_bailarinas_semana:,.2f}")
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja Diario (Dashboard)":
