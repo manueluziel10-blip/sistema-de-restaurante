@@ -366,9 +366,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "ID": emp_id,
                 "Nombre": nombre, 
                 "Puesto": emp['tipo'],
-                "Total a Pagar": total_pagar,      # <-- COLUMNA 1
-                "Sueldo Base": sueldo_base,        # <-- COLUMNA 2
-                "Vales": vales_emp,                # <-- COLUMNA 3 (NUEVA Y EDITABLE)
+                "Total a Pagar": total_pagar,      # <-- Columna 1
+                "Sueldo Base": sueldo_base,        # <-- Columna 2
+                "Vales": vales_emp,                # <-- Columna 3 (Editable)
                 "Comisiones": extras, 
                 "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
                 "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
@@ -431,7 +431,6 @@ elif opcion == "3. Corte y Nómina Final":
                 fila_modificada = df_res.iloc[int(row_idx)]
                 e_id = int(fila_modificada['ID'])
                 
-                # Rescatar valores actuales o modificados
                 nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
                 puesto_emp = fila_modificada['Puesto']
@@ -520,9 +519,9 @@ elif opcion == "3. Corte y Nómina Final":
                 "ID": emp_id, 
                 "Nombre": nombre, 
                 "Puesto": tipo,
-                "Total a Pagar": total_pagar,   # <-- COLUMNA 1
-                "Sueldo Base": sueldo_base,     # <-- COLUMNA 2
-                "Vales": vales_emp,             # <-- COLUMNA 3 (NUEVA Y EDITABLE)
+                "Total a Pagar": total_pagar,   # <-- Columna 1
+                "Sueldo Base": sueldo_base,     # <-- Columna 2
+                "Vales": vales_emp,             # <-- Columna 3 (Editable)
                 "Propina (%)": propina_str,
                 "Comisiones": comisiones_prod, 
                 "_propinas_num": propinas
@@ -806,7 +805,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
-    # --- FUNCIÓN DE EXPORTACIÓN A PDF ---
     def generar_pdf():
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
