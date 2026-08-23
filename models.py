@@ -226,16 +226,25 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         f_ant = datetime.strptime(fecha_antigua_str, "%Y-%m-%d").date()
         f_nue = datetime.strptime(fecha_nueva_str, "%Y-%m-%d").date()
         
-        # Eliminamos registros previos en la fecha destino para evitar conflictos de llave única
-        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_nue).delete()
-        session.query(GastoDiario).filter(GastoDiario.fecha == f_nue).delete()
+        if f_ant == f_nue:
+            return
+
+        # Eliminamos de forma segura los registros en destino para evitar conflictos de llave única
+        bloqueo_destino = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_nue).first()
+        if bloqueo_destino:
+            session.delete(bloqueo_destino)
+            
+        gasto_destino = session.query(GastoDiario).filter(GastoDiario.fecha == f_nue).first()
+        if gasto_destino:
+            session.delete(gasto_destino)
+            
         session.commit()
 
-        # Actualizamos las fechas en las tablas correspondientes
-        session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue})
-        session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue})
-        session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue})
-        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue})
+        # Actualizamos las fechas con sincronización desactivada para evitar errores en lotes
+        session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue}, synchronize_session=False)
+        session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue}, synchronize_session=False)
+        session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue}, synchronize_session=False)
+        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue}, synchronize_session=False)
         
         session.commit()
     except Exception as e:
