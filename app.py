@@ -44,9 +44,9 @@ def calcular_comision_chica(producto_str):
     if 'PRIVADO ARTISTA' in p:
         return 300.0
     elif 'BOONS ARTISTA' in p:
-        return 1000.0  # <-- ACTUALIZADO A $1000.00
+        return 1000.0  # <-- PRIMERO BOONS ARTISTA ($1000)
     elif 'BOONS' in p:
-        return 700.0
+        return 700.0   # <-- LUEGO BOONS GENERAL ($700)
     elif 'COPA LADY' in p:
         return 100.0
     elif 'MINI STRONGBOW' in p:
@@ -773,7 +773,17 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             for _, r in sus_filas.iterrows():
                 desc = str(r['descripcion']).upper()
                 cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
-                com = 300.0 if 'PRIVADO ARTISTA' in desc else float(r['comision_unitaria'])
+                
+                # REGLA ACTUALIZADA TAMBIÉN EN EL DASHBOARD
+                if 'PRIVADO ARTISTA' in desc:
+                    com = 300.0
+                elif 'BOONS ARTISTA' in desc:
+                    com = 1000.0
+                elif 'BOONS' in desc:
+                    com = 700.0
+                else:
+                    com = float(r['comision_unitaria'])
+                
                 comisiones_chica_ind += cant * com
             
             if penalizada_chica:
@@ -1032,7 +1042,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                                 </div>
                                 <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>Tarjeta:</span> <b>${tarjeta_m:,.2f}</b>
-                                </div>
+                                    </div>
                                 <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
                                 </div>
