@@ -454,10 +454,10 @@ elif opcion == "3. Corte y Nómina Final":
         subtotal = float(df_res['Total a Pagar'].sum())
         total_vales_grupo = float(df_res['Vales'].sum())
 
-        col_sub1, col_sub2 = st.columns(2)
-        with col_sub1:
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
             st.metric(f"Subtotal Nómina {nombre_pestana}", f"${subtotal:,.2f}")
-        with col_sub2:
+        with col_m2:
             st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_grupo:,.2f}")
 
         return df_editado, subtotal
@@ -599,8 +599,8 @@ elif opcion == "3. Corte y Nómina Final":
         col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
         col_t4.metric(f"Subtotal {nombre_pestana}", f"${sub_g:,.2f}")
 
-        col_val1, _ = st.columns([1, 3])
-        with col_val1:
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
             st.metric(f"Total Vales {nombre_pestana}", f"${total_vales_gen:,.2f}")
 
         return sub_g
