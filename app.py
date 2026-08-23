@@ -715,9 +715,81 @@ elif opcion == "3. Corte y Nómina Final":
 
     st.markdown("---")
     
-    # Separación y totales de nómina final
-    total_personal_general_semana = sub_m + sub_s + sub_o
-    total_bailarinas_semana = sub_b
+    # --- CÁLCULO DE NÓMINA REAL DE LA SEMANA (SIN RESTAR VALES NI TRANSFERENCIAS) ---
+    total_bailarinas_semana = 0.0
+    df_chicas_nomina_calc = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
+    if not df_chicas_nomina_calc.empty:
+        for _, emp in df_chicas_nomina_calc.iterrows():
+            emp_id = emp['id']
+            sueldo_base = float(emp['sueldo_base'])
+            descuento_emp = float(emp.get('descuento_nomina', 100.0))
+            penalizada = bool(emp.get('penalizada', False))
+            
+            comisiones_emp = 0.0
+            sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id] if not chicas_totales.empty else pd.DataFrame()
+            for _, r in sus_filas.iterrows():
+                desc = str(r['descripcion']).upper()
+                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
+                com = 300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria'])))
+                comisiones_emp += cant * com
+            if penalizada:
+                comisiones_emp /= 2.0
+                
+            bruto_chica = sueldo_base + comisiones_emp
+            neto_chica = max(0.0, bruto_chica - descuento_emp)
+            total_bailarinas_semana += neto_chica
+
+    total_personal_general_semana = 0.0
+    df_operativo_todos = empleados_df[~empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
+    chicas_con_descuento_count = len(df_chicas_nomina_calc[df_chicas_nomina_calc['descuento_nomina'] > 0.0]) if not df_chicas_nomina_calc.empty else 0
+
+    if not df_operativo_todos.empty:
+        for _, emp in df_operativo_todos.iterrows():
+            emp_id = emp['id']
+            tipo = emp['tipo']
+            sueldo_base = float(emp['sueldo_base'])
+            puesto_upper_check = tipo.upper()
+            
+            comisiones_prod = 0.0
+            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+                porcentaje_propina = 0.0
+                comisiones_prod = chicas_con_descuento_count * 40.0
+            elif "SEGURIDAD" in puesto_upper_check:
+                porcentaje_propina = 0.0
+            elif "BARMAN" in puesto_upper_check:
+                porcentaje_propina = 10.0
+            elif "AYUDANTE" in puesto_upper_check:
+                porcentaje_propina = 5.0
+            elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                porcentaje_propina = 8.0
+            else:
+                porcentaje_propina = 50.0
+
+            propinas = 0.0
+            total_propinaable = 0.0
+            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
+                if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
+                    ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
+                    if not ventas_emp.empty:
+                        prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
+                        prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
+                        prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
+                        total_propinaable = prop_tarj + prop_efec + prop_vale
+                else:
+                    prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
+                    prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+                    prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
+                    total_propinaable = prop_tarj + prop_efec + prop_vale
+                propinas = total_propinaable * (porcentaje_propina / 100.0)
+
+            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                if not chicas_totales.empty:
+                    for _, f_prod in chicas_totales.iterrows():
+                        comisiones_prod += float(f_prod['cantidad']) * calcular_comision_gerencia_caja(f_prod['descripcion'])
+
+            bruto_gen = sueldo_base + propinas + comisiones_prod
+            total_personal_general_semana += bruto_gen
+
     total_general_semana = total_personal_general_semana + total_bailarinas_semana
 
     st.metric("💸 NÓMINA TOTAL GENERAL DE LA SEMANA", f"${total_general_semana:,.2f}")
