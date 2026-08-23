@@ -1,5 +1,5 @@
 """
-Modelos SQLAlchemy + funciones de acceso à datos con soporte histórico por fecha, roles y bloqueos.
+Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico por fecha, roles y bloqueos.
 """
 
 from sqlalchemy import (
@@ -229,7 +229,6 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         if f_ant == f_nue:
             return
 
-        # Eliminamos de forma segura los registros en destino para evitar conflictos de llave única
         bloqueo_destino = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_nue).first()
         if bloqueo_destino:
             session.delete(bloqueo_destino)
@@ -240,7 +239,6 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
             
         session.commit()
 
-        # Actualizamos las fechas con sincronización desactivada para evitar errores en lotes
         session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue}, synchronize_session=False)
         session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue}, synchronize_session=False)
         session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue}, synchronize_session=False)
@@ -583,3 +581,12 @@ def reiniciar_base_de_datos():
         raise e
     finally:
         session.close()
+
+
+# --- CREACIÓN AUTOMÁTICA DE TABLAS FALTANTES ---
+try:
+    _session_auto = get_session()
+    Base.metadata.create_all(_session_auto.bind)
+    _session_auto.close()
+except Exception:
+    pass
