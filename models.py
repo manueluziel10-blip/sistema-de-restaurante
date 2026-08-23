@@ -1,5 +1,5 @@
 """
-Modelos SQLAlchemy + funciones de acceso a datos.
+Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico por fecha.
 """
 
 from sqlalchemy import (
@@ -8,6 +8,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
+from datetime import datetime
 
 from database import get_session
 
@@ -29,7 +30,7 @@ class Empleado(Base):
     sueldo_base = Column(Numeric(10, 2), nullable=False)
     vales_nomina = Column(Numeric(10, 2), default=0.0)
     descuento_nomina = Column(Numeric(10, 2), default=100.0)
-    transferencia_nomina = Column(Numeric(10, 2), default=0.0)  # <-- NUEVA COLUMNA DE TRANSFERENCIA
+    transferencia_nomina = Column(Numeric(10, 2), default=0.0)
     penalizada = Column(Boolean, default=False)
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
@@ -91,7 +92,6 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
-    
     try:
         inspector = inspect(session.bind)
         columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
@@ -113,24 +113,11 @@ def cargar_empleados_df() -> pd.DataFrame:
     query = session.query(Empleado).order_by(Empleado.id)
     df = pd.read_sql(query.statement, session.bind)
     if not df.empty:
-        if 'sueldo_base' in df.columns:
-            df['sueldo_base'] = df['sueldo_base'].astype(float)
-        if 'vales_nomina' in df.columns:
-            df['vales_nomina'] = df['vales_nomina'].astype(float)
-        else:
-            df['vales_nomina'] = 0.0
-        if 'descuento_nomina' in df.columns:
-            df['descuento_nomina'] = df['descuento_nomina'].astype(float)
-        else:
-            df['descuento_nomina'] = 100.0
-        if 'transferencia_nomina' in df.columns:
-            df['transferencia_nomina'] = df['transferencia_nomina'].astype(float)
-        else:
-            df['transferencia_nomina'] = 0.0
-        if 'penalizada' in df.columns:
-            df['penalizada'] = df['penalizada'].astype(bool)
-        else:
-            df['penalizada'] = False
+        df['sueldo_base'] = df['sueldo_base'].astype(float)
+        df['vales_nomina'] = df['vales_nomina'].astype(float) if 'vales_nomina' in df.columns else 0.0
+        df['descuento_nomina'] = df['descuento_nomina'].astype(float) if 'descuento_nomina' in df.columns else 100.0
+        df['transferencia_nomina'] = df['transferencia_nomina'].astype(float) if 'transferencia_nomina' in df.columns else 0.0
+        df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
     session.close()
     return df
 
@@ -174,10 +161,15 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     session.close()
 
 
-def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str):
+def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str, fecha_corte=None):
     session = get_session()
     try:
-        session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
+        f_filtro = fecha_corte if fecha_corte else func.current_date()
+        
+        if fecha_corte:
+            session.query(CorteVenta).filter(CorteVenta.fecha == fecha_corte).delete()
+        else:
+            session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date()).delete()
         session.commit()
 
         tipo_por_defecto = "Mesero (Comisiones)"
@@ -188,7 +180,6 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
         for _, row in df_completo.iterrows():
             nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
-
             emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero).first()
             
             if not emp:
@@ -209,18 +200,22 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                     emp.tipo = tipo_por_defecto
                     session.commit()
 
-            session.add(CorteVenta(
-                idmesero=emp.id,
-                importe=row.get("importe_x", row.get("importe", 0)),
-                efectivo=row.get("efectivo", 0),
-                propina_efectivo=row.get("propinaefectivo", 0),
-                tarjeta=row.get("tarjeta", 0),
-                propina_tarjeta=row.get("propinatarjeta", 0),
-                vales=row.get("vales", 0),
-                propina_vales=row.get("propinavales", 0),
-                otros=row.get("otros", 0),
-                archivo_origen=archivo_origen,
-            ))
+            kwargs = {
+                "idmesero": emp.id,
+                "importe": row.get("importe_x", row.get("importe", 0)),
+                "efectivo": row.get("efectivo", 0),
+                "propina_efectivo": row.get("propinaefectivo", 0),
+                "tarjeta": row.get("tarjeta", 0),
+                "propina_tarjeta": row.get("propinatarjeta", 0),
+                "vales": row.get("vales", 0),
+                "propina_vales": row.get("propinavales", 0),
+                "otros": row.get("otros", 0),
+                "archivo_origen": archivo_origen,
+            }
+            if fecha_corte:
+                kwargs["fecha"] = datetime.strptime(fecha_corte, "%Y-%m-%d").date()
+
+            session.add(CorteVenta(**kwargs))
         session.commit()
     except Exception as e:
         session.rollback()
@@ -249,17 +244,19 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
             session.commit()
             session.refresh(emp)
             creado = True
-        emp_id = emp.id
-        return emp_id, creado
+        return emp.id, creado
     finally:
         if not existing_session:
             session.close()
 
 
-def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str):
+def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str, fecha_corte=None):
     session = get_session()
     try:
-        session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
+        if fecha_corte:
+            session.query(ProductoChica).filter(ProductoChica.fecha == fecha_corte).delete()
+        else:
+            session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date()).delete()
         session.commit()
 
         nuevas_detectadas = []
@@ -279,17 +276,21 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             if creado:
                 nuevas_detectadas.append(nombre_persona)
 
-            session.add(ProductoChica(
-                clave=row.get("CLAVE"),
-                descripcion=desc,
-                grupo=row.get("GRUPO"),
-                precio=row.get("PRECIO"),
-                cantidad=cantidad,
-                empleado_nombre=nombre_persona,
-                empleado_id=emp_id,
-                comision_unitaria=comision_unit,
-                archivo_origen=archivo_origen,
-            ))
+            kwargs = {
+                "clave": row.get("CLAVE"),
+                "descripcion": desc,
+                "grupo": row.get("GRUPO"),
+                "precio": row.get("PRECIO"),
+                "cantidad": cantidad,
+                "empleado_nombre": nombre_persona,
+                "empleado_id": emp_id,
+                "comision_unitaria": comision_unit,
+                "archivo_origen": archivo_origen,
+            }
+            if fecha_corte:
+                kwargs["fecha"] = datetime.strptime(fecha_corte, "%Y-%m-%d").date()
+
+            session.add(ProductoChica(**kwargs))
         session.commit()
         return nuevas_detectadas
     except Exception as e:
@@ -299,43 +300,77 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
         session.close()
 
 
-def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66):
+def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66, fecha_corte=None):
     session = get_session()
-    hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
+    f_filtro = datetime.strptime(fecha_corte, "%Y-%m-%d").date() if fecha_corte else None
+    
+    if f_filtro:
+        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == f_filtro).first()
+    else:
+        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
+
     if hoy:
         hoy.gasto_cocina = gasto_cocina
         hoy.gasto_compras = gasto_compras
         hoy.gasto_vales = gasto_vales
     else:
-        session.add(GastoDiario(
-            gasto_cocina=gasto_cocina,
-            gasto_compras=gasto_compras,
-            gasto_vales=gasto_vales,
-            nomina_personal_fijo=nomina_personal_fijo,
-        ))
+        kwargs = {
+            "gasto_cocina": gasto_cocina,
+            "gasto_compras": gasto_compras,
+            "gasto_vales": gasto_vales,
+            "nomina_personal_fijo": nomina_personal_fijo,
+        }
+        if f_filtro:
+            kwargs["fecha"] = f_filtro
+        session.add(GastoDiario(**kwargs))
     session.commit()
     session.close()
 
 
-def cargar_ventas_df() -> pd.DataFrame:
+# --- FUNCIONES DE CARGA Y CONSULTA HISTÓRICA ---
+
+def obtener_fechas_disponibles() -> list:
     session = get_session()
-    query = session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date())
+    try:
+        fechas_v = session.query(CorteVenta.fecha).distinct().all()
+        fechas_c = session.query(ProductoChica.fecha).distinct().all()
+        fechas_g = session.query(GastoDiario.fecha).distinct().all()
+        
+        todas = set([f[0] for f in fechas_v + fechas_c + fechas_g if f[0] is not None])
+        ordenadas = sorted(list(todas), reverse=True)
+        return [f.strftime('%Y-%m-%d') for f in ordenadas]
+    finally:
+        session.close()
+
+
+def cargar_ventas_df(fecha_str: str = None) -> pd.DataFrame:
+    session = get_session()
+    if fecha_str:
+        query = session.query(CorteVenta).filter(CorteVenta.fecha == fecha_str)
+    else:
+        query = session.query(CorteVenta).filter(CorteVenta.fecha == func.current_date())
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
 
 
-def cargar_chicas_df() -> pd.DataFrame:
+def cargar_chicas_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
-    query = session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date())
+    if fecha_str:
+        query = session.query(ProductoChica).filter(ProductoChica.fecha == fecha_str)
+    else:
+        query = session.query(ProductoChica).filter(ProductoChica.fecha == func.current_date())
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
 
 
-def cargar_gastos_hoy():
+def cargar_gastos_hoy(fecha_str: str = None):
     session = get_session()
-    hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
+    if fecha_str:
+        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == fecha_str).first()
+    else:
+        hoy = session.query(GastoDiario).filter(GastoDiario.fecha == func.current_date()).first()
     session.close()
     return hoy
 
