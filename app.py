@@ -1025,36 +1025,81 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     utilidad_monto = ventas_totales_con_propinas - (nomina_total_general_dash + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
+    # =========================================================================
+    # MEJORA VISUAL: TARJETAS HTML PARA VENTAS Y FLUJO PRINCIPAL
+    # =========================================================================
+    st.markdown("#### 💰 Resumen de Ventas y Efectivo")
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
-    with col_d1:
-        st.metric("VENTAS TOTALES", f"${ventas_totales_con_propinas:,.2f}")
-    with col_d2:
-        st.metric("VENTAS EFECTIVO", f"${efectivo_ventas:,.2f}")
-    with col_d3:
-        st.metric("VENTAS TERMINALES", f"${tarjeta_ventas:,.2f}")
-    with col_d4:
-        st.metric("VENTAS TRANSFERENCIAS", f"${transferencia_ventas:,.2f}")
-    with col_d5:
-        st.metric("VENTAS POR COBRAR", f"${ventas_por_cobrar:,.2f}")
+    
+    ventas_cards = [
+        ("VENTAS TOTALES", ventas_totales_con_propinas),
+        ("VENTAS EFECTIVO", efectivo_ventas),
+        ("VENTAS TERMINALES", tarjeta_ventas),
+        ("VENTAS TRANSFERENCIAS", transferencia_ventas),
+        ("VENTAS POR COBRAR", ventas_por_cobrar)
+    ]
+    
+    cols = [col_d1, col_d2, col_d3, col_d4, col_d5]
+    for idx, (titulo, valor) in enumerate(ventas_cards):
+        with cols[idx]:
+            st.markdown(
+                f"""
+                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{titulo}</div>
+                    <div style="color: #FFFFFF; font-size: 18px; font-weight: bold; margin-top: 6px;">${valor:,.2f}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # TARJETAS DE EFECTIVO ENTREGADO Y UTILIDAD
     col_e1, col_e2 = st.columns(2)
     with col_e1:
-        st.metric("EFECTIVO ENTREGADO", f"${efectivo_entregado:,.2f}")
+        st.markdown(
+            f"""
+            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #00E676; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">EFECTIVO ENTREGADO</div>
+                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${efectivo_entregado:,.2f}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     with col_e2:
-        st.metric("UTILIDAD ANTES DE COSTOS", f"${utilidad_monto:,.2f}", f"{utilidad_porcentaje:.1f}%")
+        st.markdown(
+            f"""
+            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #29B6F6; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">UTILIDAD ANTES DE COSTOS ({utilidad_porcentaje:.1f}%)</div>
+                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${utilidad_monto:,.2f}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.markdown("---")
     st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
     
     col_n1, col_n2, col_n3, col_n4 = st.columns(4)
-    with col_n1:
-        st.metric("Nómina - Personal General", f"${nomina_personal_p_total:,.2f}")
-    with col_n2:
-        st.metric("Nómina - Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}")
-    with col_n3:
-        st.metric("Vales - Personal General", f"${vales_personal_total:,.2f}")
-    with col_n4:
-        st.metric("Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}")
+    nomina_cards = [
+        ("Nómina - Personal General", nomina_personal_p_total),
+        ("Nómina - Bailarinas / Chicas", nomina_chicas_calc),
+        ("Vales - Personal General", vales_personal_total),
+        ("Vales - Bailarinas / Chicas", vales_chicas_total)
+    ]
+    
+    cols_n = [col_n1, col_n2, col_n3, col_n4]
+    for idx, (titulo, valor) in enumerate(nomina_cards):
+        with cols_n[idx]:
+            st.markdown(
+                f"""
+                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937;">
+                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase;">{titulo}</div>
+                    <div style="color: #FFFFFF; font-size: 20px; font-weight: bold; margin-top: 5px;">${valor:,.2f}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
