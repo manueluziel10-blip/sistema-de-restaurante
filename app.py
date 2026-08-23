@@ -137,7 +137,6 @@ st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
 
-# Permitimos que tanto admin como cajero puedan buscar históricos o ver otras fechas
 rol_actual_lower = st.session_state["rol_actual"].lower()
 if rol_actual_lower in ["admin", "cajero"]:
     modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
@@ -155,7 +154,6 @@ else:
     fecha_activa_obj = datetime.now().date()
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
 
-# Aseguramos fecha limpia en formato string para todas las consultas
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
 
 opciones_menu = [
