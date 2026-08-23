@@ -511,7 +511,6 @@ elif opcion == "3. Corte y Nómina Final":
             st.info(f"No hay registros en {nombre_pestana}.")
             return 0.0
 
-        # Contar cuántas chicas/bailarinas tienen descuento aplicado (> 0.0)
         chicas_con_descuento_count = 0
         if not empleados_df.empty:
             df_chicas_todas = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)]
@@ -534,7 +533,7 @@ elif opcion == "3. Corte y Nómina Final":
             comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
-                comisiones_prod = chicas_con_descuento_count * 40.0  # $40 por cada chica con descuento activo
+                comisiones_prod = chicas_con_descuento_count * 40.0
             elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
@@ -727,7 +726,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
-    # Contar cuántas chicas tienen descuento aplicado para el cálculo del DJ/Animador en el dashboard
     chicas_con_descuento_dash = 0
     if not empleados_dashboard_df.empty:
         df_chicas_dash = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
@@ -840,7 +838,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 comisiones_chica_ind = comisiones_chica_ind / 2.0
 
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
-            nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp - transf_emp - descuento_emp)
+            # CÁLCULO DE NÓMINA DE CHICAS EXCLUYENDO VALES Y TRANSFERENCIAS (SOLO REBAJANDO DESCUENTO)
+            nomina_chicas_calc += max(0.0, total_bruto_chica - descuento_emp)
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     gasto_previo = cargar_gastos_hoy()
