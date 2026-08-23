@@ -371,7 +371,6 @@ elif opcion == "3. Corte y Nómina Final":
                 vip30_monto /= 2.0
 
             total_bruto = sueldo_base + extras
-            # PERMITIR NEGATIVOS QUITANDO max(0.0, ...)
             total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp
             
             res_grupo.append({
@@ -406,15 +405,14 @@ elif opcion == "3. Corte y Nómina Final":
         altura_tabla = min(max(len(df_res) * 45 + 40, 150), 900)
 
         def resaltar_filas(row):
-            estilos = ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
-            return estilos
+            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
 
         def pintar_negativos(val):
             if isinstance(val, (int, float)) and val < 0:
                 return 'color: #FF5252; font-weight: bold;'
             return ''
 
-        df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1).applymap(
+        df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1).map(
             pintar_negativos, subset=['Total a Pagar']
         )
 
@@ -578,7 +576,6 @@ elif opcion == "3. Corte y Nómina Final":
                         comisiones_prod += cant * com_unit
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            # PERMITIR NEGATIVOS QUITANDO max(0.0, ...)
             total_pagar = total_bruto - vales_emp - transf_emp
             propina_str = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
 
@@ -609,7 +606,7 @@ elif opcion == "3. Corte y Nómina Final":
                 return 'color: #FF5252; font-weight: bold;'
             return ''
 
-        df_estilizado_gen = df_res_general[cols_mostrar_gen].style.apply(resaltar_filas_gen, axis=1).applymap(
+        df_estilizado_gen = df_res_general[cols_mostrar_gen].style.apply(resaltar_filas_gen, axis=1).map(
             pintar_negativos_gen, subset=['Total a Pagar']
         )
         
