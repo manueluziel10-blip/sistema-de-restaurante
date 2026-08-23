@@ -127,20 +127,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         if st.button("Procesar y Guardar Comisiones del Día", key="btn_guardar_chicas"):
             if len(df_c.columns) >= 5:
                 df_c.columns = ['CLAVE', 'DESCRIPCION', 'GRUPO', 'PRECIO', 'CANTIDAD'] + list(df_c.columns[5:])
-                
-                # Filtrar estrictamente filas que contengan '>' y que el nombre antes del '>' no sea un producto genérico
-                productos_invalidos = ["BOONS", "COPA", "VIP", "STRONGBOW", "PRIVADO"]
-                
-                def es_fila_valida_bailarina(desc):
-                    d = str(desc).strip()
-                    if '>' in d:
-                        nombre_extraido = d.split('>', 1)[0].strip().upper()
-                        if any(inv in nombre_extraido for inv in productos_invalidos):
-                            return False
-                        return True
-                    return False
-
-                filas_chicas = df_c[df_c['DESCRIPCION'].apply(es_fila_valida_bailarina)].copy()
+                filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
 
                 nuevas_detectadas = guardar_corte_chicas(
                     filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name
