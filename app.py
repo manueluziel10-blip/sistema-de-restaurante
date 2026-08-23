@@ -821,7 +821,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             comisiones_chica_ind = 0.0
             for _, r in sus_filas.iterrows():
                 desc = str(r['descripcion']).upper()
-                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
+                cant = float(r['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
                 
                 if 'PRIVADO ARTISTA' in desc:
                     com = 300.0
@@ -890,13 +890,46 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         ventas_por_cobrar = monto_otros + monto_prop_credito
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-    
-    # Total de gastos y nómina en efectivo para descontar del efectivo entregado
     total_gastos_nomina_efectivo = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
-    # CÁLCULO DE UTILIDAD ORIGINAL: Ventas Totales con Propinas - (Nómina Personal General + Nómina Chicas + Gasto Cocina)
-    utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
+    # --- CÁLCULO DE LA NÓMINA DE TODO EL PERSONAL SOLO RESTANDO DESCUENTOS (MULTAS) ---
+    nomina_total_solo_descuentos = 0.0
+    if not empleados_dashboard_df.empty:
+        for _, emp in empleados_dashboard_df.iterrows():
+            emp_id = emp['id']
+            sueldo = float(emp['sueldo_base'])
+            descuento = float(emp.get('descuento_nomina', 100.0)) if es_chica_o_bailarina(emp['tipo']) else 0.0
+            penalizada = bool(emp.get('penalizada', False))
+            
+            # Sumar comisiones si es chica
+            comisiones_emp = 0.0
+            if es_chica_o_bailarina(emp['tipo']):
+                sus_f = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
+                for _, r in sus_f.iterrows():
+                    desc = str(r['descripcion']).upper()
+                    cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
+                    com = 300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria'])))
+                    comisiones_emp += cant * com
+                if penalizada:
+                    comisiones_emp /= 2.0
+            else:
+                # Comisiones de operativo (si aplica según tu lógica de puestos)
+                puesto_up = str(emp['tipo']).upper()
+                if any(p in puesto_up for p in ["DJ", "ANIMADOR"]):
+                    comisiones_emp = chicas_con_descuento_dash * 40.0
+                elif any(p in puesto_up for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    if not chicas_acumuladas.empty:
+                        for _, f_p in chicas_acumuladas.iterrows():
+                            comisiones_emp += float(f_p['cantidad']) * calcular_comision_gerencia_caja(f_p['descripcion'])
+            
+            # Bruto menos únicamente su descuento (multa)
+            bruto_emp = sueldo + comisiones_emp
+            neto_sin_vales = max(0.0, bruto_emp - descuento)
+            nomina_total_solo_descuentos += neto_sin_vales
+
+    # FORMULA FINAL: Venta Total - Nómina Total (con solo descuentos) - Cocina
+    utilidad_monto = ventas_totales_con_propinas - (nomina_total_solo_descuentos + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
