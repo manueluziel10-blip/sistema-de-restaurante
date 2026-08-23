@@ -798,3 +798,44 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         mime="application/pdf",
         use_container_width=True
     )
+
+    st.markdown("#### 👥 Resumen de Ventas por Mesero")
+    if not resumen_meseros.empty:
+        num_columnas = 3
+        for i in range(0, len(resumen_meseros), num_columnas):
+            cols = st.columns(num_columnas)
+            for j in range(num_columnas):
+                if i + j < len(resumen_meseros):
+                    row = resumen_meseros.iloc[i + j]
+                    nombre_mesero = row['nombre']
+                    importe_total = row['importe_total']
+                    efectivo_m = row['efectivo'] + row['propina_efectivo']
+                    tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
+                    transferencia_m = row['vales'] + row['propina_vales']
+                    cobrar_m = row['otros'] + row['propinacredito']
+                    
+                    with cols[j]:
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #141D26; padding: 16px; border-radius: 10px; border: 1px solid #1A2634; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">MESERO: {nombre_mesero}</div>
+                                <div style="color: #FFFFFF; font-size: 22px; font-weight: bold; margin: 6px 0 10px 0;">${importe_total:,.2f}</div>
+                                <hr style="border: none; border-top: 1px solid #1F2937; margin: 8px 0;">
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Efectivo:</span> <b>${efectivo_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Tarjeta:</span> <b>${tarjeta_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between;">
+                                    <span>Por Cobrar:</span> <b>${cobrar_m:,.2f}</b>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+    else:
+        st.info("No hay registros de ventas de meseros disponibles para mostrar en el resumen de esta fecha.")
