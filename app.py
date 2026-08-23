@@ -1140,74 +1140,145 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     def generar_pdf():
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            rightMargin=25, 
+            leftMargin=25, 
+            topMargin=25, 
+            bottomMargin=25
+        )
         elementos = []
         
         styles = getSampleStyleSheet()
+        
+        color_acento = colors.HexColor("#1A2634")
+        color_texto = colors.HexColor("#334155")
+        
         titulo_style = ParagraphStyle(
             'TituloReporte',
             parent=styles['Heading1'],
-            fontSize=16,
-            textColor=colors.HexColor("#1A2634"),
-            spaceAfter=15,
-            alignment=1
+            fontSize=14,
+            textColor=color_acento,
+            spaceAfter=4,
+            alignment=1,
+            fontName='Helvetica-Bold'
         )
+        
         sub_style = ParagraphStyle(
             'SubTituloReporte',
             parent=styles['Heading2'],
-            fontSize=12,
-            textColor=colors.HexColor("#334155"),
-            spaceBefore=12,
-            spaceAfter=8
+            fontSize=10,
+            textColor=color_acento,
+            spaceBefore=8,
+            spaceAfter=3,
+            fontName='Helvetica-Bold'
         )
-        normal_style = styles['Normal']
+        
+        normal_style = ParagraphStyle(
+            'TextoNormal',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=color_texto
+        )
 
-        elementos.append(Paragraph("REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
+        elementos.append(Paragraph("ZULLYS MENS CLUB - REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
         elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
-        elementos.append(Spacer(1, 10))
+        elementos.append(Spacer(1, 6))
 
-        elementos.append(Paragraph("1. Resumen Financiero", sub_style))
-        datos_fin = [
+        # 1. Resumen de Ventas y Flujo
+        elementos.append(Paragraph("1. Resumen de Ventas y Flujo Principal", sub_style))
+        datos_ventas = [
             ["Concepto", "Monto"],
             ["Ventas Totales", f"${ventas_totales_con_propinas:,.2f}"],
             ["Ventas Efectivo", f"${efectivo_ventas:,.2f}"],
             ["Ventas Terminales", f"${tarjeta_ventas:,.2f}"],
             ["Ventas Transferencias", f"${transferencia_ventas:,.2f}"],
             ["Ventas por Cobrar", f"${ventas_por_cobrar:,.2f}"],
-            ["Efectivo Entregado", f"${efectivo_entregado:,.2f}"],
-            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f}"],
-            ["Nómina Personal General", f"${nomina_personal_p_total:,.2f}"],
-            ["Nómina Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}"],
-            ["Vales Personal General", f"${vales_personal_total:,.2f}"],
-            ["Vales Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"],
-            ["Bailarinas Penalizadas", f"{conteo_penalizadas}"],
-            ["Bailarinas con Sueldo Base", f"{conteo_con_sueldo}"],
-            ["Bailarinas sin Sueldo", f"{conteo_sin_sueldo}"]
+            ["Efectivo Entregado a Caja", f"${efectivo_entregado:,.2f}"],
+            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f} ({utilidad_porcentaje:.1f}%)"]
         ]
-        t_fin = Table(datos_fin, colWidths=[200, 150])
-        t_fin.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (1, 0), colors.HexColor("#1A2634")),
+        t_ventas = Table(datos_ventas, colWidths=[270, 270])
+        t_ventas.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), color_acento),
             ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
         ]))
-        elementos.append(t_fin)
-        elementos.append(Spacer(1, 10))
+        elementos.append(t_ventas)
+        elementos.append(Spacer(1, 6))
 
-        elementos.append(Paragraph("2. Desglose de Gastos y Nómina en Efectivo", sub_style))
+        # 2. Resumen Detallado de Nómina y Vales por Grupo
+        elementos.append(Paragraph("2. Resumen Detallado de Nómina y Vales por Grupo", sub_style))
+        datos_nomina = [
+            ["Concepto", "Monto / Conteo"],
+            ["Nómina - Personal General", f"${nomina_personal_p_total:,.2f}"],
+            ["Nómina - Bailarinas / Chicas", f"${nomina_chicas_calc:,.2f}"],
+            ["Vales - Personal General", f"${vales_personal_total:,.2f}"],
+            ["Vales - Bailarinas / Chicas", f"${vales_chicas_total:,.2f}"],
+            ["Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}"],
+            ["Bailarinas con Sueldo Base", f"{conteo_con_sueldo}"],
+            ["Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}"]
+        ]
+        t_nom = Table(datos_nomina, colWidths=[270, 270])
+        t_nom.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), color_acento),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ]))
+        elementos.append(t_nom)
+        elementos.append(Spacer(1, 6))
+
+        # 3. Desglose de Gastos y Nómina en Efectivo
+        elementos.append(Paragraph("3. Desglose de Gastos y Nómina en Efectivo", sub_style))
         datos_gastos = [["Concepto", "Monto"]] + [[row["Concepto"], f"${row['Monto']:,.2f}"] for _, row in tabla_gastos.iterrows()]
-        t_gas = Table(datos_gastos, colWidths=[250, 150])
+        t_gas = Table(datos_gastos, colWidths=[270, 270])
         t_gas.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (1, 0), colors.HexColor("#1A2634")),
+            ('BACKGROUND', (0, 0), (1, 0), color_acento),
             ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
         ]))
         elementos.append(t_gas)
-        elementos.append(Spacer(1, 10))
+        elementos.append(Spacer(1, 6))
+
+        # 4. Resumen de Ventas por Mesero
+        if not ventas_acumuladas.empty and not empleados_df.empty:
+            elementos.append(Paragraph("4. Resumen de Ventas por Mesero", sub_style))
+            datos_meseros = [["Mesero", "Efectivo", "Tarjeta", "Transf.", "Por Cobrar", "Total"]]
+            
+            for _, row in resumen_meseros.iterrows():
+                datos_meseros.append([
+                    str(row['nombre']),
+                    f"${row['efectivo'] + row['propina_efectivo']:,.2f}",
+                    f"${row['tarjeta'] + row['propina_tarjeta']:,.2f}",
+                    f"${row['vales'] + row['propina_vales']:,.2f}",
+                    f"${row['otros'] + row['propinacredito']:,.2f}",
+                    f"${row['importe_total']:,.2f}"
+                ])
+            
+            t_mes = Table(datos_meseros, colWidths=[110, 85, 85, 85, 85, 90])
+            t_mes.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), color_acento),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ]))
+            elementos.append(t_mes)
 
         doc.build(elementos)
         buffer.seek(0)
