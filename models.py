@@ -28,7 +28,7 @@ class Empleado(Base):
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
     vales_nomina = Column(Numeric(10, 2), default=0.0)
-    penalizada = Column(Boolean, default=False)  # <-- NUEVO CAMPO PARA GUARDAR LA PENALIZACIÓN
+    penalizada = Column(Boolean, default=False)
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
 
@@ -90,6 +90,7 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
     
+    # Verificar y agregar columnas faltantes de manera automática en SQLite/PostgreSQL
     try:
         inspector = inspect(session.bind)
         columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
@@ -100,7 +101,7 @@ def cargar_empleados_df() -> pd.DataFrame:
             session.execute(db_text("ALTER TABLE empleados ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
             session.commit()
     except Exception:
-        pass
+        session.rollback()
 
     query = session.query(Empleado).order_by(Empleado.id)
     df = pd.read_sql(query.statement, session.bind)
