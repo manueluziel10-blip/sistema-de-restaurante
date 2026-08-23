@@ -765,18 +765,18 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             propinas = 0.0
             total_propinaable = 0.0
 
-            if not ventas_acumuladas.empty and 'idmesero' in ventas_acumuladas.columns and porcentaje_propina > 0.0:
+            if not ventas_totales.empty and 'idmesero' in ventas_totales.columns and porcentaje_propina > 0.0:
                 if "MESERO" in puesto_upper_check and "AYUDANTE" not in puesto_upper_check and "CAPITÁN" not in puesto_upper_check and "CAPITAN" not in puesto_upper_check:
-                    ventas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
+                    ventas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
                     if not ventas_emp.empty:
                         prop_tarj = (ventas_emp['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_emp.columns else 0.0) * 0.84
                         prop_efec = ventas_emp['propina_efectivo'].sum() if 'propina_efectivo' in ventas_emp.columns else 0.0
                         prop_vale = ventas_emp['propina_vales'].sum() if 'propina_vales' in ventas_emp.columns else 0.0
                         total_propinaable = prop_tarj + prop_efec + prop_vale
                 else:
-                    prop_tarj = (ventas_acumuladas['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0) * 0.84
-                    prop_efec = ventas_acumuladas['propina_efectivo'].sum() if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
-                    prop_vale = ventas_acumuladas['propina_vales'].sum() if 'propina_vales' in ventas_acumuladas.columns else 0.0
+                    prop_tarj = (ventas_totales['propina_tarjeta'].sum() if 'propina_tarjeta' in ventas_totales.columns else 0.0) * 0.84
+                    prop_efec = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+                    prop_vale = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
                     total_propinaable = prop_tarj + prop_efec + prop_vale
 
                 propinas = total_propinaable * (porcentaje_propina / 100.0)
@@ -838,8 +838,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 comisiones_chica_ind = comisiones_chica_ind / 2.0
 
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
-            # CÁLCULO DE NÓMINA DE CHICAS EXCLUYENDO VALES Y TRANSFERENCIAS (SOLO REBAJANDO DESCUENTO)
-            nomina_chicas_calc += max(0.0, total_bruto_chica - descuento_emp)
+            nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp - transf_emp - descuento_emp)
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     gasto_previo = cargar_gastos_hoy()
@@ -891,8 +890,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         ventas_por_cobrar = monto_otros + monto_prop_credito
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-    total_gastos_nomina = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
-    efectivo_entregado = efectivo_ventas - total_gastos_nomina
+    
+    # CÁLCULO DE GASTOS Y NÓMINA EN EFECTIVO (RESTANDO VALES, TRANSFERENCIAS Y DESCUENTOS)
+    total_gastos_nomina_efectivo = nomina_personal_p_total + nomina_chicas_calc + gasto_cocina + gasto_compras + gasto_vales
+    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
     utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
@@ -936,14 +937,14 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     with col_c3:
         st.metric("Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}")
 
-    st.markdown("#### Desglose de Gastos y Nómina")
+    st.markdown("#### Desglose de Gastos y Nómina en Efectivo")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_p_total},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
-        {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina}
+        {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
@@ -1006,7 +1007,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos.append(t_fin)
         elementos.append(Spacer(1, 10))
 
-        elementos.append(Paragraph("2. Desglose de Gastos y Nómina", sub_style))
+        elementos.append(Paragraph("2. Desglose de Gastos y Nómina en Efectivo", sub_style))
         datos_gastos = [["Concepto", "Monto"]] + [[row["Concepto"], f"${row['Monto']:,.2f}"] for _, row in tabla_gastos.iterrows()]
         t_gas = Table(datos_gastos, colWidths=[250, 150])
         t_gas.setStyle(TableStyle([
