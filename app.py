@@ -19,6 +19,24 @@ from models import (
 st.set_page_config(layout="wide")
 st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 
+# --- ESTILOS CSS GLOBALES PARA TABLAS Y EDITORES OSCUROS ---
+st.markdown("""
+    <style>
+        /* Contenedores de tablas y editores */
+        [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+            background-color: #141D26 !important;
+            border-radius: 10px;
+            border: 1px solid #1F2937 !important;
+            padding: 5px;
+        }
+        /* Encabezados de tablas */
+        th {
+            background-color: #1A2634 !important;
+            color: #FFFFFF !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- LISTA OFICIAL DE PUESTOS Y SUELDOS BASE ---
 PUESTOS_CATALOGO = {
     "Chicas / Bailarinas (Comisiones)": 300.0,
@@ -405,7 +423,7 @@ elif opcion == "3. Corte y Nómina Final":
         altura_tabla = min(max(len(df_res) * 45 + 40, 150), 900)
 
         def resaltar_filas(row):
-            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+            return ['background-color: #1A2634; color: #FFFFFF;' if row.name % 2 == 0 else 'background-color: #141D26; color: #FFFFFF;'] * len(row)
 
         def pintar_negativos(val):
             if isinstance(val, (int, float)) and val < 0:
@@ -599,7 +617,7 @@ elif opcion == "3. Corte y Nómina Final":
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
 
         def resaltar_filas_gen(row):
-            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+            return ['background-color: #1A2634; color: #FFFFFF;' if row.name % 2 == 0 else 'background-color: #141D26; color: #FFFFFF;'] * len(row)
 
         def pintar_negativos_gen(val):
             if isinstance(val, (int, float)) and val < 0:
@@ -1026,7 +1044,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     # =========================================================================
-    # MEJORA VISUAL: TARJETAS HTML PARA VENTAS Y FLUJO PRINCIPAL
+    # TARJETAS HTML PARA VENTAS Y FLUJO PRINCIPAL
     # =========================================================================
     st.markdown("#### 💰 Resumen de Ventas y Efectivo")
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
