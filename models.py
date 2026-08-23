@@ -1,5 +1,5 @@
 """
-Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico por fecha.
+Modelos SQLAlchemy + funciones de acceso à datos con soporte histórico por fecha, roles y bloqueos.
 """
 
 from sqlalchemy import (
@@ -82,6 +82,106 @@ class GastoDiario(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
+# --- NUEVOS MODELOS: USUARIOS Y BLOQUEOS DE CORTES ---
+
+class UsuarioSistema(Base):
+    __tablename__ = "usuarios_sistema"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    password = Column(String, nullable=False)
+    rol = Column(String, nullable=False)  # "admin" o "cajero"
+    creado_en = Column(DateTime, server_default=func.now())
+
+
+class CorteBloqueo(Base):
+    __tablename__ = "cortes_bloqueos"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fecha = Column(Date, unique=True, nullable=False)
+    bloqueado = Column(Boolean, default=True)
+    bloqueado_por = Column(String)
+    fecha_bloqueo = Column(DateTime, server_default=func.now())
+
+
+# --- FUNCIONES DE AUTENTICACIÓN Y BLOQUEOS ---
+
+def inicializar_usuarios_por_defecto():
+    session = get_session()
+    try:
+        admin = session.query(UsuarioSistema).filter(UsuarioSistema.username == "admin").first()
+        if not admin:
+            session.add(UsuarioSistema(username="admin", password="123", rol="admin"))
+        
+        cajero = session.query(UsuarioSistema).filter(UsuarioSistema.username == "cajero").first()
+        if not cajero:
+            session.add(UsuarioSistema(username="cajero", password="123", rol="cajero"))
+        
+        session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
+
+
+def validar_login(username, password):
+    session = get_session()
+    try:
+        user = session.query(UsuarioSistema).filter(
+            UsuarioSistema.username == username, 
+            UsuarioSistema.password == password
+        ).first()
+        if user:
+            return {"username": user.username, "rol": user.rol}
+        return None
+    finally:
+        session.close()
+
+
+def verificar_corte_bloqueado(fecha_str: str) -> bool:
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        bloqueo = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj, CorteBloqueo.bloqueado == True).first()
+        return bloqueo is not None
+    except Exception:
+        return False
+    finally:
+        session.close()
+
+
+def bloquear_corte_fecha(fecha_str: str, usuario: str):
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        bloqueo = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj).first()
+        if bloqueo:
+            bloqueo.bloqueado = True
+            bloqueo.bloqueado_por = usuario
+        else:
+            nuevo_b = CorteBloqueo(fecha=f_obj, bloqueado=True, bloqueado_por=usuario)
+            session.add(nuevo_b)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def desbloquear_corte_fecha(fecha_str: str):
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+# --- FUNCIONES GENERALES DE NEGOCIO ---
+
 def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300.0, es_comision: bool = True):
     puesto = session.query(PuestoCatalogo).filter(PuestoCatalogo.nombre == nombre_puesto).first()
     if not puesto:
@@ -161,10 +261,10 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     session.close()
 
 
-def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str, fecha_corte=None):
+def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str, fecha_corte=None, usuario_nombre="sistema"):
     session = get_session()
     try:
-        f_filtro = fecha_corte if fecha_corte else func.current_date()
+        f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
         
         if fecha_corte:
             session.query(CorteVenta).filter(CorteVenta.fecha == fecha_corte).delete()
@@ -217,6 +317,10 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
             session.add(CorteVenta(**kwargs))
         session.commit()
+
+        # BLOQUEAR AUTOMÁTICAMENTE EL DÍA AL GUARDAR
+        bloquear_corte_fecha(f_filtro_str, usuario_nombre)
+
     except Exception as e:
         session.rollback()
         raise e
@@ -250,9 +354,11 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
             session.close()
 
 
-def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str, fecha_corte=None):
+def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str, fecha_corte=None, usuario_nombre="sistema"):
     session = get_session()
     try:
+        f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
+        
         if fecha_corte:
             session.query(ProductoChica).filter(ProductoChica.fecha == fecha_corte).delete()
         else:
@@ -292,6 +398,8 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
 
             session.add(ProductoChica(**kwargs))
         session.commit()
+
+        bloquear_corte_fecha(f_filtro_str, usuario_nombre)
         return nuevas_detectadas
     except Exception as e:
         session.rollback()
@@ -300,8 +408,9 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
         session.close()
 
 
-def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66, fecha_corte=None):
+def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_personal_fijo=4483.66, fecha_corte=None, usuario_nombre="sistema"):
     session = get_session()
+    f_filtro_str = fecha_corte if fecha_corte else datetime.now().strftime('%Y-%m-%d')
     f_filtro = datetime.strptime(fecha_corte, "%Y-%m-%d").date() if fecha_corte else None
     
     if f_filtro:
@@ -324,10 +433,10 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
             kwargs["fecha"] = f_filtro
         session.add(GastoDiario(**kwargs))
     session.commit()
+
+    bloquear_corte_fecha(f_filtro_str, usuario_nombre)
     session.close()
 
-
-# --- FUNCIONES DE CARGA Y CONSULTA HISTÓRICA ---
 
 def obtener_fechas_disponibles() -> list:
     session = get_session()
@@ -395,6 +504,9 @@ def reiniciar_base_de_datos():
         ]
         session.add_all(puestos_iniciales)
         session.commit()
+        
+        # Inicializar usuarios por defecto
+        inicializar_usuarios_por_defecto()
     except Exception as e:
         session.rollback()
         raise e
