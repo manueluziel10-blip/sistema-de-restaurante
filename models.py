@@ -4,7 +4,7 @@ Modelos SQLAlchemy + funciones de acceso a datos.
 
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
-    ForeignKey, func
+    ForeignKey, func, inspect
 )
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
@@ -27,7 +27,7 @@ class Empleado(Base):
     nombre = Column(String, unique=True, nullable=False)
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
-    vales_nomina = Column(Numeric(10, 2), default=0.0)  # <-- NUEVO CAMPO PARA VALES DE NÓMINA
+    vales_nomina = Column(Numeric(10, 2), default=0.0)
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
 
@@ -88,6 +88,17 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
+    
+    # Verificación de seguridad para asegurar la columna vales_nomina si la BD ya existía
+    try:
+        inspector = inspect(session.bind)
+        columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
+        if 'vales_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            session.commit()
+    except Exception:
+        pass
+
     query = session.query(Empleado).order_by(Empleado.id)
     df = pd.read_sql(query.statement, session.bind)
     if not df.empty:
