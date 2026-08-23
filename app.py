@@ -296,6 +296,7 @@ elif opcion == "3. Corte y Nómina Final":
             emp_id = emp['id']
             nombre = emp['nombre']
             sueldo_base = float(emp['sueldo_base'])
+            vales_emp = float(emp.get('vales_nomina', 0.0))
 
             penalizada = st.checkbox(
                 f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
@@ -358,12 +359,17 @@ elif opcion == "3. Corte y Nómina Final":
                 vip15_monto /= 2.0
                 vip30_monto /= 2.0
 
-            total_pagar = sueldo_base + extras
+            total_bruto = sueldo_base + extras
+            total_pagar = max(0.0, total_bruto - vales_emp)
             
             res_grupo.append({
                 "ID": emp_id,
                 "Nombre": nombre, 
                 "Puesto": emp['tipo'],
+                "Total a Pagar": total_pagar,      # <-- COLUMNA 1
+                "Sueldo Base": sueldo_base,        # <-- COLUMNA 2
+                "Vales": vales_emp,                # <-- COLUMNA 3 (NUEVA Y EDITABLE)
+                "Comisiones": extras, 
                 "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
                 "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
                 "Strongbow": f"{int(strong_cant)} (${strong_monto:,.2f})",
@@ -371,9 +377,6 @@ elif opcion == "3. Corte y Nómina Final":
                 "VIP 5 / Priv / Artista": f"{int(vip5_priv_art_cant)} (${vip5_priv_art_monto:,.2f})",
                 "VIP 15": f"{int(vip15_cant)} (${vip15_monto:,.2f})",
                 "VIP 30": f"{int(vip30_cant)} (${vip30_monto:,.2f})",
-                "Sueldo Base": sueldo_base, 
-                "Comisiones": extras, 
-                "Total a Pagar": total_pagar,
                 "_b_cant": boons_cant, "_b_m": boons_monto,
                 "_c_cant": copa_cant, "_c_m": copa_monto,
                 "_s_cant": strong_cant, "_s_m": strong_monto,
@@ -399,6 +402,7 @@ elif opcion == "3. Corte y Nómina Final":
             height=altura_tabla,
             column_config={
                 "ID": st.column_config.NumberColumn("ID", disabled=True),
+                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
                     help="Haz clic para modificar el sueldo base directamente",
@@ -406,10 +410,16 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
-                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                "Vales": st.column_config.NumberColumn(
+                    "Vales ($)",
+                    help="Haz clic para ingresar vales que restarán al total a pagar",
+                    min_value=0.0,
+                    format="$%.2f",
+                    required=True
+                ),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
-            disabled=[c for c in cols_mostrar if c != "Sueldo Base"],
+            disabled=[c for c in cols_mostrar if c not in ["Sueldo Base", "Vales"]],
             use_container_width=True,
             key=editor_key
         )
@@ -418,14 +428,16 @@ elif opcion == "3. Corte y Nómina Final":
         if editor_key in st.session_state:
             cambios = st.session_state[editor_key].get("edited_rows", {})
             for row_idx, edits in cambios.items():
-                if "Sueldo Base" in edits:
-                    fila_modificada = df_res.iloc[int(row_idx)]
-                    e_id = int(fila_modificada['ID'])
-                    nuevo_sb = float(edits["Sueldo Base"])
-                    puesto_emp = fila_modificada['Puesto']
-                    
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb)
-                    actualizado_flag = True
+                fila_modificada = df_res.iloc[int(row_idx)]
+                e_id = int(fila_modificada['ID'])
+                
+                # Rescatar valores actuales o modificados
+                nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
+                nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
+                puesto_emp = fila_modificada['Puesto']
+                
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales)
+                actualizado_flag = True
 
         if actualizado_flag:
             st.rerun()
@@ -455,6 +467,7 @@ elif opcion == "3. Corte y Nómina Final":
             nombre = emp['nombre']
             tipo = emp['tipo']
             sueldo_base = float(emp['sueldo_base'])
+            vales_emp = float(emp.get('vales_nomina', 0.0))
             
             puesto_upper_check = tipo.upper()
             
@@ -499,22 +512,24 @@ elif opcion == "3. Corte y Nómina Final":
                         com_unit = calcular_comision_gerencia_caja(desc)
                         comisiones_prod += cant * com_unit
 
-            total_pagar = sueldo_base + propinas + comisiones_prod
+            total_bruto = sueldo_base + propinas + comisiones_prod
+            total_pagar = max(0.0, total_bruto - vales_emp)
             propina_str = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
 
             res_general.append({
                 "ID": emp_id, 
                 "Nombre": nombre, 
                 "Puesto": tipo,
-                "Sueldo Base": sueldo_base, 
+                "Total a Pagar": total_pagar,   # <-- COLUMNA 1
+                "Sueldo Base": sueldo_base,     # <-- COLUMNA 2
+                "Vales": vales_emp,             # <-- COLUMNA 3 (NUEVA Y EDITABLE)
                 "Propina (%)": propina_str,
                 "Comisiones": comisiones_prod, 
-                "Total a Pagar": total_pagar,
                 "_propinas_num": propinas
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Sueldo Base", "Propina (%)", "Comisiones", "Total a Pagar"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Total a Pagar", "Sueldo Base", "Vales", "Propina (%)", "Comisiones"]
         
         altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
@@ -524,6 +539,7 @@ elif opcion == "3. Corte y Nómina Final":
             height=altura_tabla_gen,
             column_config={
                 "ID": st.column_config.NumberColumn("ID", disabled=True),
+                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
                     help="Haz clic para modificar el sueldo base directamente",
@@ -531,8 +547,14 @@ elif opcion == "3. Corte y Nómina Final":
                     format="$%.2f",
                     required=True
                 ),
+                "Vales": st.column_config.NumberColumn(
+                    "Vales ($)",
+                    help="Haz clic para ingresar vales que restarán al total a pagar",
+                    min_value=0.0,
+                    format="$%.2f",
+                    required=True
+                ),
                 "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
-                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
             disabled=["ID", "Nombre", "Puesto", "Propina (%)", "Comisiones", "Total a Pagar"],
@@ -544,14 +566,15 @@ elif opcion == "3. Corte y Nómina Final":
         if editor_key_gen in st.session_state:
             cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
             for row_idx, edits in cambios_gen.items():
-                if "Sueldo Base" in edits:
-                    fila_mod_gen = df_res_general.iloc[int(row_idx)]
-                    e_id = int(fila_mod_gen['ID'])
-                    nuevo_sb = float(edits["Sueldo Base"])
-                    puesto_emp = fila_mod_gen['Puesto']
-                    
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb)
-                    actualizado_gen_flag = True
+                fila_mod_gen = df_res_general.iloc[int(row_idx)]
+                e_id = int(fila_mod_gen['ID'])
+                
+                nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_mod_gen['Sueldo Base'])
+                nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
+                puesto_emp = fila_mod_gen['Puesto']
+                
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales)
+                actualizado_gen_flag = True
 
         if actualizado_gen_flag:
             st.rerun()
@@ -623,7 +646,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     chicas_acumuladas = cargar_chicas_df()
     empleados_dashboard_df = cargar_empleados_df()
 
-    # Cálculo exacto de la nómina del personal general (Sueldos + Propinas + Comisiones)
     nomina_personal_p_total = 0.0
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
@@ -631,6 +653,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             emp_id = emp['id']
             tipo = emp['tipo']
             sueldo_base = float(emp['sueldo_base'])
+            vales_emp = float(emp.get('vales_nomina', 0.0))
             puesto_upper_check = tipo.upper()
             
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
@@ -674,15 +697,27 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                         com_unit = calcular_comision_gerencia_caja(desc)
                         comisiones_prod += cant * com_unit
 
-            nomina_personal_p_total += (sueldo_base + propinas + comisiones_prod)
+            total_bruto_emp = sueldo_base + propinas + comisiones_prod
+            nomina_personal_p_total += max(0.0, total_bruto_emp - vales_emp)
 
     nomina_chicas_calc = 0.0
-    if not chicas_acumuladas.empty:
-        for _, r in chicas_acumuladas.iterrows():
-            desc = str(r['descripcion']).upper()
-            cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
-            com = 300.0 if 'PRIVADO ARTISTA' in desc else float(r['comision_unitaria'])
-            nomina_chicas_calc += cant * com
+    if not chicas_acumuladas.empty and not empleados_dashboard_df.empty:
+        df_chicas_lista = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
+        for _, emp in df_chicas_lista.iterrows():
+            emp_id = emp['id']
+            vales_emp = float(emp.get('vales_nomina', 0.0))
+            
+            sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id]
+            comisiones_chica_ind = 0.0
+            for _, r in sus_filas.iterrows():
+                desc = str(r['descripcion']).upper()
+                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
+                com = 300.0 if 'PRIVADO ARTISTA' in desc else float(r['comision_unitaria'])
+                comisiones_chica_ind += cant * com
+            
+            sueldo_chica = float(emp['sueldo_base'])
+            total_bruto_chica = sueldo_chica + comisiones_chica_ind
+            nomina_chicas_calc += max(0.0, total_bruto_chica - vales_emp)
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     gasto_previo = cargar_gastos_hoy()
@@ -739,7 +774,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     efectivo_entregado = efectivo_ventas - total_gastos_nomina
     
-    # --- FORMULA ACTUALIZADA DE UTILIDAD ANTES DE COSTOS (Ventas Totales - Nómina Personal - Nómina Chicas - Cocina) ---
     utilidad_monto = ventas_totales_con_propinas - (nomina_personal_p_total + nomina_chicas_calc + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
@@ -820,12 +854,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             leading=12
         )
 
-        # Encabezado
         elementos.append(Paragraph("REPORTE DE CIERRE DE CAJA DIARIO", titulo_style))
         elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
         elementos.append(Spacer(1, 10))
 
-        # Resumen Financiero Tabla
         elementos.append(Paragraph("1. Resumen Financiero", sub_style))
         datos_fin = [
             ["Concepto", "Monto"],
@@ -850,7 +882,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos.append(t_fin)
         elementos.append(Spacer(1, 10))
 
-        # Desglose de Gastos
         elementos.append(Paragraph("2. Desglose de Gastos y Nómina", sub_style))
         datos_gastos = [["Concepto", "Monto"]] + [[row["Concepto"], f"${row['Monto']:,.2f}"] for _, row in tabla_gastos.iterrows()]
         t_gas = Table(datos_gastos, colWidths=[250, 150])
@@ -863,7 +894,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         elementos.append(t_gas)
         elementos.append(Spacer(1, 10))
 
-        # Ventas por Mesero (Estilo Tarjetas en Cuadrícula)
         elementos.append(Paragraph("3. Resumen de Ventas por Mesero", sub_style))
         empleados_df = cargar_empleados_df()
         
@@ -938,7 +968,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         buffer.seek(0)
         return buffer
 
-    # --- BOTÓN DE DESCARGA PDF ---
     st.markdown("---")
     pdf_buffer = generar_pdf()
     st.download_button(
@@ -949,7 +978,6 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         use_container_width=True
     )
 
-    # --- RESUMEN DE VENTAS POR MESERO EN TARJETAS DE MÉTRICAS (CUADRÍCULA 3 COLUMNAS) ---
     st.markdown("#### 👥 Resumen de Ventas por Mesero (Día Actual)")
     
     empleados_df = cargar_empleados_df()

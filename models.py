@@ -27,6 +27,7 @@ class Empleado(Base):
     nombre = Column(String, unique=True, nullable=False)
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
+    vales_nomina = Column(Numeric(10, 2), default=0.0)  # <-- NUEVO CAMPO PARA VALES DE NÓMINA
     activo = Column(Boolean, default=True)
     creado_en = Column(DateTime, server_default=func.now())
 
@@ -87,10 +88,15 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
-    query = session.query(Empleado).order_by(Empleado.id)  # Orden estable por ID
+    query = session.query(Empleado).order_by(Empleado.id)
     df = pd.read_sql(query.statement, session.bind)
-    if not df.empty and 'sueldo_base' in df.columns:
-        df['sueldo_base'] = df['sueldo_base'].astype(float)
+    if not df.empty:
+        if 'sueldo_base' in df.columns:
+            df['sueldo_base'] = df['sueldo_base'].astype(float)
+        if 'vales_nomina' in df.columns:
+            df['vales_nomina'] = df['vales_nomina'].astype(float)
+        else:
+            df['vales_nomina'] = 0.0
     session.close()
     return df
 
@@ -103,18 +109,19 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         emp.tipo = tipo
         emp.sueldo_base = sueldo_base
     else:
-        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
+        emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0)
         session.add(emp)
     session.commit()
     session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
-    session.query(Empleado).filter(Empleado.id == emp_id).update(
-        {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
-    )
+    datos = {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
+    if nuevo_vales is not None:
+        datos["vales_nomina"] = nuevo_vales
+    session.query(Empleado).filter(Empleado.id == emp_id).update(datos)
     session.commit()
     session.close()
 
@@ -140,7 +147,8 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
                 emp = Empleado(
                     nombre=nombre_mesero,
                     tipo=tipo_por_defecto,
-                    sueldo_base=300.0
+                    sueldo_base=300.0,
+                    vales_nomina=0.0
                 )
                 session.add(emp)
                 session.commit()
@@ -177,7 +185,7 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
         emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
         creado = False
         if not emp:
-            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base)
+            emp = Empleado(nombre=nombre.upper(), tipo=tipo, sueldo_base=sueldo_base, vales_nomina=0.0)
             session.add(emp)
             session.commit()
             session.refresh(emp)
