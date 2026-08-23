@@ -817,9 +817,11 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         else:
             chicas_con_descuento_dash = len(df_chicas_dash)
 
-    # --- CÁLCULO DE NÓMINA PERSONAL GENERAL (BRUTA: SIN RESTAR VALES NI TRANSFERENCIAS) ---
+    # --- CÁLCULO DE NÓMINA PERSONAL GENERAL (BRUTA PARA LA UTILIDAD) ---
     nomina_personal_p_total = 0.0
     vales_personal_total = 0.0
+    transferencia_personal_total = 0.0
+    
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_operativo_dash.iterrows():
@@ -829,6 +831,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             vales_personal_total += vales_emp
+            transferencia_personal_total += transf_emp
             puesto_upper_check = tipo.upper()
             
             comisiones_prod = 0.0
@@ -876,9 +879,10 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             total_bruto_emp = sueldo_base + propinas + comisiones_prod
             nomina_personal_p_total += total_bruto_emp
 
-    # --- CÁLCULO DE NÓMINA BAILARINAS / CHICAS (BRUTA: RESTANDO SÓLO EL DESCUENTO DE MULTA) ---
+    # --- CÁLCULO DE NÓMINA BAILARINAS / CHICAS ---
     nomina_chicas_calc = 0.0
     vales_chicas_total = 0.0
+    transferencia_chicas_total = 0.0
     conteo_penalizadas = 0
     conteo_con_sueldo = 0
     conteo_sin_sueldo = 0
@@ -891,6 +895,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             descuento_emp = float(emp.get('descuento_nomina', 100.0))
             vales_chicas_total += vales_emp
+            transferencia_chicas_total += transf_emp
             
             penalizada_chica = bool(emp.get('penalizada', False))
             if penalizada_chica:
@@ -996,11 +1001,15 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     
-    nomina_total_general_dash = nomina_personal_p_total + nomina_chicas_calc
-    total_gastos_nomina_efectivo = nomina_total_general_dash + gasto_cocina + gasto_compras + gasto_vales
+    # Montos netos en efectivo a restar en la caja
+    nomina_personal_efectivo = max(0.0, nomina_personal_p_total - vales_personal_total - transferencia_personal_total)
+    nomina_chicas_efectivo = max(0.0, nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total)
+    
+    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
-    # FORMULA FINAL EXACTA
+    # FORMULA DE UTILIDAD CON LOS TOTALES BRUTOS
+    nomina_total_general_dash = nomina_personal_p_total + nomina_chicas_calc
     utilidad_monto = ventas_totales_con_propinas - (nomina_total_general_dash + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
@@ -1045,8 +1054,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
 
     st.markdown("#### Desglose de Gastos y Nómina en Efectivo")
     tabla_gastos = pd.DataFrame([
-        {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_p_total},
-        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_calc},
+        {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_efectivo},
+        {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_efectivo},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
