@@ -136,6 +136,48 @@ def validar_login(username, password):
         session.close()
 
 
+def cargar_usuarios_df() -> pd.DataFrame:
+    session = get_session()
+    try:
+        query = session.query(UsuarioSistema).order_by(UsuarioSistema.id)
+        df = pd.read_sql(query.statement, session.bind)
+        return df
+    finally:
+        session.close()
+
+
+def crear_usuario(username, password, rol):
+    session = get_session()
+    try:
+        existe = session.query(UsuarioSistema).filter(UsuarioSistema.username == username).first()
+        if not existe:
+            nuevo = UsuarioSistema(username=username, password=password, rol=rol)
+            session.add(nuevo)
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def actualizar_credenciales(usuario_id, nuevo_username, nueva_password, nuevo_rol):
+    session = get_session()
+    try:
+        user = session.query(UsuarioSistema).filter(UsuarioSistema.id == usuario_id).first()
+        if user:
+            user.username = nuevo_username
+            if nueva_password and nueva_password.strip():
+                user.password = nueva_password
+            user.rol = nuevo_rol
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 def verificar_corte_bloqueado(fecha_str: str) -> bool:
     session = get_session()
     try:
