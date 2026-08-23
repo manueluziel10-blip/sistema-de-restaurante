@@ -297,11 +297,18 @@ elif opcion == "3. Corte y Nómina Final":
             nombre = emp['nombre']
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
+            penalizada_actual = bool(emp.get('penalizada', False))
 
-            penalizada = st.checkbox(
+            # Checkbox con persistencia en base de datos
+            penalizada_cambiada = st.checkbox(
                 f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
+                value=penalizada_actual,
                 key=f"pen_{key_sufijo}_{emp_id}"
             )
+
+            if penalizada_cambiada != penalizada_actual:
+                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada)
+                st.rerun()
 
             extras = 0.0
             boons_cant, boons_monto = 0.0, 0.0
@@ -349,7 +356,7 @@ elif opcion == "3. Corte y Nómina Final":
 
                     extras = boons_monto + copa_monto + strong_monto + vip3_monto + vip5_priv_art_monto + vip15_monto + vip30_monto
 
-            if penalizada:
+            if penalizada_cambiada:
                 extras = extras / 2.0
                 boons_monto /= 2.0
                 copa_monto /= 2.0
@@ -434,8 +441,9 @@ elif opcion == "3. Corte y Nómina Final":
                 nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
                 puesto_emp = fila_modificada['Puesto']
+                penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales)
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd)
                 actualizado_flag = True
 
         if actualizado_flag:
@@ -578,8 +586,9 @@ elif opcion == "3. Corte y Nómina Final":
                 nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_mod_gen['Sueldo Base'])
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
                 puesto_emp = fila_mod_gen['Puesto']
+                penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales)
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd)
                 actualizado_gen_flag = True
 
         if actualizado_gen_flag:
