@@ -371,7 +371,8 @@ elif opcion == "3. Corte y Nómina Final":
                 vip30_monto /= 2.0
 
             total_bruto = sueldo_base + extras
-            total_pagar = max(0.0, total_bruto - vales_emp - transf_emp - descuento_emp)
+            # PERMITIR NEGATIVOS QUITANDO max(0.0, ...)
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp
             
             res_grupo.append({
                 "ID": emp_id,
@@ -405,9 +406,17 @@ elif opcion == "3. Corte y Nómina Final":
         altura_tabla = min(max(len(df_res) * 45 + 40, 150), 900)
 
         def resaltar_filas(row):
-            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+            estilos = ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+            return estilos
 
-        df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1)
+        def pintar_negativos(val):
+            if isinstance(val, (int, float)) and val < 0:
+                return 'color: #FF5252; font-weight: bold;'
+            return ''
+
+        df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1).applymap(
+            pintar_negativos, subset=['Total a Pagar']
+        )
 
         editor_key = f"editor_sueldos_{key_sufijo}"
         df_editado = st.data_editor(
@@ -419,28 +428,24 @@ elif opcion == "3. Corte y Nómina Final":
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
                     help="Haz clic para modificar el sueldo base directamente",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
                 "Vales": st.column_config.NumberColumn(
                     "Vales ($)",
                     help="Haz clic para ingresar vales que restarán al total a pagar",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
                 "Transferencia": st.column_config.NumberColumn(
                     "Transferencia ($)",
                     help="Monto pagado por transferencia que resta al total",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
                 "Descuento": st.column_config.NumberColumn(
                     "Descuento ($)",
                     help="Modifica el descuento predeterminado de $100.00",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
@@ -573,7 +578,8 @@ elif opcion == "3. Corte y Nómina Final":
                         comisiones_prod += cant * com_unit
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = max(0.0, total_bruto - vales_emp - transf_emp)
+            # PERMITIR NEGATIVOS QUITANDO max(0.0, ...)
+            total_pagar = total_bruto - vales_emp - transf_emp
             propina_str = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
 
             res_general.append({
@@ -594,9 +600,21 @@ elif opcion == "3. Corte y Nómina Final":
         
         altura_tabla_gen = min(max(len(df_res_general) * 45 + 40, 150), 900)
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
+
+        def resaltar_filas_gen(row):
+            return ['background-color: #1A2634' if row.name % 2 == 0 else 'background-color: #141D26'] * len(row)
+
+        def pintar_negativos_gen(val):
+            if isinstance(val, (int, float)) and val < 0:
+                return 'color: #FF5252; font-weight: bold;'
+            return ''
+
+        df_estilizado_gen = df_res_general[cols_mostrar_gen].style.apply(resaltar_filas_gen, axis=1).applymap(
+            pintar_negativos_gen, subset=['Total a Pagar']
+        )
         
         df_editado_gen = st.data_editor(
-            df_res_general[cols_mostrar_gen],
+            df_estilizado_gen,
             height=altura_tabla_gen,
             column_config={
                 "ID": st.column_config.NumberColumn("ID", disabled=True),
@@ -604,21 +622,18 @@ elif opcion == "3. Corte y Nómina Final":
                 "Sueldo Base": st.column_config.NumberColumn(
                     "Sueldo Base ($)",
                     help="Haz clic para modificar el sueldo base directamente",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
                 "Vales": st.column_config.NumberColumn(
                     "Vales ($)",
                     help="Haz clic para ingresar vales que restarán al total a pagar",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
                 "Transferencia": st.column_config.NumberColumn(
                     "Transferencia ($)",
                     help="Monto pagado por transferencia que resta al total",
-                    min_value=0.0,
                     format="$%.2f",
                     required=True
                 ),
@@ -652,12 +667,12 @@ elif opcion == "3. Corte y Nómina Final":
 
         st.markdown(f"---")
         st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
-        tot_sb = float(df_editado_gen['Sueldo Base'].sum())
+        tot_sb = float(df_res_general['Sueldo Base'].sum())
         tot_prop = float(df_res_general['_propinas_num'].sum())
-        tot_com = float(df_editado_gen['Comisiones'].sum())
-        sub_g = float(df_editado_gen['Total a Pagar'].sum())
-        total_vales_gen = float(df_editado_gen['Vales'].sum())
-        total_transf_gen = float(df_editado_gen['Transferencia'].sum())
+        tot_com = float(df_res_general['Comisiones'].sum())
+        sub_g = float(df_res_general['Total a Pagar'].sum())
+        total_vales_gen = float(df_res_general['Vales'].sum())
+        total_transf_gen = float(df_res_general['Transferencia'].sum())
 
         col_t1, col_t2, col_t3, col_t4 = st.columns(4)
         col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
@@ -736,7 +751,7 @@ elif opcion == "3. Corte y Nómina Final":
                 comisiones_emp /= 2.0
                 
             bruto_chica = sueldo_base + comisiones_emp
-            neto_chica = max(0.0, bruto_chica - descuento_emp)
+            neto_chica = bruto_chica - descuento_emp
             total_bailarinas_semana += neto_chica
 
     total_personal_general_semana = 0.0
@@ -928,7 +943,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
                 comisiones_chica_ind = comisiones_chica_ind / 2.0
 
             total_bruto_chica = sueldo_chica + comisiones_chica_ind
-            neto_chica = max(0.0, total_bruto_chica - descuento_emp)
+            neto_chica = total_bruto_chica - descuento_emp
             nomina_chicas_calc += neto_chica
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
@@ -1002,8 +1017,8 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     
     # Montos netos en efectivo a restar en la caja
-    nomina_personal_efectivo = max(0.0, nomina_personal_p_total - vales_personal_total - transferencia_personal_total)
-    nomina_chicas_efectivo = max(0.0, nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total)
+    nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
+    nomina_chicas_efectivo = nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
     
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
