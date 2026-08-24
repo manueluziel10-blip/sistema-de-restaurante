@@ -270,7 +270,7 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 
 def asegurar_nomina_dia(session, fecha_date):
-    """Asegura que los empleados activos tengan un registro en nomina_diaria para esta fecha sin sobreescribir sueldos históricos."""
+    """Verifica que la tabla tenga las columnas correctas sin duplicar ni clonar empleados masivamente."""
     try:
         inspector = inspect(session.bind)
         if 'nomina_diaria' in inspector.get_table_names():
@@ -289,28 +289,6 @@ def asegurar_nomina_dia(session, fecha_date):
     except Exception:
         session.rollback()
 
-    empleados = session.query(Empleado).filter(Empleado.activo == True).all()
-    for emp in empleados:
-        existe = session.query(NominaDiaria).filter(
-            NominaDiaria.fecha == fecha_date,
-            NominaDiaria.empleado_id == emp.id
-        ).first()
-        if not existe:
-            ultimo_reg = session.query(NominaDiaria).filter(NominaDiaria.empleado_id == emp.id).order_by(NominaDiaria.fecha.desc()).first()
-            sb_a_usar = ultimo_reg.sueldo_base if ultimo_reg else emp.sueldo_base
-
-            nueva_nom = NominaDiaria(
-                fecha=fecha_date,
-                empleado_id=emp.id,
-                sueldo_base=sb_a_usar,
-                vales_nomina=0.0,
-                descuento_nomina=100.0,
-                transferencia_nomina=0.0,
-                penalizada=False
-            )
-            session.add(nueva_nom)
-    session.commit()
-
 
 def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
@@ -319,6 +297,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
+    # Cargar UNICAMENTE los empleados que tienen un registro de nomina_diaria explícito para esta fecha
     query = session.query(
         Empleado.id,
         Empleado.nombre,
@@ -361,30 +340,6 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         session.add(emp)
         session.commit()
         session.refresh(emp)
-    
-    fechas_v = session.query(CorteVenta.fecha).distinct().all()
-    fechas_c = session.query(ProductoChica.fecha).distinct().all()
-    fechas_g = session.query(GastoDiario.fecha).distinct().all()
-    fechas_n = session.query(NominaDiaria.fecha).distinct().all()
-    todas_fechas = set([f[0] for f in fechas_v + fechas_c + fechas_g + fechas_n if f[0] is not None])
-    todas_fechas.add(datetime.now().date())
-
-    for f_date in todas_fechas:
-        existe = session.query(NominaDiaria).filter(
-            NominaDiaria.fecha == f_date,
-            NominaDiaria.empleado_id == emp.id
-        ).first()
-        if not existe:
-            session.add(NominaDiaria(
-                fecha=f_date,
-                empleado_id=emp.id,
-                sueldo_base=sueldo_base,
-                vales_nomina=0.0,
-                descuento_nomina=100.0,
-                transferencia_nomina=0.0,
-                penalizada=False
-            ))
-    session.commit()
     session.close()
 
 
