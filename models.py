@@ -270,11 +270,13 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 
 def asegurar_nomina_dia(session, fecha_date):
-    """Copia o asegura que todos los empleados activos tengan un registro en nomina_diaria para esta fecha y añade columnas si faltan."""
+    """Asegura que los empleados activos tengan un registro en nomina_diaria para esta fecha sin sobreescribir sueldos históricos."""
     try:
         inspector = inspect(session.bind)
         if 'nomina_diaria' in inspector.get_table_names():
             columnas_tabla = [col['name'] for col in inspector.get_columns('nomina_diaria')]
+            if 'sueldo_base' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN sueldo_base NUMERIC(10,2) DEFAULT 0.0"))
             if 'vales_nomina' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
             if 'descuento_nomina' not in columnas_tabla:
@@ -294,10 +296,13 @@ def asegurar_nomina_dia(session, fecha_date):
             NominaDiaria.empleado_id == emp.id
         ).first()
         if not existe:
+            ultimo_reg = session.query(NominaDiaria).filter(NominaDiaria.empleado_id == emp.id).order_by(NominaDiaria.fecha.desc()).first()
+            sb_a_usar = ultimo_reg.sueldo_base if ultimo_reg else emp.sueldo_base
+
             nueva_nom = NominaDiaria(
                 fecha=fecha_date,
                 empleado_id=emp.id,
-                sueldo_base=emp.sueldo_base,
+                sueldo_base=sb_a_usar,
                 vales_nomina=0.0,
                 descuento_nomina=100.0,
                 transferencia_nomina=0.0,
@@ -360,7 +365,8 @@ def agregar_empleado(nombre, tipo, sueldo_base):
     fechas_v = session.query(CorteVenta.fecha).distinct().all()
     fechas_c = session.query(ProductoChica.fecha).distinct().all()
     fechas_g = session.query(GastoDiario.fecha).distinct().all()
-    todas_fechas = set([f[0] for f in fechas_v + fechas_c + fechas_g if f[0] is not None])
+    fechas_n = session.query(NominaDiaria.fecha).distinct().all()
+    todas_fechas = set([f[0] for f in fechas_v + fechas_c + fechas_g + fechas_n if f[0] is not None])
     todas_fechas.add(datetime.now().date())
 
     for f_date in todas_fechas:
@@ -389,7 +395,6 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     emp = session.query(Empleado).filter(Empleado.id == emp_id).first()
     if emp:
         emp.tipo = nuevo_tipo
-        emp.sueldo_base = nuevo_sueldo
 
     f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
     f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
@@ -630,7 +635,7 @@ def reiniciar_base_de_datos():
         session.execute(db_text('DROP TABLE IF EXISTS gastos_diarios CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS empleados CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS puestos_catalogo CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS usuarios_sistema CASCADE;'))
+        session.execute(db_text('DROP_TABLE IF EXISTS usuarios_sistema CASCADE;'))
         session.commit()
         
         Base.metadata.create_all(session.bind)
