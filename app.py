@@ -5,7 +5,7 @@ import io
 import base64
 import os
 
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -156,7 +156,6 @@ def obtener_logo_flowable(fallback_style):
     ruta_logo = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo):
         try:
-            # Ancho fijo de 110 para mantener proporción automática sin deformar
             return Image(ruta_logo, width=110)
         except Exception:
             return Paragraph("<b>[ZULLYS]</b>", fallback_style)
@@ -253,7 +252,8 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
 
 def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+    # Cambiamos a formato horizontal (landscape) para evitar errores de diseño con múltiples columnas
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     
     PRIMARY_COLOR = colors.HexColor("#111827")
@@ -261,19 +261,19 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
     BORDER_COLOR = colors.HexColor("#E5E7EB")
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold')
-    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
-    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#374151"))
-    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
-    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold')
+    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=10, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor("#374151"))
+    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
     logo_flowable = obtener_logo_flowable(cell_style)
 
-    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[120, 410])
+    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[130, 600])
     tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     
     story.append(tabla_header)
-    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=6, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=8, spaceAfter=12))
 
     if not df_resultados.empty:
         headers = [Paragraph(f"<b>{c}</b>", cell_header) for c in df_resultados.columns]
@@ -285,15 +285,21 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
                 row_cells.append(Paragraph(val_txt, cell_style))
             rows.append(row_cells)
         
-        t_rep = Table(rows, colWidths=[520 / len(df_resultados.columns)] * len(df_resultados.columns))
+        # Ancho total disponible en horizontal (792 - 60 márgenes = 732 pts)
+        num_cols = len(df_resultados.columns)
+        col_width = 732 / num_cols
+        
+        t_rep = Table(rows, colWidths=[col_width] * num_cols)
         t_rep.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
-            ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR)
+            ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
         ]))
         story.append(t_rep)
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 12))
         story.append(Paragraph(f"<b>Total General a Pagar: ${total_general:,.2f}</b>", cell_bold))
 
     doc.build(story)
