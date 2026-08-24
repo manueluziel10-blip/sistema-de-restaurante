@@ -606,6 +606,39 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
+        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS AL PIE ---
+        st.markdown("#### 📦 Resumen General de Productos Vendidos")
+        tot_b_cant = df_res['_b_cant'].sum()
+        tot_b_m = df_res['_b_m'].sum()
+        tot_c_cant = df_res['_c_cant'].sum()
+        tot_c_m = df_res['_c_m'].sum()
+        tot_s_cant = df_res['_s_cant'].sum()
+        tot_s_m = df_res['_s_m'].sum()
+        tot_v3_cant = df_res['_v3_cant'].sum()
+        tot_v3_m = df_res['_v3_m'].sum()
+        tot_priv_p_cant = df_res['_priv_promo_cant'].sum()
+        tot_priv_p_m = df_res['_priv_promo_m'].sum()
+        tot_v5_art_cant = df_res['_v5_art_cant'].sum()
+        tot_v5_art_m = df_res['_v5_art_m'].sum()
+        tot_v15_cant = df_res['_v15_cant'].sum()
+        tot_v15_m = df_res['_v15_m'].sum()
+        tot_v30_cant = df_res['_v30_cant'].sum()
+        tot_v30_m = df_res['_v30_m'].sum()
+
+        df_totales_prod = pd.DataFrame([
+            {
+                "Boons": f"{int(tot_b_cant)} (${tot_b_m:,.2f})",
+                "Copa Lady": f"{int(tot_c_cant)} (${tot_c_m:,.2f})",
+                "Strongbow": f"{int(tot_s_cant)} (${tot_s_m:,.2f})",
+                "VIP 3": f"{int(tot_v3_cant)} (${tot_v3_m:,.2f})",
+                "Privados Promo": f"{int(tot_priv_p_cant)} (${tot_priv_p_m:,.2f})",
+                "VIP 5 / Priv / Artista": f"{int(tot_v5_art_cant)} (${tot_v5_art_m:,.2f})",
+                "VIP 15": f"{int(tot_v15_cant)} (${tot_v15_m:,.2f})",
+                "VIP 30": f"{int(tot_v30_cant)} (${tot_v30_m:,.2f})",
+            }
+        ])
+        st.dataframe(df_totales_prod, use_container_width=True, hide_index=True)
+
         subtotal = float(df_res['Total a Pagar'].sum())
         return df_editado, subtotal
 
