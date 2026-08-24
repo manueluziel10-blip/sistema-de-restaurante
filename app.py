@@ -158,6 +158,7 @@ else:
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
 
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
+
 es_dia_actual = (fecha_activa == hoy_str)
 
 # --- NUEVA GESTIÓN DE ESTADO: ABRIR, CERRAR Y MODIFICAR CORTE ---
@@ -261,6 +262,8 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     if not puede_modificar:
         st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico. Ábralo previamente para subir archivos.")
     else:
+        st.info("Sube los archivos correspondientes al corte del día seleccionado.")
+
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
             up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
@@ -301,7 +304,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
 
 # --- SECCIÓN 2: GESTIÓN Y EDICIÓN DE EMPLEADOS ---
 elif opcion == "2. Gestión de Empleados":
-    st.subheader(f"Gestión y Catálogo de Personal - Fecha Activa: {fecha_activa}")
+    st.subheader("Gestión y Catálogo de Personal")
     
     empleados_df = cargar_empleados_df(fecha_activa)
 
@@ -312,24 +315,24 @@ elif opcion == "2. Gestión de Empleados":
     ])
 
     with tab_gest_chicas:
-        st.markdown(f"### Listado: Bailarinas y Chicas de Salón ({fecha_activa})")
+        st.markdown("### Listado: Bailarinas y Chicas de Salón")
         if not empleados_df.empty:
             df_chicas_gen = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)].copy()
             st.dataframe(df_chicas_gen, use_container_width=True)
         else:
-            st.info("No hay registros en esta fecha.")
+            st.info("No hay registros.")
 
     with tab_gest_general:
-        st.markdown(f"### Listado: Personal Operativo, Meseros y Fijos ({fecha_activa})")
+        st.markdown("### Listado: Personal Operativo, Meseros y Fijos")
         if not empleados_df.empty:
             df_general_gen = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)].copy()
             st.dataframe(df_general_gen, use_container_width=True)
         else:
-            st.info("No hay registros en esta fecha.")
+            st.info("No hay registros.")
 
     with tab_carga_masiva:
         st.markdown("### Importar o Actualizar Personal Masivamente")
-        st.info(f"Sube un archivo de Excel para dar de alta al personal en la fecha activa: **{fecha_activa}**.")
+        st.info("Sube un archivo de Excel con las columnas: **Nombre**, **Puesto** y **Sueldo Base**.")
 
         filas_plantilla = []
         for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
@@ -361,6 +364,10 @@ elif opcion == "2. Gestión de Empleados":
                     st.error("El archivo Excel debe contener las columnas: Nombre, Puesto y Sueldo Base.")
                 else:
                     registrados = 0
+                    actualizados = 0
+                    empleados_actuales = cargar_empleados_df(fecha_activa)
+                    nombres_existentes = empleados_actuales['nombre'].tolist() if not empleados_actuales.empty else []
+
                     for _, row in df_subido.iterrows():
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
@@ -371,10 +378,15 @@ elif opcion == "2. Gestión de Empleados":
                         if puesto_emp not in PUESTOS_CATALOGO:
                             puesto_emp = "Mesero (Comisiones)"
 
-                        agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa)
-                        registrados += 1
+                        if nombre_emp in nombres_existentes:
+                            emp_encontrado = empleados_actuales[empleados_actuales['nombre'] == nombre_emp].iloc[0]
+                            actualizar_empleado(int(emp_encontrado['id']), puesto_emp, sueldo_emp, fecha_str=fecha_activa)
+                            actualizados += 1
+                        else:
+                            agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa)
+                            registrados += 1
 
-                    st.success(f"¡Importación completada para el día {fecha_activa}! Empleados procesados: {registrados}")
+                    st.success(f"¡Importación completada! Nuevos: {registrados} | Actualizados: {actualizados}")
                     st.rerun()
 
     st.markdown("---")
@@ -397,11 +409,11 @@ elif opcion == "2. Gestión de Empleados":
 
             if st.button("Actualizar Empleado"):
                 actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
-                st.success(f"¡Datos de {emp_a_editar} actualizados para el {fecha_activa}!")
+                st.success("¡Actualizado con éxito!")
                 st.rerun()
 
     with col_der:
-        st.markdown(f"### Agregar Empleado Manual ({fecha_activa})")
+        st.markdown("### Agregar Empleado Manual")
         with st.form("form_empleado"):
             nuevo_nombre = st.text_input("Nombre Completo")
             nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
@@ -410,7 +422,7 @@ elif opcion == "2. Gestión de Empleados":
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
                     agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa)
-                    st.success(f"¡Guardado con éxito para el {fecha_activa}!")
+                    st.success("¡Guardado con éxito!")
                     st.rerun()
                 else:
                     st.error("El nombre no puede estar vacío.")
@@ -432,7 +444,7 @@ elif opcion == "3. Corte y Nómina Final":
 
     def procesar_grupo_chicas(df_subgrupo, nombre_pestana, key_sufijo):
         if df_subgrupo.empty:
-            st.info(f"No hay registros en {nombre_pestana} para la fecha {fecha_activa}.")
+            st.info(f"No hay registros en {nombre_pestana}.")
             return pd.DataFrame(), 0.0
 
         res_grupo = []
@@ -606,45 +618,23 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
-        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS AL PIE ---
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
-        tot_b_cant = df_res['_b_cant'].sum()
-        tot_b_m = df_res['_b_m'].sum()
-        tot_c_cant = df_res['_c_cant'].sum()
-        tot_c_m = df_res['_c_m'].sum()
-        tot_s_cant = df_res['_s_cant'].sum()
-        tot_s_m = df_res['_s_m'].sum()
-        tot_v3_cant = df_res['_v3_cant'].sum()
-        tot_v3_m = df_res['_v3_m'].sum()
-        tot_priv_p_cant = df_res['_priv_promo_cant'].sum()
-        tot_priv_p_m = df_res['_priv_promo_m'].sum()
-        tot_v5_art_cant = df_res['_v5_art_cant'].sum()
-        tot_v5_art_m = df_res['_v5_art_m'].sum()
-        tot_v15_cant = df_res['_v15_cant'].sum()
-        tot_v15_m = df_res['_v15_m'].sum()
-        tot_v30_cant = df_res['_v30_cant'].sum()
-        tot_v30_m = df_res['_v30_m'].sum()
-
-        df_totales_prod = pd.DataFrame([
-            {
-                "Boons": f"{int(tot_b_cant)} (${tot_b_m:,.2f})",
-                "Copa Lady": f"{int(tot_c_cant)} (${tot_c_m:,.2f})",
-                "Strongbow": f"{int(tot_s_cant)} (${tot_s_m:,.2f})",
-                "VIP 3": f"{int(tot_v3_cant)} (${tot_v3_m:,.2f})",
-                "Privados Promo": f"{int(tot_priv_p_cant)} (${tot_priv_p_m:,.2f})",
-                "VIP 5 / Priv / Artista": f"{int(tot_v5_art_cant)} (${tot_v5_art_m:,.2f})",
-                "VIP 15": f"{int(tot_v15_cant)} (${tot_v15_m:,.2f})",
-                "VIP 30": f"{int(tot_v30_cant)} (${tot_v30_m:,.2f})",
-            }
-        ])
-        st.dataframe(df_totales_prod, use_container_width=True, hide_index=True)
+        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
+        c1.metric("Boons", int(df_res['_b_cant'].sum()), f"${df_res['_b_m'].sum():,.2f}")
+        c2.metric("Copa Lady", int(df_res['_c_cant'].sum()), f"${df_res['_c_m'].sum():,.2f}")
+        c3.metric("Strongbow", int(df_res['_s_cant'].sum()), f"${df_res['_s_m'].sum():,.2f}")
+        c4.metric("VIP 3", int(df_res['_v3_cant'].sum()), f"${df_res['_v3_m'].sum():,.2f}")
+        c5.metric("Privados Promo", int(df_res['_priv_promo_cant'].sum()), f"${df_res['_priv_promo_m'].sum():,.2f}")
+        c6.metric("VIP 5/Priv/Art", int(df_res['_v5_art_cant'].sum()), f"${df_res['_v5_art_m'].sum():,.2f}")
+        c7.metric("VIP 15", int(df_res['_v15_cant'].sum()), f"${df_res['_v15_m'].sum():,.2f}")
+        c8.metric("VIP 30", int(df_res['_v30_cant'].sum()), f"${df_res['_v30_m'].sum():,.2f}")
 
         subtotal = float(df_res['Total a Pagar'].sum())
         return df_editado, subtotal
 
     def procesar_grupo_general(df_subgrupo, nombre_pestana, key_sufijo):
         if df_subgrupo.empty:
-            st.info(f"No hay registros en {nombre_pestana} para la fecha {fecha_activa}.")
+            st.info(f"No hay registros en {nombre_pestana}.")
             return 0.0
 
         chicas_con_descuento_count = 0
@@ -765,7 +755,7 @@ elif opcion == "3. Corte y Nómina Final":
     with tab_bailarinas:
         st.markdown(f"### Nómina: Bailarinas y Chicas ({fecha_activa})")
         df_chicas_nomina = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)] if not empleados_df.empty else pd.DataFrame()
-        process_res = procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
+        procesar_grupo_chicas(df_chicas_nomina, "Bailarinas y Chicas", "bailarinas_chicas")
 
     with tab_meseros:
         st.markdown(f"### Nómina: Meseros y Ayudantes de Mesero ({fecha_activa})")
@@ -818,7 +808,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_operativo_dash.iterrows():
-            emp_id = emp['id']
             tipo = emp['tipo']
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
