@@ -36,6 +36,19 @@ class Empleado(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
+class NominaDiaria(Base):
+    __tablename__ = "nomina_diaria"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fecha = Column(Date, nullable=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    sueldo_base = Column(Numeric(10, 2), default=0.0)
+    vales = Column(Numeric(10, 2), default=0.0)
+    transferencia = Column(Numeric(10, 2), default=0.0)
+    descuento = Column(Numeric(10, 2), default=100.0)
+    penalizada = Column(Boolean, default=False)
+    activo_hoy = Column(Boolean, default=True)
+
+
 class CorteVenta(Base):
     __tablename__ = "cortes_ventas"
     id = Column(Integer, primary_key=True)
@@ -243,6 +256,7 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue}, synchronize_session=False)
         session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue}, synchronize_session=False)
         session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue}, synchronize_session=False)
+        session.query(NominaDiaria).filter(NominaDiaria.fecha == f_ant).update({NominaDiaria.fecha: f_nue}, synchronize_session=False)
         
         session.commit()
     except Exception as e:
@@ -292,6 +306,86 @@ def cargar_empleados_df() -> pd.DataFrame:
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
     session.close()
     return df
+
+
+def cargar_nomina_diaria_df(fecha_str: str) -> pd.DataFrame:
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        empleados = session.query(Empleado).order_by(Empleado.id).all()
+        
+        datos_resultado = []
+        for emp in empleados:
+            nom_dia = session.query(NominaDiaria).filter(
+                NominaDiaria.fecha == f_date,
+                NominaDiaria.empleado_id == emp.id
+            ).first()
+            
+            if nom_dia:
+                datos_resultado.append({
+                    "id": emp.id,
+                    "nombre": emp.nombre,
+                    "tipo": emp.tipo,
+                    "sueldo_base": float(nom_dia.sueldo_base),
+                    "vales_nomina": float(nom_dia.vales),
+                    "transferencia_nomina": float(nom_dia.transferencia),
+                    "descuento_nomina": float(nom_dia.descuento),
+                    "penalizada": bool(nom_dia.penalizada),
+                    "activo_hoy": bool(nom_dia.activo_hoy)
+                })
+            else:
+                # DÍA NUEVO: Inicia estrictamente en ceros (descuento base de 100 solo si es chica)
+                es_chica = 'CHICA' in emp.tipo.upper() or 'BAILARINA' in emp.tipo.upper()
+                datos_resultado.append({
+                    "id": emp.id,
+                    "nombre": emp.nombre,
+                    "tipo": emp.tipo,
+                    "sueldo_base": 0.0,
+                    "vales_nomina": 0.0,
+                    "transferencia_nomina": 0.0,
+                    "descuento_nomina": 100.0 if es_chica else 0.0,
+                    "penalizada": False,
+                    "activo_hoy": True
+                })
+        return pd.DataFrame(datos_resultado)
+    finally:
+        session.close()
+
+
+def guardar_o_actualizar_nomina_diaria(fecha_str: str, empleado_id: int, sueldo_base: float, vales: float, transferencia: float, descuento: float, penalizada: bool, activo_hoy: bool):
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        nom_dia = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id == empleado_id
+        ).first()
+        
+        if nom_dia:
+            nom_dia.sueldo_base = sueldo_base
+            nom_dia.vales = vales
+            nom_dia.transferencia = transferencia
+            nom_dia.descuento = descuento
+            nom_dia.penalizada = penalizada
+            nom_dia.activo_hoy = activo_hoy
+        else:
+            nuevo = NominaDiaria(
+                fecha=f_date,
+                empleado_id=empleado_id,
+                sueldo_base=sueldo_base,
+                vales=vales,
+                transferencia=transferencia,
+                descuento=descuento,
+                penalizada=penalizada,
+                activo_hoy=activo_hoy
+            )
+            session.add(nuevo)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
 def agregar_empleado(nombre, tipo, sueldo_base):
@@ -505,8 +599,9 @@ def obtener_fechas_disponibles() -> list:
         fechas_v = session.query(CorteVenta.fecha).distinct().all()
         fechas_c = session.query(ProductoChica.fecha).distinct().all()
         fechas_g = session.query(GastoDiario.fecha).distinct().all()
+        fechas_n = session.query(NominaDiaria.fecha).distinct().all()
         
-        todas = set([f[0] for f in fechas_v + fechas_c + fechas_g if f[0] is not None])
+        todas = set([f[0] for f in fechas_v + fechas_c + fechas_g + fechas_n if f[0] is not None])
         ordenadas = sorted(list(todas), reverse=True)
         return [f.strftime('%Y-%m-%d') for f in ordenadas]
     finally:
