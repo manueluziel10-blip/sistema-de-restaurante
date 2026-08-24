@@ -16,7 +16,7 @@ from models import (
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
-    get_session, CorteVenta, ProductoChica
+    get_session, CorteVenta, ProductoChica, NominaDiaria
 )
 
 st.set_page_config(layout="wide")
@@ -141,6 +141,7 @@ def limpiar_cortes_dia(fecha_str):
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         session.query(CorteVenta).filter(CorteVenta.fecha == f_date).delete()
         session.query(ProductoChica).filter(ProductoChica.fecha == f_date).delete()
+        session.query(NominaDiaria).filter(NominaDiaria.fecha == f_date).delete()
         session.commit()
     except Exception as e:
         session.rollback()
@@ -277,10 +278,9 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     else:
         st.info("Sube los archivos correspondientes al corte del día seleccionado.")
         
-        # Botón para limpiar archivos cargados por error en esta fecha
-        if st.button("🗑️ Borrar / Restablecer Cortes de este Día", type="secondary"):
+        if st.button("🗑️ Borrar / Restablecer Todo el Corte de este Día", type="secondary"):
             limpiar_cortes_dia(fecha_activa)
-            st.success(f"¡Se han eliminado los archivos y registros de ventas/productos para el día {fecha_activa}!")
+            st.success(f"¡Se han eliminado las ventas, productos de chicas y registros de nómina para el día {fecha_activa}!")
             st.rerun()
 
         col_1, col_2, col_3 = st.columns(3)
@@ -1164,7 +1164,8 @@ elif opcion == "5. Usuarios y Accesos":
             nuevo_rol = st.selectbox("Rol del Usuario", ["admin", "cajero", "gerente"])
             if st.form_submit_button("Crear Usuario"):
                 if nuevo_user.strip() and nuevo_pass.strip():
-                    crear_usuario(nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol)
+                    crear_username = nuevo_user.strip()
+                    crear_usuario(crear_username, nuevo_pass.strip(), nuevo_rol)
                     st.success("¡Usuario creado!")
                     st.rerun()
 
