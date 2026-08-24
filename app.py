@@ -252,7 +252,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
 
 def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general):
     buffer = io.BytesIO()
-    # Cambiamos a formato horizontal (landscape) para evitar errores de diseño con múltiples columnas
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     
@@ -285,11 +284,14 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
                 row_cells.append(Paragraph(val_txt, cell_style))
             rows.append(row_cells)
         
-        # Ancho total disponible en horizontal (792 - 60 márgenes = 732 pts)
         num_cols = len(df_resultados.columns)
-        col_width = 732 / num_cols
-        
-        t_rep = Table(rows, colWidths=[col_width] * num_cols)
+        # Asignamos anchos fijos y compactos según las columnas (Total disponible = 732 pts)
+        if num_cols == 6:
+            col_widths = [180, 80, 110, 130, 120, 112] # Para Bailarinas
+        else:
+            col_widths = [732 / num_cols] * num_cols
+
+        t_rep = Table(rows, colWidths=col_widths)
         t_rep.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -1101,7 +1103,17 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
-            # 1. BAILARINAS (Sin ID, con Asistencias)
+            # Función para renderizar tablas más compactas y centradas en la UI
+            def mostrar_tabla_compacta(df_rep, total_val, nombre_pestana, key_pdf):
+                col_t_izq, col_t_der = st.columns([5, 2])
+                with col_t_izq:
+                    st.dataframe(df_rep, use_container_width=True, hide_index=True)
+                with col_t_der:
+                    st.metric(f"Total General ({nombre_pestana})", f"${total_val:,.2f}")
+                    pdf_file = generar_pdf_periodo(f"Resumen de {nombre_pestana}", rango_etiqueta, df_rep, total_val)
+                    st.download_button(f"📥 Descargar PDF", data=pdf_file, file_name=f"Nomina_{nombre_pestana}_{rango_etiqueta}.pdf", mime="application/pdf", key=key_pdf)
+
+            # 1. BAILARINAS
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({rango_etiqueta})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1150,14 +1162,10 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         })
 
                     df_rep_b = pd.DataFrame(resumen_bailarinas)
-                    st.dataframe(df_rep_b, use_container_width=True)
                     total_b_val = df_rep_b['Total a Pagar'].sum() if not df_rep_b.empty else 0.0
-                    st.metric("Total General a Pagar (Bailarinas)", f"${total_b_val:,.2f}")
-                    
-                    pdf_b = generar_pdf_periodo("Resumen de Bailarinas y Chicas", rango_etiqueta, df_rep_b, total_b_val)
-                    st.download_button("📥 Descargar PDF de Bailarinas", data=pdf_b, file_name=f"Nomina_Bailarinas_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_b")
+                    mostrar_tabla_compacta(df_rep_b, total_b_val, "Bailarinas y Chicas", "dl_pdf_b")
 
-            # 2. MESEROS Y AYUDANTES (Sin ID, con Asistencias)
+            # 2. MESEROS Y AYUDANTES
             with tab_rep_meseros:
                 st.markdown(f"### Resumen de Meseros y Ayudantes ({rango_etiqueta})")
                 mask_meseros_rango = (
@@ -1197,14 +1205,10 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "Total a Pagar": total_pagar
                         })
                     df_rep_m = pd.DataFrame(resumen_mes)
-                    st.dataframe(df_rep_m, use_container_width=True)
                     total_m_val = df_rep_m['Total a Pagar'].sum() if not df_rep_m.empty else 0.0
-                    st.metric("Total General a Pagar (Meseros y Ayudantes)", f"${total_m_val:,.2f}")
-                    
-                    pdf_m = generar_pdf_periodo("Resumen de Meseros y Ayudantes", rango_etiqueta, df_rep_m, total_m_val)
-                    st.download_button("📥 Descargar PDF de Meseros", data=pdf_m, file_name=f"Nomina_Meseros_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_m")
+                    mostrar_tabla_compacta(df_rep_m, total_m_val, "Meseros y Ayudantes", "dl_pdf_m")
 
-            # 3. SEGURIDAD (Sin ID, con Asistencias)
+            # 3. SEGURIDAD
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1224,14 +1228,10 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "Total a Pagar": sueldo_base
                         })
                     df_rep_s = pd.DataFrame(resumen_seg)
-                    st.dataframe(df_rep_s, use_container_width=True)
                     total_s_val = df_rep_s['Total a Pagar'].sum() if not df_rep_s.empty else 0.0
-                    st.metric("Total General a Pagar (Seguridad)", f"${total_s_val:,.2f}")
-                    
-                    pdf_s = generar_pdf_periodo("Resumen de Seguridad", rango_etiqueta, df_rep_s, total_s_val)
-                    st.download_button("📥 Descargar PDF de Seguridad", data=pdf_s, file_name=f"Nomina_Seguridad_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_s")
+                    mostrar_tabla_compacta(df_rep_s, total_s_val, "Personal de Seguridad", "dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO (Sin ID, con Asistencias)
+            # 4. PERSONAL GENERAL Y FIJO
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
@@ -1281,12 +1281,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "Total a Pagar": total_pagar
                         })
                     df_rep_g = pd.DataFrame(resumen_gen)
-                    st.dataframe(df_rep_g, use_container_width=True)
                     total_g_val = df_rep_g['Total a Pagar'].sum() if not df_rep_g.empty else 0.0
-                    st.metric("Total General a Pagar (Personal General y Fijo)", f"${total_g_val:,.2f}")
-                    
-                    pdf_g = generar_pdf_periodo("Resumen de Personal General y Fijo", rango_etiqueta, df_rep_g, total_g_val)
-                    st.download_button("📥 Descargar PDF de Personal General", data=pdf_g, file_name=f"Nomina_General_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_g")
+                    mostrar_tabla_compacta(df_rep_g, total_g_val, "Personal General y Fijo", "dl_pdf_g")
 
 # --- SECCIÓN 6: GESTIÓN DE USUARIOS Y ACCESOS ---
 elif opcion == "6. Usuarios y Accesos":
