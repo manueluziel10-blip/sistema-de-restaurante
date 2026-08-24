@@ -1107,7 +1107,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_file = generar_pdf_periodo(f"Resumen de {nombre_pestana}", rango_etiqueta, df_rep, total_val)
                     st.download_button(f"📥 Descargar PDF", data=pdf_file, file_name=f"Nomina_{nombre_pestana}_{rango_etiqueta}.pdf", mime="application/pdf", key=key_pdf)
 
-            # 1. BAILARINAS (Agrupando correctamente por nombre o ID único por fecha)
+            # 1. BAILARINAS (Asistencias contadas basándose en sus productos vendidos registrados por fecha o ID único)
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({rango_etiqueta})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1116,20 +1116,21 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.info("No hay registros de bailarinas en este periodo.")
                 else:
                     resumen_bailarinas = []
-                    # Agrupamos por nombre de empleada para calcular correctamente las asistencias únicas por fecha en el rango
                     nombres_bailarinas = df_bailarinas_rango['nombre'].unique()
                     
                     for nombre in nombres_bailarinas:
                         df_emp_filas = df_bailarinas_rango[df_bailarinas_rango['nombre'] == nombre]
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
-                        
-                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
-                        descuento = float(df_emp_filas['descuento_nomina'].sum())
-                        
-                        # Tomar el ID representativo
                         emp_id = df_emp_filas.iloc[0]['id']
 
+                        # Conteo exacto de asistencias: Días únicos donde tiene productos vendidos registrados o presencia en nómina de ese día
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
+                        if not sus_prods.empty and 'fecha' in sus_prods.columns:
+                            asistencias_emp = sus_prods['fecha'].nunique()
+                        else:
+                            asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
+                        descuento = float(df_emp_filas['descuento_nomina'].sum())
                         
                         total_comisiones = 0.0
                         if not sus_prods.empty:
@@ -1182,10 +1183,15 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_meseros:
                         df_emp_filas = df_meseros_rango[df_meseros_rango['nombre'] == nombre]
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
-                        
-                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         emp_id = df_emp_filas.iloc[0]['id']
+                        
+                        # Conteo exacto de asistencias basado en ventas registradas en el periodo
+                        if not ventas_rango.empty and 'idmesero' in ventas_rango.columns and 'fecha' in ventas_rango.columns:
+                            asistencias_emp = ventas_rango[ventas_rango['idmesero'] == emp_id]['fecha'].nunique()
+                        else:
+                            asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
