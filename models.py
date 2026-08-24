@@ -1,4 +1,4 @@
-"""""
+"""
 Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico completo por fecha, ID y empleado.
 """
 
@@ -270,7 +270,23 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 
 def asegurar_nomina_dia(session, fecha_date):
-    """Copia o asegura que todos los empleados activos tengan un registro en nomina_diaria para esta fecha."""
+    """Copia o asegura que todos los empleados activos tengan un registro en nomina_diaria para esta fecha y añade columnas si faltan."""
+    try:
+        inspector = inspect(session.bind)
+        if 'nomina_diaria' in inspector.get_table_names():
+            columnas_tabla = [col['name'] for col in inspector.get_columns('nomina_diaria')]
+            if 'vales_nomina' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            if 'descuento_nomina' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
+            if 'transferencia_nomina' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            if 'penalizada' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
+            session.commit()
+    except Exception:
+        session.rollback()
+
     empleados = session.query(Empleado).filter(Empleado.activo == True).all()
     for emp in empleados:
         existe = session.query(NominaDiaria).filter(
@@ -278,7 +294,6 @@ def asegurar_nomina_dia(session, fecha_date):
             NominaDiaria.empleado_id == emp.id
         ).first()
         if not existe:
-            # Buscar si hay un registro previo en otra fecha para heredar o usar el sueldo base del empleado
             nueva_nom = NominaDiaria(
                 fecha=fecha_date,
                 empleado_id=emp.id,
@@ -299,7 +314,6 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
-    # Unir la tabla de empleados con la nómina específica de la fecha
     query = session.query(
         Empleado.id,
         Empleado.nombre,
@@ -343,7 +357,6 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         session.commit()
         session.refresh(emp)
     
-    # Asegurar que tenga registro en todas las fechas existentes o en la actual
     fechas_v = session.query(CorteVenta.fecha).distinct().all()
     fechas_c = session.query(ProductoChica.fecha).distinct().all()
     fechas_g = session.query(GastoDiario.fecha).distinct().all()
@@ -373,7 +386,6 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     
-    # Actualizar maestro de empleado
     emp = session.query(Empleado).filter(Empleado.id == emp_id).first()
     if emp:
         emp.tipo = nuevo_tipo
