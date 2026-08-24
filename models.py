@@ -297,7 +297,6 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
-    # Cargar UNICAMENTE los empleados que tienen un registro de nomina_diaria explícito para esta fecha
     query = session.query(
         Empleado.id,
         Empleado.nombre,
@@ -324,7 +323,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     return df
 
 
-def agregar_empleado(nombre, tipo, sueldo_base):
+def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None):
     session = get_session()
     asegurar_puesto_existe(session, tipo)
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
@@ -340,6 +339,29 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         session.add(emp)
         session.commit()
         session.refresh(emp)
+    
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+
+    existe_nom = session.query(NominaDiaria).filter(
+        NominaDiaria.fecha == f_date,
+        NominaDiaria.empleado_id == emp.id
+    ).first()
+
+    if not existe_nom:
+        session.add(NominaDiaria(
+            fecha=f_date,
+            empleado_id=emp.id,
+            sueldo_base=sueldo_base,
+            vales_nomina=0.0,
+            descuento_nomina=100.0,
+            transferencia_nomina=0.0,
+            penalizada=False
+        ))
+    else:
+        existe_nom.sueldo_base = sueldo_base
+
+    session.commit()
     session.close()
 
 
