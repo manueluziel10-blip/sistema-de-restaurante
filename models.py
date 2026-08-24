@@ -323,7 +323,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     return df
 
 
-def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None):
+def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, tipo)
     emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
@@ -365,7 +365,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None):
     session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, fecha_str=None):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, fecha_str=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     
