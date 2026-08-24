@@ -252,7 +252,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
 
 def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
     story = []
     
     PRIMARY_COLOR = colors.HexColor("#111827")
@@ -260,19 +260,19 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
     BORDER_COLOR = colors.HexColor("#E5E7EB")
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold')
-    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=10, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
-    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor("#374151"))
-    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
-    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold')
+    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#374151"))
+    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
     logo_flowable = obtener_logo_flowable(cell_style)
 
-    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[130, 600])
+    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[120, 612])
     tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     
     story.append(tabla_header)
-    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=8, spaceAfter=12))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=6, spaceAfter=10))
 
     if not df_resultados.empty:
         headers = [Paragraph(f"<b>{c}</b>", cell_header) for c in df_resultados.columns]
@@ -285,23 +285,20 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
             rows.append(row_cells)
         
         num_cols = len(df_resultados.columns)
-        # Asignamos anchos fijos y compactos según las columnas (Total disponible = 732 pts)
-        if num_cols == 6:
-            col_widths = [180, 80, 110, 130, 120, 112] # Para Bailarinas
-        else:
-            col_widths = [732 / num_cols] * num_cols
+        # Ancho total disponible en horizontal con márgenes de 25 = 742 puntos exactos
+        col_width = 742 / num_cols
 
-        t_rep = Table(rows, colWidths=col_widths)
+        t_rep = Table(rows, colWidths=[col_width] * num_cols)
         t_rep.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
             ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         ]))
         story.append(t_rep)
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
         story.append(Paragraph(f"<b>Total General a Pagar: ${total_general:,.2f}</b>", cell_bold))
 
     doc.build(story)
@@ -1103,9 +1100,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
-            # Función para renderizar tablas más compactas y centradas en la UI
+            # Función para renderizar tablas más compactas ajustando la proporción visual en columnas
             def mostrar_tabla_compacta(df_rep, total_val, nombre_pestana, key_pdf):
-                col_t_izq, col_t_der = st.columns([5, 2])
+                col_t_izq, col_t_der = st.columns([4, 2])
                 with col_t_izq:
                     st.dataframe(df_rep, use_container_width=True, hide_index=True)
                 with col_t_der:
