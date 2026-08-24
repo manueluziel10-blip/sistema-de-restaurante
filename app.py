@@ -157,7 +157,6 @@ else:
 
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
 
-# Validación de permisos: El cajero solo puede modificar si es el día actual. El admin siempre puede.
 es_dia_actual = (fecha_activa == hoy_str)
 puede_modificar = (rol_actual_lower == "admin") or es_dia_actual
 
@@ -173,12 +172,44 @@ if rol_actual_lower == "admin":
 
 opcion = st.sidebar.selectbox("Selecciona una sección", opciones_menu, key="menu_seccion_principal")
 
+# --- ZONA DE PELIGRO CON VALIDACIÓN DE CONTRASEÑA ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚠️ Zona de Peligro")
-if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
-    reiniciar_base_de_datos()
-    st.sidebar.success("¡Base de datos limpiada con éxito!")
-    st.rerun()
+
+if "mostrar_form_reinicio" not in st.session_state:
+    st.session_state["mostrar_form_reinicio"] = False
+
+if not st.session_state["mostrar_form_reinicio"]:
+    if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
+        st.session_state["mostrar_form_reinicio"] = True
+        st.rerun()
+else:
+    with st.sidebar.form("form_confirmar_reinicio"):
+        st.warning("⚠️ Esta acción borrará TODO. Confirma tu identidad.")
+        pass_admin = st.text_input("Contraseña de Admin", type="password")
+        confirmar_check = st.checkbox("Estoy seguro de borrar la base de datos")
+        
+        col_f1, col_f2 = st.columns(2)
+        btn_ejecutar = col_f1.form_submit_button("Sí, Borrar")
+        btn_cancelar = col_f2.form_submit_button("Cancelar")
+        
+        if btn_ejecutar:
+            if confirmar_check:
+                # Validar contraseña del usuario admin actual o general
+                user_val = validar_login(st.session_state["usuario_actual"], pass_admin)
+                if user_val and user_val.get("rol") == "admin":
+                    reiniciar_base_de_datos()
+                    st.session_state["mostrar_form_reinicio"] = False
+                    st.sidebar.success("¡Base de datos limpiada con éxito!")
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta o permisos insuficientes.")
+            else:
+                st.error("Debes marcar la casilla de confirmación.")
+        
+        if btn_cancelar:
+            st.session_state["mostrar_form_reinicio"] = False
+            st.rerun()
 
 # --- SECCIÓN 1: SUBIR ARCHIVOS DIARIOS ---
 if opcion == "1. Subir Cortes Diarios (Excel)":
@@ -509,7 +540,6 @@ elif opcion == "3. Corte y Nómina Final":
 
         editor_key = f"editor_sueldos_{key_sufijo}"
         
-        # Deshabilitar edición si no puede modificar
         columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento"]]
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
