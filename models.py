@@ -278,6 +278,24 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 def cargar_empleados_df() -> pd.DataFrame:
     session = get_session()
+    try:
+        inspector = inspect(session.bind)
+        columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
+        if 'vales_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            session.commit()
+        if 'descuento_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
+            session.commit()
+        if 'transferencia_nomina' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            session.commit()
+        if 'penalizada' not in columnas_tabla:
+            session.execute(db_text("ALTER TABLE empleados ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
+            session.commit()
+    except Exception:
+        session.rollback()
+
     query = session.query(Empleado).order_by(Empleado.id)
     df = pd.read_sql(query.statement, session.bind)
     if not df.empty:
@@ -653,6 +671,7 @@ def reiniciar_base_de_datos():
         session.close()
 
 
+# --- CREACIÓN AUTOMÁTICA DE TABLAS FALTANTES ---
 try:
     _session_auto = get_session()
     Base.metadata.create_all(_session_auto.bind)
