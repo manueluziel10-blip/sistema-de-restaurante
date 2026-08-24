@@ -211,7 +211,11 @@ else:
         
         if btn_ejecutar:
             if confirmar_check:
-                user_val = validar_login(st.session_state["usuario_actual"], pass_admin)
+                usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
+                user_val = validar_login(usuario_actual_limpio, pass_admin)
+                if not user_val and usuario_actual_limpio == "admin":
+                    user_val = validar_login("admin", pass_admin)
+
                 if user_val and user_val.get("rol") == "admin":
                     reiniciar_base_de_datos()
                     st.session_state["mostrar_form_reinicio"] = False
