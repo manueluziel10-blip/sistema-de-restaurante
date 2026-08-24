@@ -1274,7 +1274,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         tipo = emp['tipo'].upper()
                         sueldo_base = float(emp['sueldo_base'])
                         
-                        # Cálculo de propinas acumuladas para meseros/ayudantes en el rango
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
                         if not ventas_rango.empty:
@@ -1283,7 +1282,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                                 p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
                                 p_efec = filas_m.get('propina_efectivo', 0.0).sum()
                                 p_vale = filas_m.get('propina_vales', 0.0).sum()
-                                p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_rango.columns else 0.0
+                                p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_m.columns else 0.0
                                 propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
                         total_pagar = sueldo_base + propinas_acum
@@ -1310,7 +1309,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     resumen_seg = []
                     for _, emp in df_seg_rango.iterrows():
                         sueldo_base = float(emp['sueldo_base'])
-                        total_pagar = sueldo_base  # Seguridad es fijo sin propinas directas
+                        total_pagar = sueldo_base
                         resumen_seg.append({
                             "ID": emp['id'],
                             "Nombre": emp['nombre'],
@@ -1336,7 +1335,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.info("No hay registros de personal general en este periodo.")
                 else:
                     resumen_gen = []
-                    chicas_con_desc_count = len(df_bailarinas_rango) # Referencia para DJ/Animador
+                    chicas_con_desc_count = len(df_bailarinas_rango)
                     
                     for _, emp in df_gen_rango.iterrows():
                         emp_id = emp['id']
@@ -1357,7 +1356,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             p_vale_t = ventas_rango.get('propina_vales', 0.0).sum() if not ventas_rango.empty else 0.0
                             propinas_o_comis = (p_tarj_t + p_efec_t + p_vale_t) * 0.08
                             
-                            # Comisiones de gerencia por productos en el rango
                             if not chicas_rango.empty:
                                 for _, pr in chicas_rango.iterrows():
                                     propinas_o_comis += float(pr['cantidad']) * calcular_comision_gerencia_caja(str(pr['descripcion']))
