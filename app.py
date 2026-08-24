@@ -15,7 +15,8 @@ from models import (
     guardar_gastos_del_dia, cargar_gastos_hoy,
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
-    cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha
+    cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
+    get_session, CorteVenta, ProductoChica
 )
 
 st.set_page_config(layout="wide")
@@ -133,6 +134,19 @@ def calcular_comision_gerencia_caja(producto_str):
     elif 'COPA' in p:
         return 5.0
     return 0.0
+
+def limpiar_cortes_dia(fecha_str):
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        session.query(CorteVenta).filter(CorteVenta.fecha == f_date).delete()
+        session.query(ProductoChica).filter(ProductoChica.fecha == f_date).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 # --- MENÚ LATERAL: CONTROL DE FECHA ---
 st.sidebar.header("Menú de Control")
@@ -262,6 +276,13 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico. Ábralo previamente para subir archivos.")
     else:
         st.info("Sube los archivos correspondientes al corte del día seleccionado.")
+        
+        # Botón para limpiar archivos cargados por error en esta fecha
+        if st.button("🗑️ Borrar / Restablecer Cortes de este Día", type="secondary"):
+            limpiar_cortes_dia(fecha_activa)
+            st.success(f"¡Se han eliminado los archivos y registros de ventas/productos para el día {fecha_activa}!")
+            st.rerun()
+
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
             up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
@@ -283,6 +304,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
             if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
                 guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
                 st.success(f"¡Corte de meseros y propinas guardado correctamente para el día {fecha_activa}!")
+                st.rerun()
 
         if up_chicas is not None:
             df_c = pd.read_excel(up_chicas, skiprows=4)
@@ -297,6 +319,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                         filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
                     )
                     st.success(f"¡Corte procesado y guardado para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
+                    st.rerun()
                 else:
                     st.error("El archivo no tiene el formato esperado.")
 
@@ -718,7 +741,6 @@ elif opcion == "3. Corte y Nómina Final":
             propinas = 0.0
             if not ventas_totales.empty and porcentaje_propina > 0.0:
                 if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    # Se calcula su porcentaje sobre el total de las propinas del restaurante (restando 16% en tarjeta)
                     p_tarj_tot = ventas_totales.get('propina_tarjeta', 0.0).sum() * 0.84
                     p_efec_tot = ventas_totales.get('propina_efectivo', 0.0).sum()
                     p_vale_tot = ventas_totales.get('propina_vales', 0.0).sum()
@@ -726,7 +748,6 @@ elif opcion == "3. Corte y Nómina Final":
                     total_propinas_restaurante = p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot
                     propinas = total_propinas_restaurante * (porcentaje_propina / 100.0)
                 else:
-                    # Meseros: se calcula con sus propias propinas individuales, restando el 16% a la propina de tarjeta
                     filas_mesero = ventas_totales[ventas_totales['idmesero'] == emp_id]
                     if not filas_mesero.empty:
                         p_tarj = filas_mesero.get('propina_tarjeta', 0.0).sum() * 0.84
