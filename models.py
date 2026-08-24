@@ -387,7 +387,8 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
             session.add(CorteVenta(**kwargs))
         session.commit()
 
-        bloquear_corte_fecha(f_filtro_str, usuario_nombre)
+        # Bloqueo automático eliminado para permitir edición libre tras cargar archivos
+        # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
 
     except Exception as e:
         session.rollback()
@@ -464,7 +465,8 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             session.add(ProductoChica(**kwargs))
         session.commit()
 
-        bloquear_corte_fecha(f_filtro_str, usuario_nombre)
+        # Bloqueo automático eliminado para permitir edición libre tras guardar
+        # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
         return nuevas_detectadas
     except Exception as e:
         session.rollback()
@@ -495,7 +497,8 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
         session.add(GastoDiario(**kwargs))
     session.commit()
 
-    bloquear_corte_fecha(f_filtro_str, usuario_nombre)
+    # Bloqueo automático eliminado para permitir edición libre tras guardar gastos
+    # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
     session.close()
 
 
