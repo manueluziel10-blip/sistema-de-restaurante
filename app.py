@@ -807,7 +807,8 @@ elif opcion == "3. Corte y Nómina Final":
 # --- SECCIÓN 4: CIERRE DE CAJA (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
     st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
-    
+    st.info("Este panel consolida las ventas totales, terminales, efectivo, propinas, gastos y nómina diaria basados en tus archivos cargados.")
+
     ventas_acumuladas = cargar_ventas_df(fecha_activa)
     chicas_acumuladas = cargar_chicas_df(fecha_activa)
     empleados_dashboard_df = cargar_nomina_diaria_df(fecha_activa)
@@ -905,6 +906,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
             nomina_chicas_calc += ((sueldo_chica + comisiones_chica_ind) - descuento_emp)
 
+    st.markdown("### 📥 Registro de Gastos y Datos del Día")
+    if not puede_modificar:
+        st.warning(f"🔒 Modo de solo lectura: Visualizando el corte histórico del {fecha_activa}. No se pueden editar los gastos.")
+
     gasto_previo = cargar_gastos_hoy(fecha_activa)
     g_cocina_val = float(gasto_previo.gasto_cocina) if gasto_previo else 0.0
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
@@ -912,16 +917,20 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
     col_g1, col_g2, col_g3 = st.columns(3)
     with col_g1:
-        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", disabled=not puede_modificar)
+        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", key=f"input_gasto_cocina_{fecha_activa}", disabled=not puede_modificar)
     with col_g2:
-        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", disabled=not puede_modificar)
+        gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", key=f"input_gasto_compras_{fecha_activa}", disabled=not puede_modificar)
     with col_g3:
-        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", disabled=not puede_modificar)
+        gasto_vales = st.number_input("Vales / Otros ($)", value=g_vales_val, format="%.2f", key=f"input_gasto_vales_{fecha_activa}", disabled=not puede_modificar)
 
-    if puede_modificar and st.button("Guardar Gastos del Día"):
-        guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-        st.success("¡Gastos guardados con éxito!")
-        st.rerun()
+    if puede_modificar:
+        if st.button("Guardar Gastos del Día", key=f"btn_guardar_gastos_{fecha_activa}"):
+            guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
+            st.success(f"¡Gastos del día guardados para la fecha {fecha_activa}!")
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 📋 Resumen Financiero del Día (Estilo Dashboard)")
 
     efectivo_ventas, tarjeta_ventas, transferencia_ventas, ventas_por_cobrar = 0.0, 0.0, 0.0, 0.0
     if not ventas_acumuladas.empty:
@@ -930,59 +939,223 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         transferencia_ventas = float((ventas_acumuladas.get('vales', 0) + ventas_acumuladas.get('propina_vales', 0)).sum())
         ventas_por_cobrar = float((ventas_acumuladas.get('otros', 0) + ventas_acumuladas.get('propinacredito', 0)).sum())
 
-    ventas_totales = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
+    ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
     nomina_chicas_efectivo = nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
-    total_gastos_nomina = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
-    efectivo_entregado = efectivo_ventas - total_gastos_nomina
-    utilidad_monto = ventas_totales - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
-    utilidad_porcentaje = (utilidad_monto / ventas_totales * 100.0) if ventas_totales > 0 else 0.0
+    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
+    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
+    
+    nomina_total_general_dash = nomina_personal_p_total + nomina_chicas_calc
+    utilidad_monto = ventas_totales_con_propinas - (nomina_total_general_dash + gasto_cocina)
+    utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
-    st.markdown("#### 💰 Resumen Financiero")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("VENTAS TOTALES", f"${ventas_totales:,.2f}")
-    c2.metric("EFECTIVO", f"${efectivo_ventas:,.2f}")
-    c3.metric("TERMINALES", f"${tarjeta_ventas:,.2f}")
-    c4.metric("TRANSFERENCIAS", f"${transferencia_ventas:,.2f}")
-    c5.metric("POR COBRAR", f"${ventas_por_cobrar:,.2f}")
+    st.markdown("#### 💰 Resumen de Ventas y Efectivo")
+    col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
+    ventas_cards = [
+        ("VENTAS TOTALES", ventas_totales_con_propinas),
+        ("VENTAS EFECTIVO", efectivo_ventas),
+        ("VENTAS TERMINALES", tarjeta_ventas),
+        ("VENTAS TRANSFERENCIAS", transferencia_ventas),
+        ("VENTAS POR COBRAR", ventas_por_cobrar)
+    ]
+    cols = [col_d1, col_d2, col_d3, col_d4, col_d5]
+    for idx, (titulo, valor) in enumerate(ventas_cards):
+        with cols[idx]:
+            st.markdown(
+                f"""
+                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{titulo}</div>
+                    <div style="color: #FFFFFF; font-size: 18px; font-weight: bold; margin-top: 6px;">${valor:,.2f}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-    e1, e2 = st.columns(2)
-    e1.metric("EFECTIVO ENTREGADO", f"${efectivo_entregado:,.2f}")
-    e2.metric(f"UTILIDAD ({utilidad_porcentaje:.1f}%)", f"${utilidad_monto:,.2f}")
+    st.markdown("<br>", unsafe_allow_html=True)
 
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.markdown(
+            f"""
+            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #00E676; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">EFECTIVO ENTREGADO</div>
+                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${efectivo_entregado:,.2f}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_e2:
+        st.markdown(
+            f"""
+            <div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #29B6F6; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">UTILIDAD ANTES DE COSTOS ({utilidad_porcentaje:.1f}%)</div>
+                <div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${utilidad_monto:,.2f}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+    st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    nomina_cards = [
+        ("Nómina - Personal General", nomina_personal_p_total),
+        ("Nómina - Bailarinas / Chicas", nomina_chicas_calc),
+        ("Vales - Personal General", vales_personal_total),
+        ("Vales - Bailarinas / Chicas", vales_chicas_total)
+    ]
+    cols_n = [col_n1, col_n2, col_n3, col_n4]
+    for idx, (titulo, valor) in enumerate(nomina_cards):
+        with cols_n[idx]:
+            st.markdown(
+                f"""
+                <div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937;">
+                    <div style="color: #90A4AE; font-size: 10px; font-weight: bold; text-transform: uppercase;">{titulo}</div>
+                    <div style="color: #FFFFFF; font-size: 20px; font-weight: bold; margin-top: 5px;">${valor:,.2f}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        st.metric("Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}")
+    with col_c2:
+        st.metric("Bailarinas con Sueldo Base", f"{conteo_con_sueldo}")
+    with col_c3:
+        st.metric("Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}")
+
+    st.markdown("#### Desglose de Gastos y Nómina en Efectivo")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_efectivo},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_efectivo},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
-        {"Concepto": "Vales / Otros", "Monto": gasto_vales},
-        {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina}
+        {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
+        {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
 
+    empleados_df_base = cargar_empleados_df()
+    resumen_meseros = pd.DataFrame()
+    if not ventas_acumuladas.empty and not empleados_df_base.empty:
+        df_ventas_meseros = pd.merge(ventas_acumuladas, empleados_df_base[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
+        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
+            if col not in df_ventas_meseros.columns:
+                df_ventas_meseros[col] = 0.0
+        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
+            'efectivo': 'sum', 'propina_efectivo': 'sum', 'tarjeta': 'sum', 'propina_tarjeta': 'sum',
+            'vales': 'sum', 'propina_vales': 'sum', 'otros': 'sum', 'propinacredito': 'sum'
+        }).reset_index()
+        resumen_meseros['importe_total'] = (
+            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
+            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
+            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
+            resumen_meseros['otros'] + resumen_meseros['propinacredito']
+        )
+
+    def generar_pdf(empleados_df_arg, resumen_meseros_arg):
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+        elementos = []
+        styles = getSampleStyleSheet()
+        color_acento = colors.HexColor("#1A2634")
+        color_texto = colors.HexColor("#334155")
+        
+        titulo_style = ParagraphStyle('TituloReporte', parent=styles['Heading1'], fontSize=14, textColor=color_acento, spaceAfter=4, alignment=1, fontName='Helvetica-Bold')
+        sub_style = ParagraphStyle('SubTituloReporte', parent=styles['Heading2'], fontSize=10, textColor=color_acento, spaceBefore=8, spaceAfter=3, fontName='Helvetica-Bold')
+        normal_style = ParagraphStyle('TextoNormal', parent=styles['Normal'], fontSize=8, textColor=color_texto)
+
+        elementos.append(Paragraph(f"ZULLYS MENS CLUB - REPORTE DE CIERRE DE CAJA ({fecha_activa})", titulo_style))
+        elementos.append(Paragraph(f"<b>Fecha de Emisión:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
+        elementos.append(Spacer(1, 6))
+
+        elementos.append(Paragraph("1. Resumen de Ventas y Flujo Principal", sub_style))
+        datos_ventas = [
+            ["Concepto", "Monto"],
+            ["Ventas Totales", f"${ventas_totales_con_propinas:,.2f}"],
+            ["Ventas Efectivo", f"${efectivo_ventas:,.2f}"],
+            ["Ventas Terminales", f"${tarjeta_ventas:,.2f}"],
+            ["Ventas Transferencias", f"${transferencia_ventas:,.2f}"],
+            ["Ventas por Cobrar", f"${ventas_por_cobrar:,.2f}"],
+            ["Efectivo Entregado a Caja", f"${efectivo_entregado:,.2f}"],
+            ["Utilidad Antes de Costos", f"${utilidad_monto:,.2f} ({utilidad_porcentaje:.1f}%)"]
+        ]
+        t_ventas = Table(datos_ventas, colWidths=[270, 270])
+        t_ventas.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), color_acento), ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'), ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 4), ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")), ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ]))
+        elementos.append(t_ventas)
+        elementos.append(Spacer(1, 6))
+
+        doc.build(elementos)
+        buffer.seek(0)
+        return buffer
+
+    st.markdown("---")
+    pdf_buffer = generar_pdf(empleados_df_base, resumen_meseros)
+    st.download_button(
+        label=f"📄 Descargar Reporte de Cierre en PDF ({fecha_activa})",
+        data=pdf_buffer,
+        file_name=f"Cierre_Caja_{fecha_activa}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+
+    st.markdown(f"#### 👥 Resumen de Ventas por Mesero (Fecha: {fecha_activa})")
+    if not resumen_meseros.empty:
+        num_columnas = 3
+        for i in range(0, len(resumen_meseros), num_columnas):
+            cols = st.columns(num_columnas)
+            for j in range(num_columnas):
+                if i + j < len(resumen_meseros):
+                    row = resumen_meseros.iloc[i + j]
+                    with cols[j]:
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #141D26; padding: 16px; border-radius: 10px; border: 1px solid #1A2634; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase;">MESERO: {row['nombre']}</div>
+                                <div style="color: #FFFFFF; font-size: 22px; font-weight: bold; margin: 6px 0 10px 0;">${row['importe_total']:,.2f}</div>
+                                <hr style="border: none; border-top: 1px solid #1F2937; margin: 8px 0;">
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;"><span>Efectivo:</span> <b>${row['efectivo'] + row['propina_efectivo']:,.2f}</b></div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;"><span>Tarjeta:</span> <b>${row['tarjeta'] + row['propina_tarjeta']:,.2f}</b></div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;"><span>Transf:</span> <b>${row['vales'] + row['propina_vales']:,.2f}</b></div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between;"><span>Por Cobrar:</span> <b>${row['otros'] + row['propinacredito']:,.2f}</b></div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+    else:
+        st.info(f"No hay registros de ventas de meseros disponibles para mostrar en el resumen de la fecha {fecha_activa}.")
+
 # --- SECCIÓN 5: USUARIOS Y ACCESOS ---
 elif opcion == "5. Usuarios y Accesos":
-    st.subheader("🔐 Gestión de Usuarios y Accesos")
-    tab_ver, tab_nuevo, tab_editar, tab_fecha = st.tabs(["📋 Ver Usuarios", "➕ Crear Usuario", "✏️ Modificar", "📅 Cambiar Fecha"])
-    
-    with tab_ver:
+    st.subheader("🔐 Gestión de Usuarios y Accesos del Sistema")
+    tab_ver_usuarios, tab_nuevo_usuario, tab_editar_usuario, tab_cambiar_fecha = st.tabs([
+        "📋 Usuarios Registrados", "➕ Registrar Nuevo Usuario", "✏️ Modificar Credenciales", "📅 Reasignar Fecha de Corte"
+    ])
+    with tab_ver_usuarios:
         st.dataframe(cargar_usuarios_df(), use_container_width=True)
-    with tab_nuevo:
-        with st.form("f_usu"):
-            u = st.text_input("Usuario")
-            p = st.text_input("Contraseña", type="password")
-            r = st.selectbox("Rol", ["admin", "cajero", "gerente"])
-            if st.form_submit_button("Crear"):
-                crear_usuario(u, p, r)
-                st.success("¡Creado!")
-                st.rerun()
-    with tab_fecha:
-        fechas = obtener_fechas_disponibles()
-        if fechas:
-            with st.form("f_fecha"):
-                orig = st.selectbox("Fecha Origen", fechas)
-                dest = st.date_input("Fecha Destino")
-                if st.form_submit_button("Reasignar"):
-                    cambiar_fecha_corte(orig, dest.strftime('%Y-%m-%d'))
-                    st.success("¡Reasignado con éxito!")
+    with tab_nuevo_usuario:
+        with st.form("form_nuevo_usuario"):
+            nuevo_user = st.text_input("Nombre de Usuario")
+            nuevo_pass = st.text_input("Contraseña", type="password")
+            nuevo_rol = st.selectbox("Rol del Usuario", ["admin", "cajero", "gerente"])
+            if st.form_submit_button("Crear Usuario"):
+                if nuevo_user.strip() and nuevo_pass.strip():
+                    crear_usuario(nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol)
+                    st.success("¡Usuario creado!")
+                    st.rerun()
+    with tab_cambiar_fecha:
+        fechas_existentes = obtener_fechas_disponibles()
+        if fechas_existentes:
+            with st.form("form_cambiar_fecha"):
+                fecha_origen = st.selectbox("Fecha Origen (A cambiar)", fechas_existentes)
+                fecha_destino_input = st.date_input("Fecha Nueva (Destino)")
+                if st.form_submit_button("Actualizar Fecha del Corte"):
+                    cambiar_fecha_corte(fecha_origen, fecha_destino_input.strftime('%Y-%m-%d'))
+                    st.success("¡Fecha reasignada con éxito!")
                     st.rerun()
