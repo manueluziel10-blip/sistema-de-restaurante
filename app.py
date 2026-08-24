@@ -1462,9 +1462,14 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         
                         total_comisiones = 0.0
-                        detalle_prods = {}
+                        dias_asistencia = 0
                         
                         if not sus_prods.empty:
+                            if 'fecha' in sus_prods.columns:
+                                dias_asistencia = sus_prods['fecha'].nunique()
+                            else:
+                                dias_asistencia = 1
+
                             for _, p in sus_prods.iterrows():
                                 desc = str(p['descripcion']).upper()
                                 cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
@@ -1481,7 +1486,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                                     
                                 sub_prod = cant * com_unit
                                 total_comisiones += sub_prod
-                                detalle_prods[desc] = detalle_prods.get(desc, 0.0) + cant
 
                         total_bruto = sueldo_base + total_comisiones
                         total_pagar = total_bruto - descuento
@@ -1489,11 +1493,11 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         resumen_bailarinas.append({
                             "ID": emp_id,
                             "Nombre": nombre,
+                            "Asistencias (Días)": dias_asistencia,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Comisiones Acumuladas": total_comisiones,
                             "Descuentos Acumulados": descuento,
-                            "Total a Pagar": total_pagar,
-                            "Productos Vendidos (Resumen)": ", ".join([f"{k} ({int(v)})" for k, v in detalle_prods.items()]) if detalle_prods else "Ninguno"
+                            "Total a Pagar": total_pagar
                         })
 
                     df_rep_b = pd.DataFrame(resumen_bailarinas)
@@ -1518,11 +1522,17 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         tipo = emp['tipo'].upper()
                         sueldo_base = float(emp['sueldo_base'])
                         
+                        dias_asistencia_m = 0
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
                         if not ventas_rango.empty:
                             filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
                             if not filas_m.empty:
+                                if 'fecha' in filas_m.columns:
+                                    dias_asistencia_m = filas_m['fecha'].nunique()
+                                else:
+                                    dias_asistencia_m = 1
+
                                 p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
                                 p_efec = filas_m.get('propina_efectivo', 0.0).sum()
                                 p_vale = filas_m.get('propina_vales', 0.0).sum()
@@ -1534,6 +1544,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias (Días)": dias_asistencia_m,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas Acumuladas": propinas_acum,
                             "Total a Pagar": total_pagar
@@ -1558,6 +1569,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "ID": emp['id'],
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias (Días)": 1,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Total a Pagar": total_pagar
                         })
@@ -1609,6 +1621,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                             "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias (Días)": 1,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas / Comisiones Acumuladas": propinas_o_comis,
                             "Total a Pagar": total_pagar
