@@ -211,8 +211,8 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         textColor=colors.whitesmoke
     )
 
-    # Logotipo seguro en PDF
-    ruta_logo = "LogoSinBailarina.jpg"
+    # Carga segura del logo PNG desde GitHub
+    ruta_logo = "LogoSinBailarina.png"
     logo_flowable = None
     if os.path.exists(ruta_logo):
         try:
@@ -994,7 +994,7 @@ elif opcion == "3. Corte y Nómina Final":
                         p_tarj = filas_mesero.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_mesero.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_mesero.get('propina_vales', 0.0).sum()
-                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_mesero.columns else 0.0
+                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_totales.columns else 0.0
                         total_prop_mesero = p_tarj + p_efec + p_vale + p_cred
                         propinas = total_prop_mesero * (porcentaje_propina / 100.0)
 
@@ -1130,18 +1130,18 @@ elif opcion == "3. Corte y Nómina Final":
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
-    # CARGAR LOGOTIPO EN BASE64 PARA LA INTERFAZ DE STREAMLIT (ZONA ROJA)
-    ruta_logo_local = "LogoSinBailarina.jpg"
+    # CARGAR EL LOGO PNG EN BASE64 PARA LA ZONA ROJA DEL DASHBOARD
+    ruta_logo_local = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo_local):
         with open(ruta_logo_local, "rb") as f_img:
             encoded_logo = base64.b64encode(f_img.read()).decode("utf-8")
-        logo_html = f'<img src="data:image/jpeg;base64,{encoded_logo}" style="width: 140px; border-radius: 8px; margin-bottom: 10px;">'
+        logo_dash_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width: 140px; border-radius: 8px; margin-bottom: 10px;">'
     else:
-        logo_html = "<b>[ZULLYS]</b>"
+        logo_dash_html = "<b>[ZULLYS]</b>"
 
     col_logo_dash, col_titulo_dash = st.columns([1, 6])
     with col_logo_dash:
-        st.markdown(logo_html, unsafe_allow_html=True)
+        st.markdown(logo_dash_html, unsafe_allow_html=True)
     with col_titulo_dash:
         st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
         st.info(f"Este panel consolida la información financiera correspondiente al día {fecha_activa}.")
@@ -1200,7 +1200,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                         p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_emp.columns else 0.0
+                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
                         propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
             if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
