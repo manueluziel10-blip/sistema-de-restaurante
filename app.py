@@ -4,7 +4,7 @@ from datetime import datetime
 import io
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -150,79 +150,195 @@ def limpiar_cortes_dia(fecha_str):
     finally:
         session.close()
 
-def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_v, cobrar_v, efectivo_entregado, utilidad_m, nomina_p, nomina_ch, g_cocina, g_compras, g_vales, total_gastos):
+def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_v, cobrar_v, efectivo_entregado, utilidad_m, nomina_p, nomina_ch, g_cocina, g_compras, g_vales, total_gastos, df_ventas_meseros, df_empleados_pdf, df_chicas_pdf):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
     story = []
     
+    # Paleta de colores elegante
+    PRIMARY_COLOR = colors.HexColor("#111827") # Gris muy oscuro / casi negro
+    ACCENT_COLOR = colors.HexColor("#1F2937")
+    LIGHT_BG = colors.HexColor("#F3F4F6")
+    ALT_BG = colors.HexColor("#F9FAFB")
+    BORDER_COLOR = colors.HexColor("#E5E7EB")
+    
     styles = getSampleStyleSheet()
+    
     title_style = ParagraphStyle(
         'TitleStyle',
         parent=styles['Heading1'],
-        fontSize=18,
-        textColor=colors.HexColor("#1F2937"),
+        fontSize=16,
+        textColor=PRIMARY_COLOR,
         alignment=1,
-        spaceAfter=15
+        fontName='Helvetica-Bold',
+        spaceAfter=4
     )
     subtitle_style = ParagraphStyle(
         'SubTitleStyle',
         parent=styles['Heading2'],
-        fontSize=12,
-        textColor=colors.HexColor("#4B5563"),
+        fontSize=10,
+        textColor=colors.HexColor("#6B7280"),
         alignment=1,
-        spaceAfter=20
+        fontName='Helvetica',
+        spaceAfter=15
     )
-    normal_style = styles['Normal']
+    section_heading = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Heading3'],
+        fontSize=11,
+        textColor=PRIMARY_COLOR,
+        fontName='Helvetica-Bold',
+        spaceBefore=10,
+        spaceAfter=6
+    )
+    cell_style = ParagraphStyle(
+        'Cell',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor("#374151")
+    )
+    cell_bold = ParagraphStyle(
+        'CellBold',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica-Bold',
+        textColor=PRIMARY_COLOR
+    )
+    cell_header = ParagraphStyle(
+        'CellHeader',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica-Bold',
+        textColor=colors.whitesmoke
+    )
 
-    story.append(Paragraph("ZULLYS MENS CLUB - REPORTE DE CIERRE DE CAJA", title_style))
-    story.append(Paragraph(f"Fecha del Corte: {fecha_str}", subtitle_style))
+    # Cabecera del Reporte
+    story.append(Paragraph("ZULLYS MENS CLUB", title_style))
+    story.append(Paragraph(f"REPORTE GENERAL DE CIERRE DE CAJA — FECHA: {fecha_str}", subtitle_style))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=0, spaceAfter=10))
+
+    # --- SECCIÓN 1: FINANZAS Y GASTOS EN 2 COLUMNAS ---
+    story.append(Paragraph("1. Resumen Financiero y Operativo", section_heading))
+    
+    data_finanzas = [
+        [Paragraph("<b>Concepto Financiero</b>", cell_header), Paragraph("<b>Monto</b>", cell_header)],
+        [Paragraph("Ventas Totales (con propinas)", cell_style), Paragraph(f"${ventas_t:,.2f}", cell_style)],
+        [Paragraph("Ventas en Efectivo", cell_style), Paragraph(f"${efectivo_v:,.2f}", cell_style)],
+        [Paragraph("Ventas en Terminales / Tarjeta", cell_style), Paragraph(f"${tarjeta_v:,.2f}", cell_style)],
+        [Paragraph("Ventas en Transferencias / Vales", cell_style), Paragraph(f"${transferencia_v:,.2f}", cell_style)],
+        [Paragraph("Ventas Por Cobrar", cell_style), Paragraph(f"${cobrar_v:,.2f}", cell_style)],
+        [Paragraph("<b>Efectivo Entregado</b>", cell_bold), Paragraph(f"<b>${efectivo_entregado:,.2f}</b>", cell_bold)],
+        [Paragraph("<b>Utilidad Antes de Costos</b>", cell_bold), Paragraph(f"<b>${utilidad_m:,.2f}</b>", cell_bold)]
+    ]
+    
+    data_gastos_pdf = [
+        [Paragraph("<b>Desglose de Gastos y Nómina</b>", cell_header), Paragraph("<b>Monto</b>", cell_header)],
+        [Paragraph("Nómina Personal Operativo", cell_style), Paragraph(f"${nomina_p:,.2f}", cell_style)],
+        [Paragraph("Nómina Comisiones Bailarinas / Chicas", cell_style), Paragraph(f"${nomina_ch:,.2f}", cell_style)],
+        [Paragraph("Gastos de Cocina", cell_style), Paragraph(f"${g_cocina:,.2f}", cell_style)],
+        [Paragraph("Gastos de Compras", cell_style), Paragraph(f"${g_compras:,.2f}", cell_style)],
+        [Paragraph("Vales / Otros Gastos", cell_style), Paragraph(f"${g_vales:,.2f}", cell_style)],
+        [Paragraph("<b>TOTAL GASTOS / NÓMINA</b>", cell_bold), Paragraph(f"<b>${total_gastos:,.2f}</b>", cell_bold)]
+    ]
+
+    t_fin = Table(data_finanzas, colWidths=[160, 95])
+    t_fin.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
+        ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+    ]))
+
+    t_gas = Table(data_gastos_pdf, colWidths=[160, 95])
+    t_gas.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
+        ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+    ]))
+
+    tabla_doble = Table([[t_fin, t_gas]], colWidths=[265, 265])
+    tabla_doble.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+    
+    story.append(tabla_doble)
     story.append(Spacer(1, 10))
 
-    data_ventas = [
-        ["Concepto Financiero", "Monto"],
-        ["Ventas Totales (con propinas)", f"${ventas_t:,.2f}"],
-        ["Ventas en Efectivo", f"${efectivo_v:,.2f}"],
-        ["Ventas en Terminales / Tarjeta", f"${tarjeta_v:,.2f}"],
-        ["Ventas en Transferencias / Vales", f"${transferencia_v:,.2f}"],
-        ["Ventas Por Cobrar", f"${cobrar_v:,.2f}"],
-        ["Efectivo Entregado", f"${efectivo_entregado:,.2f}"],
-        ["Utilidad Antes de Costos", f"${utilidad_m:,.2f}"]
-    ]
+    # --- SECCIÓN 2: VENTAS POR MESERO ---
+    story.append(Paragraph("2. Resumen de Ventas por Mesero", section_heading))
+    if not df_ventas_meseros.empty:
+        header_m = [Paragraph("<b>Mesero</b>", cell_header), Paragraph("<b>Efectivo</b>", cell_header), Paragraph("<b>Tarjeta</b>", cell_header), Paragraph("<b>Transf.</b>", cell_header), Paragraph("<b>Por Cobrar</b>", cell_header), Paragraph("<b>Total</b>", cell_header)]
+        rows_m = [header_m]
+        for _, rm in df_ventas_meseros.iterrows():
+            ef = rm['efectivo'] + rm['propina_efectivo']
+            tj = rm['tarjeta'] + rm['propina_tarjeta']
+            tr = rm['vales'] + rm['propina_vales']
+            cb = rm['otros'] + rm['propinacredito']
+            tot = rm['importe_total']
+            rows_m.append([
+                Paragraph(str(rm['nombre']), cell_style),
+                Paragraph(f"${ef:,.2f}", cell_style),
+                Paragraph(f"${tj:,.2f}", cell_style),
+                Paragraph(f"${tr:,.2f}", cell_style),
+                Paragraph(f"${cb:,.2f}", cell_style),
+                Paragraph(f"<b>${tot:,.2f}</b>", cell_bold)
+            ])
+        t_mes = Table(rows_m, colWidths=[120, 80, 80, 80, 80, 90])
+        t_mes.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
+            ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+        ]))
+        story.append(t_mes)
+    else:
+        story.append(Paragraph("No hay registros de ventas de meseros en esta fecha.", cell_style))
+    
+    story.append(Spacer(1, 10))
 
-    t_ventas = Table(data_ventas, colWidths=[250, 250])
-    t_ventas.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9FAFB")),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
-    ]))
-    story.append(t_ventas)
-    story.append(Spacer(1, 15))
-
-    data_gastos = [
-        ["Desglose de Gastos y Nómina", "Monto"],
-        ["Nómina Personal Operativo", f"${nomina_p:,.2f}"],
-        ["Nómina Comisiones Bailarinas / Chicas", f"${nomina_ch:,.2f}"],
-        ["Gastos de Cocina", f"${g_cocina:,.2f}"],
-        ["Gastos de Compras", f"${g_compras:,.2f}"],
-        ["Vales / Otros Gastos", f"${g_vales:,.2f}"],
-        ["TOTAL GASTOS / NÓMINA", f"${total_gastos:,.2f}"]
-    ]
-
-    t_gastos = Table(data_gastos, colWidths=[250, 250])
-    t_gastos.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9FAFB")),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
-    ]))
-    story.append(t_gastos)
+    # --- SECCIÓN 3: ESTADO DE SUELDOS Y MULTAS DE CHICAS ---
+    story.append(Paragraph("3. Control de Bailarinas / Chicas (Sueldos y Penalizaciones)", section_heading))
+    if not df_empleados_pdf.empty:
+        df_chicas_only = df_empleados_pdf[df_empleados_pdf['tipo'].apply(es_chica_o_bailarina)]
+        if not df_chicas_only.empty:
+            header_ch = [
+                Paragraph("<b>Bailarina / Chica</b>", cell_header), 
+                Paragraph("<b>Sueldo Base</b>", cell_header), 
+                Paragraph("<b>Penalizada (Multa)</b>", cell_header), 
+                Paragraph("<b>Descuento</b>", cell_header)
+            ]
+            rows_ch = [header_ch]
+            for _, rc in df_chicas_only.iterrows():
+                multa_txt = "SÍ (50% Comisiones)" if bool(rc.get('penalizada', False)) else "NO"
+                rows_ch.append([
+                    Paragraph(str(rc['nombre']), cell_style),
+                    Paragraph(f"${float(rc['sueldo_base']):,.2f}", cell_style),
+                    Paragraph(multa_txt, cell_style),
+                    Paragraph(f"${float(rc.get('descuento_nomina', 100.0)):,.2f}", cell_style)
+                ])
+            t_ch = Table(rows_ch, colWidths=[160, 120, 130, 120])
+            t_ch.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
+                ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+            ]))
+            story.append(t_ch)
+        else:
+            story.append(Paragraph("No hay registros de bailarinas registradas.", cell_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -1143,16 +1259,36 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
-    # BOTÓN PARA DESCARGAR PDF
+    # PREPARAR DATAFRAME DE MESEROS PARA EL PDF
+    resumen_meseros = pd.DataFrame()
+    if not ventas_acumuladas.empty and not empleados_dashboard_df.empty:
+        df_ventas_meseros = pd.merge(ventas_acumuladas, empleados_dashboard_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
+        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
+            if col not in df_ventas_meseros.columns:
+                df_ventas_meseros[col] = 0.0
+        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
+            'efectivo': 'sum', 'propina_efectivo': 'sum', 'tarjeta': 'sum',
+            'propina_tarjeta': 'sum', 'vales': 'sum', 'propina_vales': 'sum',
+            'otros': 'sum', 'propinacredito': 'sum'
+        }).reset_index()
+        resumen_meseros['importe_total'] = (
+            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
+            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
+            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
+            resumen_meseros['otros'] + resumen_meseros['propinacredito']
+        )
+
+    # BOTÓN PARA DESCARGAR PDF COMPLETO Y MEJORADO
     pdf_buffer = generar_pdf_corte(
         fecha_activa, ventas_totales_con_propinas, efectivo_ventas, tarjeta_ventas, 
         transferencia_ventas, ventas_por_cobrar, efectivo_entregado, utilidad_monto,
-        nomina_personal_p_total, nomina_chicas_calc, gasto_cocina, gasto_compras, gasto_vales, total_gastos_nomina_efectivo
+        nomina_personal_p_total, nomina_chicas_calc, gasto_cocina, gasto_compras, gasto_vales, 
+        total_gastos_nomina_efectivo, resumen_meseros, empleados_dashboard_df, chicas_acumuladas
     )
     st.download_button(
-        label="📥 Descargar Reporte de Cierre en PDF",
+        label="📥 Descargar Reporte Ejecutivo en PDF (Completo)",
         data=pdf_buffer,
-        file_name=f"Reporte_Cierre_{fecha_activa}.pdf",
+        file_name=f"Reporte_Cierre_Ejecutivo_{fecha_activa}.pdf",
         mime="application/pdf",
         type="primary"
     )
@@ -1209,24 +1345,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
-
-    resumen_meseros = pd.DataFrame()
-    if not ventas_acumuladas.empty and not empleados_dashboard_df.empty:
-        df_ventas_meseros = pd.merge(ventas_acumuladas, empleados_dashboard_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
-        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
-            if col not in df_ventas_meseros.columns:
-                df_ventas_meseros[col] = 0.0
-        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
-            'efectivo': 'sum', 'propina_efectivo': 'sum', 'tarjeta': 'sum',
-            'propina_tarjeta': 'sum', 'vales': 'sum', 'propina_vales': 'sum',
-            'otros': 'sum', 'propinacredito': 'sum'
-        }).reset_index()
-        resumen_meseros['importe_total'] = (
-            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
-            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
-            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
-            resumen_meseros['otros'] + resumen_meseros['propinacredito']
-        )
 
     st.markdown(f"#### 👥 Resumen de Ventas por Mesero (Fecha: {fecha_activa})")
     if not resumen_meseros.empty:
