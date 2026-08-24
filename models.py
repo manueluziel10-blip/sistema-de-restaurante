@@ -548,10 +548,14 @@ def cargar_gastos_hoy(fecha_str: str = None):
 def reiniciar_base_de_datos():
     session = get_session()
     try:
-        # Borrar las tablas en orden inverso de dependencia para evitar conflictos de llaves foráneas
-        for table in reversed(Base.metadata.sorted_tables):
-            table.drop(session.bind, checkfirst=True)
-            
+        inspector = inspect(session.bind)
+        nombres_tablas = inspector.get_table_names()
+        
+        session.commit()
+        for tabla in nombres_tablas:
+            session.execute(db_text(f'DROP TABLE IF EXISTS "{tabla}" CASCADE;'))
+        session.commit()
+        
         Base.metadata.create_all(session.bind)
         
         puestos_iniciales = [
