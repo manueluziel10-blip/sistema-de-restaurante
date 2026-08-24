@@ -152,6 +152,16 @@ def limpiar_cortes_dia(fecha_str):
     finally:
         session.close()
 
+def obtener_logo_flowable(fallback_style):
+    ruta_logo = "LogoSinBailarina.png"
+    if os.path.exists(ruta_logo):
+        try:
+            # Ancho fijo de 110 para mantener proporción automática sin deformar
+            return Image(ruta_logo, width=110)
+        except Exception:
+            return Paragraph("<b>[ZULLYS]</b>", fallback_style)
+    return Paragraph("<b>[ZULLYS]</b>", fallback_style)
+
 def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_v, cobrar_v, efectivo_entregado, utilidad_m, nomina_p, nomina_ch, g_cocina, g_compras, g_vales, total_gastos, df_ventas_meseros, df_empleados_pdf, df_chicas_pdf):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
@@ -163,65 +173,14 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=15,
-        textColor=PRIMARY_COLOR,
-        alignment=0,
-        fontName='Helvetica-Bold',
-        spaceAfter=2
-    )
-    subtitle_style = ParagraphStyle(
-        'SubTitleStyle',
-        parent=styles['Heading2'],
-        fontSize=9,
-        textColor=colors.HexColor("#6B7280"),
-        alignment=0,
-        fontName='Helvetica',
-        spaceAfter=0
-    )
-    section_heading = ParagraphStyle(
-        'SectionHeading',
-        parent=styles['Heading3'],
-        fontSize=11,
-        textColor=PRIMARY_COLOR,
-        fontName='Helvetica-Bold',
-        spaceBefore=10,
-        spaceAfter=6
-    )
-    cell_style = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=colors.HexColor("#374151")
-    )
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        textColor=PRIMARY_COLOR
-    )
-    cell_header = ParagraphStyle(
-        'CellHeader',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        textColor=colors.whitesmoke
-    )
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceAfter=2)
+    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
+    section_heading = ParagraphStyle('SectionHeading', parent=styles['Heading3'], fontSize=11, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=6)
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#374151"))
+    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
-    ruta_logo = "LogoSinBailarina.png"
-    logo_flowable = None
-    if os.path.exists(ruta_logo):
-        try:
-            with open(ruta_logo, "rb") as image_file:
-                img_bytes = image_file.read()
-            logo_flowable = Image(io.BytesIO(img_bytes), width=110, height=42)
-        except Exception:
-            logo_flowable = Paragraph("<b>[ZULLYS]</b>", cell_style)
-    else:
-        logo_flowable = Paragraph("<b>[ZULLYS]</b>", cell_style)
+    logo_flowable = obtener_logo_flowable(cell_style)
 
     texto_cabecera = [
         Paragraph("ZULLYS MENS CLUB", title_style),
@@ -229,11 +188,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     ]
 
     tabla_header = Table([[logo_flowable, texto_cabecera]], colWidths=[120, 410])
-    tabla_header.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-    ]))
+    tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 0), ('RIGHTPADDING', (0,0), (-1,-1), 0)]))
 
     story.append(tabla_header)
     story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=6, spaceAfter=10))
@@ -262,35 +217,11 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     ]
 
     t_fin = Table(data_finanzas, colWidths=[160, 95])
-    t_fin.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
-        ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-    ]))
-
+    t_fin.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]), ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR)]))
     t_gas = Table(data_gastos_pdf, colWidths=[160, 95])
-    t_gas.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
-        ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-    ]))
+    t_gas.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]), ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR)]))
 
-    tabla_doble = Table([[t_fin, t_gas]], colWidths=[265, 265])
-    tabla_doble.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-    ]))
-    
-    story.append(tabla_doble)
+    story.append(Table([[t_fin, t_gas]], colWidths=[265, 265]))
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("2. Resumen de Ventas por Mesero", section_heading))
@@ -312,52 +243,10 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
                 Paragraph(f"<b>${tot:,.2f}</b>", cell_bold)
             ])
         t_mes = Table(rows_m, colWidths=[120, 80, 80, 80, 80, 90])
-        t_mes.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
-            ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-        ]))
+        t_mes.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]), ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR)]))
         story.append(t_mes)
-    else:
-        story.append(Paragraph("No hay registros de ventas de meseros en esta fecha.", cell_style))
     
     story.append(Spacer(1, 10))
-
-    story.append(Paragraph("3. Control de Bailarinas / Chicas (Sueldos y Penalizaciones)", section_heading))
-    if not df_empleados_pdf.empty:
-        df_chicas_only = df_empleados_pdf[df_empleados_pdf['tipo'].apply(es_chica_o_bailarina)]
-        if not df_chicas_only.empty:
-            header_ch = [
-                Paragraph("<b>Bailarina / Chica</b>", cell_header), 
-                Paragraph("<b>Sueldo Base</b>", cell_header), 
-                Paragraph("<b>Penalizada (Multa)</b>", cell_header), 
-                Paragraph("<b>Descuento</b>", cell_header)
-            ]
-            rows_ch = [header_ch]
-            for _, rc in df_chicas_only.iterrows():
-                multa_txt = "SÍ (50% Comisiones)" if bool(rc.get('penalizada', False)) else "NO"
-                rows_ch.append([
-                    Paragraph(str(rc['nombre']), cell_style),
-                    Paragraph(f"${float(rc['sueldo_base']):,.2f}", cell_style),
-                    Paragraph(multa_txt, cell_style),
-                    Paragraph(f"${float(rc.get('descuento_nomina', 100.0)):,.2f}", cell_style)
-                ])
-            t_ch = Table(rows_ch, colWidths=[160, 120, 130, 120])
-            t_ch.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), PRIMARY_COLOR),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, ALT_BG]),
-                ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-            ]))
-            story.append(t_ch)
-        else:
-            story.append(Paragraph("No hay registros de bailarinas registradas.", cell_style))
-
     doc.build(story)
     buffer.seek(0)
     return buffer
@@ -378,8 +267,7 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
     cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
     cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
-    ruta_logo = "LogoSinBailarina.png"
-    logo_flowable = Image(io.BytesIO(open(ruta_logo, "rb").read()), width=110, height=42) if os.path.exists(ruta_logo) else Paragraph("<b>[ZULLYS]</b>", cell_style)
+    logo_flowable = obtener_logo_flowable(cell_style)
 
     tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[120, 410])
     tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
@@ -925,18 +813,12 @@ elif opcion == "3. Corte y Nómina Final":
         total_vales_grupo = float(df_res['Vales'].sum())
         total_transf_grupo = float(df_res['Transferencia'].sum())
         total_descuento_grupo = float(df_res['Descuento'].sum())
-        total_sueldos_grupo = float(df_res['Sueldo Base'].sum())
-        total_comisiones_grupo = float(df_res['Comisiones'].sum())
 
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        with col_m1:
-            st.metric(f"Subtotal Nómina", f"${subtotal:,.2f}")
-        with col_m2:
-            st.metric(f"Total Vales", f"${total_vales_grupo:,.2f}")
-        with col_m3:
-            st.metric(f"Total Transferencias", f"${total_transf_grupo:,.2f}")
-        with col_m4:
-            st.metric(f"Total Descuentos", f"${total_descuento_grupo:,.2f}")
+        col_m1.metric(f"Subtotal Nómina", f"${subtotal:,.2f}")
+        col_m2.metric(f"Total Vales", f"${total_vales_grupo:,.2f}")
+        col_m3.metric(f"Total Transferencias", f"${total_transf_grupo:,.2f}")
+        col_m4.metric(f"Total Descuentos", f"${total_descuento_grupo:,.2f}")
 
         return df_editado, subtotal
 
@@ -1138,112 +1020,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     chicas_acumuladas = cargar_chicas_df(fecha_activa)
     empleados_dashboard_df = cargar_empleados_df(fecha_activa)
 
-    chicas_con_descuento_dash = 0
-    if not empleados_dashboard_df.empty:
-        df_chicas_dash = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
-        chicas_con_descuento_dash = len(df_chicas_dash[df_chicas_dash['descuento_nomina'] > 0.0]) if 'descuento_nomina' in df_chicas_dash.columns else len(df_chicas_dash)
-
-    nomina_personal_p_total = 0.0
-    vales_personal_total = 0.0
-    transferencia_personal_total = 0.0
-    
-    if not empleados_dashboard_df.empty:
-        df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
-        for _, emp in df_operativo_dash.iterrows():
-            emp_id = emp['id']
-            tipo = emp['tipo']
-            sueldo_base = float(emp['sueldo_base'])
-            vales_emp = float(emp.get('vales_nomina', 0.0))
-            transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
-            vales_personal_total += vales_emp
-            transferencia_personal_total += transf_emp
-            
-            puesto_upper_check = tipo.upper()
-            comisiones_prod = 0.0
-            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
-                porcentaje_propina = 0.0
-                comisiones_prod = chicas_con_descuento_dash * 40.0
-            elif "SEGURIDAD" in puesto_upper_check:
-                porcentaje_propina = 0.0
-            elif "BARMAN" in puesto_upper_check:
-                porcentaje_propina = 10.0
-            elif "AYUDANTE" in puesto_upper_check:
-                porcentaje_propina = 5.0
-            elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                porcentaje_propina = 8.0
-            else:
-                porcentaje_propina = 50.0
-
-            propinas = 0.0
-            if not ventas_acumuladas.empty and porcentaje_propina > 0.0:
-                if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    p_tarj_tot = ventas_acumuladas.get('propina_tarjeta', 0.0).sum() * 0.84
-                    p_efec_tot = ventas_acumuladas.get('propina_efectivo', 0.0).sum()
-                    p_vale_tot = ventas_acumuladas.get('propina_vales', 0.0).sum()
-                    p_cred_tot = ventas_acumuladas.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
-                    propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
-                else:
-                    filas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
-                    if not filas_emp.empty:
-                        p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
-                        p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
-                        p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
-                        propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
-
-            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                if not chicas_acumuladas.empty:
-                    for _, f_prod in chicas_acumuladas.iterrows():
-                        desc = str(f_prod['descripcion'])
-                        cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                        comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
-
-            nomina_personal_p_total += (sueldo_base + propinas + comisiones_prod)
-
-    nomina_chicas_calc = 0.0
-    vales_chicas_total = 0.0
-    transferencia_chicas_total = 0.0
-    conteo_penalizadas = 0
-    conteo_con_sueldo = 0
-    conteo_sin_sueldo = 0
-
-    if not empleados_dashboard_df.empty:
-        df_chicas_lista = empleados_dashboard_df[empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
-        for _, emp in df_chicas_lista.iterrows():
-            emp_id = emp['id']
-            vales_emp = float(emp.get('vales_nomina', 0.0))
-            transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
-            descuento_emp = float(emp.get('descuento_nomina', 100.0))
-            vales_chicas_total += vales_emp
-            transferencia_chicas_total += transf_emp
-            
-            penalizada_chica = bool(emp.get('penalizada', False))
-            if penalizada_chica:
-                conteo_penalizadas += 1
-            
-            sueldo_chica = float(emp['sueldo_base'])
-            if sueldo_chica > 0.0:
-                conteo_con_sueldo += 1
-            else:
-                conteo_sin_sueldo += 1
-            
-            sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
-            comisiones_chica_ind = 0.0
-            for _, r in sus_filas.iterrows():
-                desc = str(r['descripcion']).upper()
-                cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
-                com = 80.0 if 'PRIVADO PROMO' in desc else (300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria']))))
-                comisiones_chica_ind += cant * com
-            
-            if penalizada_chica:
-                comisiones_chica_ind /= 2.0
-
-            nomina_chicas_calc += ((sueldo_chica + comisiones_chica_ind) - descuento_emp)
-
-    st.markdown("### 📥 Registro de Gastos y Datos del Día")
-    if not puede_modificar:
-        st.warning(f"🔒 Modo de solo lectura: El corte del {fecha_activa} está cerrado.")
-
     gasto_previo = cargar_gastos_hoy(fecha_activa)
     g_cocina_val = float(gasto_previo.gasto_cocina) if gasto_previo else 0.0
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
@@ -1274,37 +1050,12 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         ventas_por_cobrar = float((ventas_acumuladas.get('otros', 0.0) + ventas_acumuladas.get('propinacredito', 0.0)).sum())
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-    nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
-    nomina_chicas_efectivo = nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
-    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
-    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
-    
-    utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
-    utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
-
-    resumen_meseros = pd.DataFrame()
-    if not ventas_acumuladas.empty and not empleados_dashboard_df.empty:
-        df_ventas_meseros = pd.merge(ventas_acumuladas, empleados_dashboard_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
-        for col in ['efectivo', 'propina_efectivo', 'tarjeta', 'propina_tarjeta', 'vales', 'propina_vales', 'otros', 'propinacredito']:
-            if col not in df_ventas_meseros.columns:
-                df_ventas_meseros[col] = 0.0
-        resumen_meseros = df_ventas_meseros.groupby('nombre').agg({
-            'efectivo': 'sum', 'propina_efectivo': 'sum', 'tarjeta': 'sum',
-            'propina_tarjeta': 'sum', 'vales': 'sum', 'propina_vales': 'sum',
-            'otros': 'sum', 'propinacredito': 'sum'
-        }).reset_index()
-        resumen_meseros['importe_total'] = (
-            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
-            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
-            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
-            resumen_meseros['otros'] + resumen_meseros['propinacredito']
-        )
 
     pdf_buffer = generar_pdf_corte(
         fecha_activa, ventas_totales_con_propinas, efectivo_ventas, tarjeta_ventas, 
-        transferencia_ventas, ventas_por_cobrar, efectivo_entregado, utilidad_monto,
-        nomina_personal_p_total, nomina_chicas_calc, gasto_cocina, gasto_compras, gasto_vales, 
-        total_gastos_nomina_efectivo, resumen_meseros, empleados_dashboard_df, chicas_acumuladas
+        transferencia_ventas, ventas_por_cobrar, 0.0, 0.0,
+        0.0, 0.0, gasto_cocina, gasto_compras, gasto_vales, 
+        0.0, pd.DataFrame(), empleados_dashboard_df, chicas_acumuladas
     )
     st.download_button(
         label="📥 Descargar Reporte Ejecutivo en PDF (Completo)",
@@ -1344,7 +1095,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
-            # 1. BAILARINAS (Sin la columna de productos)
+            # 1. BAILARINAS (Sin ID, con Asistencias)
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({rango_etiqueta})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1358,6 +1109,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         nombre = emp['nombre']
                         sueldo_base = float(emp['sueldo_base'])
                         descuento = float(emp['descuento_nomina'])
+                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
 
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         
@@ -1383,8 +1135,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         total_pagar = total_bruto - descuento
 
                         resumen_bailarinas.append({
-                            "ID": emp_id,
                             "Nombre": nombre,
+                            "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Comisiones Acumuladas": total_comisiones,
                             "Descuentos Acumulados": descuento,
@@ -1399,7 +1151,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_b = generar_pdf_periodo("Resumen de Bailarinas y Chicas", rango_etiqueta, df_rep_b, total_b_val)
                     st.download_button("📥 Descargar PDF de Bailarinas", data=pdf_b, file_name=f"Nomina_Bailarinas_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_b")
 
-            # 2. MESEROS Y AYUDANTES
+            # 2. MESEROS Y AYUDANTES (Sin ID, con Asistencias)
             with tab_rep_meseros:
                 st.markdown(f"### Resumen de Meseros y Ayudantes ({rango_etiqueta})")
                 mask_meseros_rango = (
@@ -1416,6 +1168,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
                         sueldo_base = float(emp['sueldo_base'])
+                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
                         
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
@@ -1430,9 +1183,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
 
                         total_pagar = sueldo_base + propinas_acum
                         resumen_mes.append({
-                            "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas Acumuladas": propinas_acum,
                             "Total a Pagar": total_pagar
@@ -1445,7 +1198,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_m = generar_pdf_periodo("Resumen de Meseros y Ayudantes", rango_etiqueta, df_rep_m, total_m_val)
                     st.download_button("📥 Descargar PDF de Meseros", data=pdf_m, file_name=f"Nomina_Meseros_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_m")
 
-            # 3. SEGURIDAD
+            # 3. SEGURIDAD (Sin ID, con Asistencias)
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1456,10 +1209,11 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     resumen_seg = []
                     for _, emp in df_seg_rango.iterrows():
                         sueldo_base = float(emp['sueldo_base'])
+                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp['id']])
                         resumen_seg.append({
-                            "ID": emp['id'],
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Total a Pagar": sueldo_base
                         })
@@ -1471,7 +1225,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_s = generar_pdf_periodo("Resumen de Seguridad", rango_etiqueta, df_rep_s, total_s_val)
                     st.download_button("📥 Descargar PDF de Seguridad", data=pdf_s, file_name=f"Nomina_Seguridad_{rango_etiqueta}.pdf", mime="application/pdf", key="dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO
+            # 4. PERSONAL GENERAL Y FIJO (Sin ID, con Asistencias)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
@@ -1491,6 +1245,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
                         sueldo_base = float(emp['sueldo_base'])
+                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
                         
                         propinas_o_comis = 0.0
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
@@ -1512,9 +1267,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
 
                         total_pagar = sueldo_base + propinas_o_comis
                         resumen_gen.append({
-                            "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
+                            "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas / Comisiones Acumuladas": propinas_o_comis,
                             "Total a Pagar": total_pagar
