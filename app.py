@@ -1091,9 +1091,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
         if empleados_rango.empty:
             st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")
         else:
-            # Calcular la cantidad total de días únicos con operaciones o registros en el periodo
-            dias_totales_operacion = empleados_rango['fecha'].nunique() if 'fecha' in empleados_rango.columns else (fecha_fin_per - fecha_inicio_per).days + 1
-
             tab_rep_bailarinas, tab_rep_meseros, tab_rep_seguridad, tab_rep_general = st.tabs([
                 "💃 Bailarinas y Chicas",
                 "👥 Meseros y Ayudantes",
@@ -1219,7 +1216,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_m_val = df_rep_m['Total a Pagar'].sum() if not df_rep_m.empty else 0.0
                     mostrar_tabla_compacta(df_rep_m, total_m_val, "Meseros y Ayudantes", "dl_pdf_m")
 
-            # 3. SEGURIDAD (Asistencia basada en los días reales con registros o días del periodo)
+            # 3. SEGURIDAD (Asistencia basada en los registros individuales por fecha del empleado)
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1232,8 +1229,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_seg:
                         df_emp_filas = df_seg_rango[df_seg_rango['nombre'] == nombre]
-                        # Si el empleado tiene múltiples apariciones por fecha se toma .nunique(), si no, se usa el total de días de operación del periodo
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns and df_emp_filas['fecha'].nunique() > 1 else dias_totales_operacion
+                        # Conteo exacto basado en las fechas distintas que aparece registrado en el periodo
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         
                         resumen_seg.append({
@@ -1247,7 +1244,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_s_val = df_rep_s['Total a Pagar'].sum() if not df_rep_s.empty else 0.0
                     mostrar_tabla_compacta(df_rep_s, total_s_val, "Personal de Seguridad", "dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO (Asistencia basada en los días reales con registros o días del periodo)
+            # 4. PERSONAL GENERAL Y FIJO (Asistencia basada en los registros individuales por fecha del empleado)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
@@ -1266,7 +1263,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_gen:
                         df_emp_filas = df_gen_rango[df_gen_rango['nombre'] == nombre]
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns and df_emp_filas['fecha'].nunique() > 1 else dias_totales_operacion
+                        # Conteo exacto basado en las fechas distintas que aparece registrado en el periodo
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
