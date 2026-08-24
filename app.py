@@ -532,7 +532,7 @@ elif opcion == "2. Gestión de Empleados":
 
     with tab_carga_masiva:
         st.markdown("### Importar o Actualizar Personal Masivamente")
-        st.info(f"Sube un archivo de Excel para dar de alta al personal en la fecha activa: **{fecha_activa}**.")
+        st.info(f"Sube un archivo de Excel para dar de alta al personal en la fecha activa: **{fecha_activa}** (Esto registrará automáticamente su asistencia del día).")
 
         filas_plantilla = []
         for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
@@ -577,7 +577,7 @@ elif opcion == "2. Gestión de Empleados":
                         agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa)
                         registrados += 1
 
-                    st.success(f"¡Importación completada para el día {fecha_activa}! Empleados procesados: {registrados}")
+                    st.success(f"¡Importación completada para el día {fecha_activa}! Empleados procesados y asistencia registrada: {registrados}")
                     st.rerun()
 
     st.markdown("---")
@@ -613,7 +613,7 @@ elif opcion == "2. Gestión de Empleados":
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
                     agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa)
-                    st.success(f"¡Guardado con éxito para el {fecha_activa}!")
+                    st.success(f"¡Guardado y asistencia registrada para el {fecha_activa}!")
                     st.rerun()
                 else:
                     st.error("El nombre no puede estar vacío.")
@@ -1184,11 +1184,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         df_emp_filas = df_meseros_rango[df_meseros_rango['nombre'] == nombre]
                         emp_id = df_emp_filas.iloc[0]['id']
                         
-                        if not ventas_rango.empty and 'idmesero' in ventas_rango.columns and 'fecha' in ventas_rango.columns:
-                            asistencias_emp = ventas_rango[ventas_rango['idmesero'] == emp_id]['fecha'].nunique()
-                        else:
-                            asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
-
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
@@ -1216,7 +1212,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_m_val = df_rep_m['Total a Pagar'].sum() if not df_rep_m.empty else 0.0
                     mostrar_tabla_compacta(df_rep_m, total_m_val, "Meseros y Ayudantes", "dl_pdf_m")
 
-            # 3. SEGURIDAD (Asistencia basada en los registros individuales por fecha del empleado)
+            # 3. SEGURIDAD (Conteo exacto de días dados de alta en el rango)
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1229,7 +1225,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_seg:
                         df_emp_filas = df_seg_rango[df_seg_rango['nombre'] == nombre]
-                        # Conteo exacto basado en las fechas distintas que aparece registrado en el periodo
                         asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         
@@ -1244,7 +1239,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_s_val = df_rep_s['Total a Pagar'].sum() if not df_rep_s.empty else 0.0
                     mostrar_tabla_compacta(df_rep_s, total_s_val, "Personal de Seguridad", "dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO (Asistencia basada en los registros individuales por fecha del empleado)
+            # 4. PERSONAL GENERAL Y FIJO (Conteo exacto de días dados de alta en el rango)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
@@ -1263,7 +1258,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_gen:
                         df_emp_filas = df_gen_rango[df_gen_rango['nombre'] == nombre]
-                        # Conteo exacto basado en las fechas distintas que aparece registrado en el periodo
                         asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
