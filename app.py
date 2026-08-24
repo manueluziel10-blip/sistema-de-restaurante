@@ -261,6 +261,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     if not puede_modificar:
         st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico. Ábralo previamente para subir archivos.")
     else:
+        st.info("Sube los archivos correspondientes al corte del día seleccionado.")
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
             up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
@@ -606,6 +607,7 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
+        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS AL PIE ---
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
         tot_b_cant = df_res['_b_cant'].sum()
         tot_b_m = df_res['_b_m'].sum()
@@ -638,7 +640,33 @@ elif opcion == "3. Corte y Nómina Final":
         ])
         st.dataframe(df_totales_prod, use_container_width=True, hide_index=True)
 
+        # --- TÍTULOS Y MÉTRICAS DE TOTALES AL PIE DE BAILARINAS ---
+        st.markdown("---")
+        st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
+        
         subtotal = float(df_res['Total a Pagar'].sum())
+        total_vales_grupo = float(df_res['Vales'].sum())
+        total_transf_grupo = float(df_res['Transferencia'].sum())
+        total_descuento_grupo = float(df_res['Descuento'].sum())
+        total_sueldos_grupo = float(df_res['Sueldo Base'].sum())
+        total_comisiones_grupo = float(df_res['Comisiones'].sum())
+
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        with col_m1:
+            st.metric(f"Subtotal Nómina", f"${subtotal:,.2f}")
+        with col_m2:
+            st.metric(f"Total Vales", f"${total_vales_grupo:,.2f}")
+        with col_m3:
+            st.metric(f"Total Transferencias", f"${total_transf_grupo:,.2f}")
+        with col_m4:
+            st.metric(f"Total Descuentos", f"${total_descuento_grupo:,.2f}")
+
+        col_m5, col_m6 = st.columns(2)
+        with col_m5:
+            st.metric(f"Total Sueldos Base", f"${total_sueldos_grupo:,.2f}")
+        with col_m6:
+            st.metric(f"Total Comisiones", f"${total_comisiones_grupo:,.2f}")
+
         return df_editado, subtotal
 
     def procesar_grupo_general(df_subgrupo, nombre_pestana, key_sufijo):
@@ -759,26 +787,29 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_gen_flag:
             st.rerun()
 
-        # --- RESUMEN DE TOTALES AL PIE PARA PERSONAL GENERAL ---
-        st.markdown(f"#### 📊 Totales de Nómina - {nombre_pestana}")
+        # --- RESUMEN DE TOTALES AL PIE ---
+        st.markdown("---")
+        st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
         tot_sb = float(df_res_general['Sueldo Base'].sum())
         tot_prop = float(df_res_general['_propinas_num'].sum())
         tot_com = float(df_res_general['Comisiones'].sum())
-        tot_vales = float(df_res_general['Vales'].sum())
-        tot_transf = float(df_res_general['Transferencia'].sum())
         sub_g = float(df_res_general['Total a Pagar'].sum())
+        total_vales_gen = float(df_res_general['Vales'].sum())
+        total_transf_gen = float(df_res_general['Transferencia'].sum())
 
         col_t1, col_t2, col_t3, col_t4 = st.columns(4)
         col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
         col_t2.metric("Total Propinas", f"${tot_prop:,.2f}")
         col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
-        col_t4.metric(f"Subtotal {nombre_pestana}", f"${sub_g:,.2f}")
+        col_t4.metric(f"Subtotal", f"${sub_g:,.2f}")
 
         col_m1, col_m2 = st.columns(2)
-        col_m1.metric(f"Total Vales", f"${tot_vales:,.2f}")
-        col_m2.metric(f"Total Transferencias", f"${tot_transf:,.2f}")
+        with col_m1:
+            st.metric(f"Total Vales", f"${total_vales_gen:,.2f}")
+        with col_m2:
+            st.metric(f"Total Transferencias", f"${total_transf_gen:,.2f}")
 
-        return sub_g
+        return float(df_res_general['Total a Pagar'].sum())
 
     with tab_bailarinas:
         st.markdown(f"### Nómina: Bailarinas y Chicas ({fecha_activa})")
@@ -977,6 +1008,27 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #29B6F6;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">UTILIDAD ANTES DE COSTOS ({utilidad_porcentaje:.1f}%)</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${utilidad_monto:,.2f}</div></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
+    st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    nomina_cards = [
+        ("Nómina - Personal General", nomina_personal_p_total),
+        ("Nómina - Bailarinas / Chicas", nomina_chicas_calc),
+        ("Vales - Personal General", vales_personal_total),
+        ("Vales - Bailarinas / Chicas", vales_chicas_total)
+    ]
+    for idx, (titulo, valor) in enumerate(nomina_cards):
+        with [col_n1, col_n2, col_n3, col_n4][idx]:
+            st.markdown(f"""<div style="background-color: #141D26; padding: 14px; border-radius: 10px; border: 1px solid #1F2937;"><div style="color: #90A4AE; font-size: 10px; font-weight: bold;">{titulo}</div><div style="color: #FFFFFF; font-size: 20px; font-weight: bold; margin-top: 5px;">${valor:,.2f}</div></div>""", unsafe_allow_html=True)
+
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        st.metric("Bailarinas Penalizadas (Multas)", f"{conteo_penalizadas}")
+    with col_c2:
+        st.metric("Bailarinas con Sueldo Base", f"{conteo_con_sueldo}")
+    with col_c3:
+        st.metric("Bailarinas sin Sueldo ($0.00)", f"{conteo_sin_sueldo}")
+
+    st.markdown("---")
     st.markdown("#### Desglose de Gastos y Nómina en Efectivo")
     tabla_gastos = pd.DataFrame([
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_efectivo},
@@ -999,7 +1051,12 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             'propina_tarjeta': 'sum', 'vales': 'sum', 'propina_vales': 'sum',
             'otros': 'sum', 'propinacredito': 'sum'
         }).reset_index()
-        resumen_meseros['importe_total'] = resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] + resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] + resumen_meseros['vales'] + resumen_meseros['propina_vales'] + resumen_meseros['otros'] + resumen_meseros['propinacredito']
+        resumen_meseros['importe_total'] = (
+            resumen_meseros['efectivo'] + resumen_meseros['propina_efectivo'] +
+            resumen_meseros['tarjeta'] + resumen_meseros['propina_tarjeta'] +
+            resumen_meseros['vales'] + resumen_meseros['propina_vales'] +
+            resumen_meseros['otros'] + resumen_meseros['propinacredito']
+        )
 
     st.markdown(f"#### 👥 Resumen de Ventas por Mesero (Fecha: {fecha_activa})")
     if not resumen_meseros.empty:
@@ -1008,8 +1065,32 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             for j in range(3):
                 if i + j < len(resumen_meseros):
                     row = resumen_meseros.iloc[i + j]
+                    importe_total = row['importe_total']
+                    efectivo_m = row['efectivo'] + row['propina_efectivo']
+                    tarjeta_m = row['tarjeta'] + row['propina_tarjeta']
+                    transferencia_m = row['vales'] + row['propina_vales']
+                    cobrar_m = row['otros'] + row['propinacredito']
+                    
                     with cols[j]:
-                        st.markdown(f"""<div style="background-color: #141D26; padding: 16px; border-radius: 10px; border: 1px solid #1A2634; margin-bottom: 12px;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">MESERO: {row['nombre']}</div><div style="color: #FFFFFF; font-size: 22px; font-weight: bold; margin: 6px 0 10px 0;">${row['importe_total']:,.2f}</div></div>""", unsafe_allow_html=True)
+                        st.markdown(f"""
+                            <div style="background-color: #141D26; padding: 16px; border-radius: 10px; border: 1px solid #1A2634; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                <div style="color: #90A4AE; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">MESERO: {row['nombre']}</div>
+                                <div style="color: #FFFFFF; font-size: 22px; font-weight: bold; margin: 6px 0 10px 0;">${importe_total:,.2f}</div>
+                                <hr style="border: none; border-top: 1px solid #1F2937; margin: 8px 0;">
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Efectivo:</span> <b>${efectivo_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Tarjeta:</span> <b>${tarjeta_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>Transf:</span> <b>${transferencia_m:,.2f}</b>
+                                </div>
+                                <div style="color: #00E676; font-size: 12px; display: flex; justify-content: space-between;">
+                                    <span>Por Cobrar:</span> <b>${cobrar_m:,.2f}</b>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
     else:
         st.info(f"No hay registros de ventas de meseros para la fecha {fecha_activa}.")
 
