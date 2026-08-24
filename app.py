@@ -176,7 +176,7 @@ else:
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
 es_dia_actual = (fecha_activa == hoy_str)
 
-# --- NUEVA GESTIÓN DE ESTADO: ABRIR, CERRAR Y MODIFICAR CORTE ---
+# --- GESTIÓN DE ESTADO: ABRIR, CERRAR Y MODIFICAR CORTE ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔒 Estado del Corte")
 
@@ -697,7 +697,6 @@ elif opcion == "3. Corte y Nómina Final":
                     </div>
                 """, unsafe_allow_html=True)
 
-        # --- TÍTULOS Y MÉTRICAS DE TOTALES AL PIE DE BAILARINAS ---
         st.markdown("---")
         st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
         
@@ -779,7 +778,7 @@ elif opcion == "3. Corte y Nómina Final":
                         p_tarj = filas_mesero.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_mesero.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_mesero.get('propina_vales', 0.0).sum()
-                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_totales.columns else 0.0
+                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_mesero.columns else 0.0
                         total_prop_mesero = p_tarj + p_efec + p_vale + p_cred
                         propinas = total_prop_mesero * (porcentaje_propina / 100.0)
 
@@ -855,7 +854,6 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_gen_flag:
             st.rerun()
 
-        # --- RESUMEN DE TOTALES AL PIE ---
         st.markdown("---")
         st.markdown(f"##### 📊 Totales de Nómina - {nombre_pestana}")
         tot_sb = float(df_res_general['Sueldo Base'].sum())
@@ -1176,13 +1174,13 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 # --- SECCIÓN 5: REPORTE DE NÓMINA POR PERIODOS ---
 elif opcion == "5. Reporte de Nómina por Periodos":
     st.subheader("📅 Reporte Histórico y Acumulado de Nómina por Periodos")
-    st.info("Selecciona un rango de fechas para consultar el resumen de ganancias, comisiones, productos vendidos y sueldos del personal.")
+    st.info("Selecciona un rango de fechas para consultar el resumen de ganancias, comisiones, productos vendidos y sueldos del personal ordenado por categorías.")
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        fecha_inicio_per = st.date_input("Fecha de Inicio", datetime.now())
+        fecha_inicio_per = st.date_input("Fecha de Inicio", datetime.now(), key="rango_ini_per")
     with col_p2:
-        fecha_fin_per = st.date_input("Fecha de Fin", datetime.now())
+        fecha_fin_per = st.date_input("Fecha de Fin", datetime.now(), key="rango_fin_per")
 
     f_ini_str = fecha_inicio_per.strftime('%Y-%m-%d')
     f_fin_str = fecha_fin_per.strftime('%Y-%m-%d')
@@ -1194,94 +1192,162 @@ elif opcion == "5. Reporte de Nómina por Periodos":
         if empleados_rango.empty:
             st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")
         else:
-            tab_rep_bailarinas, tab_rep_fijo = st.tabs(["💃 Bailarinas (Comisiones y Productos)", "🛡️ Personal Fijo / Seguridad / Meseros"])
+            tab_rep_bailarinas, tab_rep_meseros, tab_rep_seguridad, tab_rep_general = st.tabs([
+                "💃 Bailarinas y Chicas",
+                "👥 Meseros y Ayudantes",
+                "🛡️ Seguridad",
+                "📋 Personal General y Fijo"
+            ])
 
+            # 1. BAILARINAS
             with tab_rep_bailarinas:
-                st.markdown(f"### Resumen de Bailarinas ({f_ini_str} al {f_fin_str})")
+                st.markdown(f"### Resumen de Bailarinas y Chicas ({f_ini_str} al {f_fin_str})")
+                df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
                 
-                resumen_bailarinas = []
-                for _, emp in empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)].iterrows():
-                    emp_id = emp['id']
-                    nombre = emp['nombre']
-                    sueldo_base = float(emp['sueldo_base'])
-                    vales = float(emp['vales_nomina'])
-                    descuento = float(emp['descuento_nomina'])
-                    transf = float(emp['transferencia_nomina'])
+                if df_bailarinas_rango.empty:
+                    st.info("No hay registros de bailarinas en este periodo.")
+                else:
+                    resumen_bailarinas = []
+                    for _, emp in df_bailarinas_rango.iterrows():
+                        emp_id = emp['id']
+                        nombre = emp['nombre']
+                        sueldo_base = float(emp['sueldo_base'])
+                        vales = float(emp['vales_nomina'])
+                        descuento = float(emp['descuento_nomina'])
+                        transf = float(emp['transferencia_nomina'])
 
-                    sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
-                    
-                    total_comisiones = 0.0
-                    detalle_prods = {}
-                    
-                    if not sus_prods.empty:
-                        for _, p in sus_prods.iterrows():
-                            desc = str(p['descripcion']).upper()
-                            cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
-                            com_unit = float(p['comision_unitaria'])
-                            
-                            if 'PRIVADO PROMO' in desc:
-                                com_unit = 80.0
-                            elif 'PRIVADO ARTISTA' in desc:
-                                com_unit = 300.0
-                            elif 'BOONS ARTISTA' in desc:
-                                com_unit = 1000.0
-                            elif 'BOONS' in desc:
-                                com_unit = 700.0
+                        sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
+                        
+                        total_comisiones = 0.0
+                        detalle_prods = {}
+                        
+                        if not sus_prods.empty:
+                            for _, p in sus_prods.iterrows():
+                                desc = str(p['descripcion']).upper()
+                                cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
+                                com_unit = float(p['comision_unitaria'])
                                 
-                            sub_prod = cant * com_unit
-                            total_comisiones += sub_prod
-                            detalle_prods[desc] = detalle_prods.get(desc, 0.0) + cant
+                                if 'PRIVADO PROMO' in desc:
+                                    com_unit = 80.0
+                                elif 'PRIVADO ARTISTA' in desc:
+                                    com_unit = 300.0
+                                elif 'BOONS ARTISTA' in desc:
+                                    com_unit = 1000.0
+                                elif 'BOONS' in desc:
+                                    com_unit = 700.0
+                                    
+                                sub_prod = cant * com_unit
+                                total_comisiones += sub_prod
+                                detalle_prods[desc] = detalle_prods.get(desc, 0.0) + cant
 
-                    total_bruto = sueldo_base + total_comisiones
-                    total_pagar = total_bruto - vales - transf - descuento
+                        total_bruto = sueldo_base + total_comisiones
+                        total_pagar = total_bruto - vales - transf - descuento
 
-                    resumen_bailarinas.append({
-                        "ID": emp_id,
-                        "Nombre": nombre,
-                        "Sueldo Base Acumulado": sueldo_base,
-                        "Comisiones Acumuladas": total_comisiones,
-                        "Vales Acumulados": vales,
-                        "Descuentos Acumulados": descuento,
-                        "Transferencias Acumuladas": transf,
-                        "Total a Pagar": total_pagar,
-                        "Productos Vendidos (Resumen)": ", ".join([f"{k} ({int(v)})" for k, v in detalle_prods.items()]) if detalle_prods else "Ninguno"
-                    })
+                        resumen_bailarinas.append({
+                            "ID": emp_id,
+                            "Nombre": nombre,
+                            "Sueldo Base Acumulado": sueldo_base,
+                            "Comisiones Acumuladas": total_comisiones,
+                            "Vales Acumulados": vales,
+                            "Descuentos Acumulados": descuento,
+                            "Transferencias Acumuladas": transf,
+                            "Total a Pagar": total_pagar,
+                            "Productos Vendidos (Resumen)": ", ".join([f"{k} ({int(v)})" for k, v in detalle_prods.items()]) if detalle_prods else "Ninguno"
+                        })
 
-                df_rep_b = pd.DataFrame(resumen_bailarinas)
-                st.dataframe(df_rep_b, use_container_width=True)
-
-                if not df_rep_b.empty:
+                    df_rep_b = pd.DataFrame(resumen_bailarinas)
+                    st.dataframe(df_rep_b, use_container_width=True)
                     st.metric("Total General a Pagar (Bailarinas)", f"${df_rep_b['Total a Pagar'].sum():,.2f}")
 
-            with tab_rep_fijo:
-                st.markdown(f"### Resumen de Personal General y Seguridad ({f_ini_str} al {f_fin_str})")
-                
-                resumen_fijo = []
-                for _, emp in empleados_rango[~empleados_rango['tipo'].apply(es_chica_o_bailarina)].iterrows():
-                    emp_id = emp['id']
-                    nombre = emp['nombre']
-                    puesto = emp['tipo']
-                    sueldo_base = float(emp['sueldo_base'])
-                    vales = float(emp['vales_nomina'])
-                    transf = float(emp['transferencia_nomina'])
+            # 2. MESEROS Y AYUDANTES
+            with tab_rep_meseros:
+                st.markdown(f"### Resumen de Meseros y Ayudantes ({f_ini_str} al {f_fin_str})")
+                mask_meseros_rango = (
+                    empleados_rango['tipo'].astype(str).str.upper().str.contains("MESERO") &
+                    ~empleados_rango['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN")
+                ) | empleados_rango['tipo'].astype(str).str.upper().str.contains("AYUDANTE")
+                df_meseros_rango = empleados_rango[mask_meseros_rango]
 
-                    total_pagar = sueldo_base - vales - transf
+                if df_meseros_rango.empty:
+                    st.info("No hay registros de meseros o ayudantes en este periodo.")
+                else:
+                    resumen_mes = []
+                    for _, emp in df_meseros_rango.iterrows():
+                        sueldo_base = float(emp['sueldo_base'])
+                        vales = float(emp['vales_nomina'])
+                        transf = float(emp['transferencia_nomina'])
+                        total_pagar = sueldo_base - vales - transf
+                        resumen_mes.append({
+                            "ID": emp['id'],
+                            "Nombre": emp['nombre'],
+                            "Puesto": emp['tipo'],
+                            "Sueldo Base Acumulado": sueldo_base,
+                            "Vales Acumulados": vales,
+                            "Transferencias Acumuladas": transf,
+                            "Total a Pagar": total_pagar
+                        })
+                    df_rep_m = pd.DataFrame(resumen_mes)
+                    st.dataframe(df_rep_m, use_container_width=True)
+                    st.metric("Total General a Pagar (Meseros y Ayudantes)", f"${df_rep_m['Total a Pagar'].sum():,.2f}")
 
-                    resumen_fijo.append({
-                        "ID": emp_id,
-                        "Nombre": nombre,
-                        "Puesto": puesto,
-                        "Sueldo Base Acumulado": sueldo_base,
-                        "Vales Acumulados": vales,
-                        "Transferencia Acumulada": transf,
-                        "Total a Pagar": total_pagar
-                    })
+            # 3. SEGURIDAD
+            with tab_rep_seguridad:
+                st.markdown(f"### Resumen de Personal de Seguridad ({f_ini_str} al {f_fin_str})")
+                df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
 
-                df_rep_f = pd.DataFrame(resumen_fijo)
-                st.dataframe(df_rep_f, use_container_width=True)
+                if df_seg_rango.empty:
+                    st.info("No hay registros de seguridad en este periodo.")
+                else:
+                    resumen_seg = []
+                    for _, emp in df_seg_rango.iterrows():
+                        sueldo_base = float(emp['sueldo_base'])
+                        vales = float(emp['vales_nomina'])
+                        transf = float(emp['transferencia_nomina'])
+                        total_pagar = sueldo_base - vales - transf
+                        resumen_seg.append({
+                            "ID": emp['id'],
+                            "Nombre": emp['nombre'],
+                            "Puesto": emp['tipo'],
+                            "Sueldo Base Acumulado": sueldo_base,
+                            "Vales Acumulados": vales,
+                            "Transferencias Acumuladas": transf,
+                            "Total a Pagar": total_pagar
+                        })
+                    df_rep_s = pd.DataFrame(resumen_seg)
+                    st.dataframe(df_rep_s, use_container_width=True)
+                    st.metric("Total General a Pagar (Seguridad)", f"${df_rep_s['Total a Pagar'].sum():,.2f}")
 
-                if not df_rep_f.empty:
-                    st.metric("Total General a Pagar (Personal Fijo/Seguridad)", f"${df_rep_f['Total a Pagar'].sum():,.2f}")
+            # 4. PERSONAL GENERAL Y FIJO (Barman, DJ, Animador, Gerente, etc.)
+            with tab_rep_general:
+                st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({f_ini_str} al {f_fin_str})")
+                mask_gen_rango = (
+                    ~empleados_rango['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
+                    ~empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD|AYUDANTE") &
+                    ~(empleados_rango['tipo'].astype(str).str.upper().str.contains("MESERO") & ~empleados_rango['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN"))
+                )
+                df_gen_rango = empleados_rango[mask_gen_rango]
+
+                if df_gen_rango.empty:
+                    st.info("No hay registros de personal general en este periodo.")
+                else:
+                    resumen_gen = []
+                    for _, emp in df_gen_rango.iterrows():
+                        sueldo_base = float(emp['sueldo_base'])
+                        vales = float(emp['vales_nomina'])
+                        transf = float(emp['transferencia_nomina'])
+                        total_pagar = sueldo_base - vales - transf
+                        resumen_gen.append({
+                            "ID": emp['id'],
+                            "Nombre": emp['nombre'],
+                            "Puesto": emp['tipo'],
+                            "Sueldo Base Acumulado": sueldo_base,
+                            "Vales Acumulados": vales,
+                            "Transferencias Acumuladas": transf,
+                            "Total a Pagar": total_pagar
+                        })
+                    df_rep_g = pd.DataFrame(resumen_gen)
+                    st.dataframe(df_rep_g, use_container_width=True)
+                    st.metric("Total General a Pagar (Personal General y Fijo)", f"${df_rep_g['Total a Pagar'].sum():,.2f}")
 
 # --- SECCIÓN 6: GESTIÓN DE USUARIOS Y ACCESOS ---
 elif opcion == "6. Usuarios y Accesos":
