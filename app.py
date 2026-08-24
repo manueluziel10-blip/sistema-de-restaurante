@@ -1107,7 +1107,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_file = generar_pdf_periodo(f"Resumen de {nombre_pestana}", rango_etiqueta, df_rep, total_val)
                     st.download_button(f"📥 Descargar PDF", data=pdf_file, file_name=f"Nomina_{nombre_pestana}_{rango_etiqueta}.pdf", mime="application/pdf", key=key_pdf)
 
-            # 1. BAILARINAS (Asistencias contadas basándose en sus productos vendidos registrados por fecha o ID único)
+            # 1. BAILARINAS
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({rango_etiqueta})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1122,7 +1122,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         df_emp_filas = df_bailarinas_rango[df_bailarinas_rango['nombre'] == nombre]
                         emp_id = df_emp_filas.iloc[0]['id']
 
-                        # Conteo exacto de asistencias: Días únicos donde tiene productos vendidos registrados o presencia en nómina de ese día
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         if not sus_prods.empty and 'fecha' in sus_prods.columns:
                             asistencias_emp = sus_prods['fecha'].nunique()
@@ -1185,7 +1184,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         df_emp_filas = df_meseros_rango[df_meseros_rango['nombre'] == nombre]
                         emp_id = df_emp_filas.iloc[0]['id']
                         
-                        # Conteo exacto de asistencias basado en ventas registradas en el periodo
                         if not ventas_rango.empty and 'idmesero' in ventas_rango.columns and 'fecha' in ventas_rango.columns:
                             asistencias_emp = ventas_rango[ventas_rango['idmesero'] == emp_id]['fecha'].nunique()
                         else:
@@ -1218,7 +1216,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_m_val = df_rep_m['Total a Pagar'].sum() if not df_rep_m.empty else 0.0
                     mostrar_tabla_compacta(df_rep_m, total_m_val, "Meseros y Ayudantes", "dl_pdf_m")
 
-            # 3. SEGURIDAD
+            # 3. SEGURIDAD (Corregido para contar correctamente los días que laboraron en el periodo)
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1245,7 +1243,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_s_val = df_rep_s['Total a Pagar'].sum() if not df_rep_s.empty else 0.0
                     mostrar_tabla_compacta(df_rep_s, total_s_val, "Personal de Seguridad", "dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO
+            # 4. PERSONAL GENERAL Y FIJO (Corregido para contar correctamente los días que laboraron en el periodo)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
