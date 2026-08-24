@@ -607,8 +607,9 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
-        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS AL PIE ---
+        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS EN TARJETAS (ESTILO ORIGINAL) ---
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
+        
         tot_b_cant = df_res['_b_cant'].sum()
         tot_b_m = df_res['_b_m'].sum()
         tot_c_cant = df_res['_c_cant'].sum()
@@ -626,19 +627,26 @@ elif opcion == "3. Corte y Nómina Final":
         tot_v30_cant = df_res['_v30_cant'].sum()
         tot_v30_m = df_res['_v30_m'].sum()
 
-        df_totales_prod = pd.DataFrame([
-            {
-                "Boons": f"{int(tot_b_cant)} (${tot_b_m:,.2f})",
-                "Copa Lady": f"{int(tot_c_cant)} (${tot_c_m:,.2f})",
-                "Strongbow": f"{int(tot_s_cant)} (${tot_s_m:,.2f})",
-                "VIP 3": f"{int(tot_v3_cant)} (${tot_v3_m:,.2f})",
-                "Privados Promo": f"{int(tot_priv_p_cant)} (${tot_priv_p_m:,.2f})",
-                "VIP 5 / Priv / Artista": f"{int(tot_v5_art_cant)} (${tot_v5_art_m:,.2f})",
-                "VIP 15": f"{int(tot_v15_cant)} (${tot_v15_m:,.2f})",
-                "VIP 30": f"{int(tot_v30_cant)} (${tot_v30_m:,.2f})",
-            }
-        ])
-        st.dataframe(df_totales_prod, use_container_width=True, hide_index=True)
+        cols_prod = st.columns(8)
+        productos_resumen = [
+            ("Boons", tot_b_cant, tot_b_m),
+            ("Copa Lady", tot_c_cant, tot_c_m),
+            ("Strongbow", tot_s_cant, tot_s_m),
+            ("VIP 3", tot_v3_cant, tot_v3_m),
+            ("Privados Promo", tot_priv_p_cant, tot_priv_p_m),
+            ("VIP 5 / Art", tot_v5_art_cant, tot_v5_art_m),
+            ("VIP 15", tot_v15_cant, tot_v15_m),
+            ("VIP 30", tot_v30_cant, tot_v30_m)
+        ]
+        
+        for idx, (nombre_p, cant_p, monto_p) in enumerate(productos_resumen):
+            with cols_prod[idx]:
+                st.markdown(f"""
+                    <div style="background-color: #141D26; padding: 10px; border-radius: 8px; border: 1px solid #1F2937; text-align: center; margin-bottom: 10px;">
+                        <div style="color: #90A4AE; font-size: 11px; font-weight: bold;">{nombre_p}</div>
+                        <div style="color: #FFFFFF; font-size: 14px; font-weight: bold; margin-top: 4px;">{int(cant_p)} <span style="font-size: 11px; color: #00E676;">(${monto_p:,.2f})</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
 
         # --- TÍTULOS Y MÉTRICAS DE TOTALES AL PIE DE BAILARINAS ---
         st.markdown("---")
@@ -1008,7 +1016,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #29B6F6;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">UTILIDAD ANTES DE COSTOS ({utilidad_porcentaje:.1f}%)</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${utilidad_monto:,.2f}</div></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 👥 Resumen Detallado de Nómina y Vales por Grupo")
+    st.markdown("#### 📋 Resumen Detallado de Nómina y Vales por Grupo")
     col_n1, col_n2, col_n3, col_n4 = st.columns(4)
     nomina_cards = [
         ("Nómina - Personal General", nomina_personal_p_total),
