@@ -150,6 +150,84 @@ def limpiar_cortes_dia(fecha_str):
     finally:
         session.close()
 
+def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_v, cobrar_v, efectivo_entregado, utilidad_m, nomina_p, nomina_ch, g_cocina, g_compras, g_vales, total_gastos):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor("#1F2937"),
+        alignment=1,
+        spaceAfter=15
+    )
+    subtitle_style = ParagraphStyle(
+        'SubTitleStyle',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=colors.HexColor("#4B5563"),
+        alignment=1,
+        spaceAfter=20
+    )
+    normal_style = styles['Normal']
+
+    story.append(Paragraph("ZULLYS MENS CLUB - REPORTE DE CIERRE DE CAJA", title_style))
+    story.append(Paragraph(f"Fecha del Corte: {fecha_str}", subtitle_style))
+    story.append(Spacer(1, 10))
+
+    data_ventas = [
+        ["Concepto Financiero", "Monto"],
+        ["Ventas Totales (con propinas)", f"${ventas_t:,.2f}"],
+        ["Ventas en Efectivo", f"${efectivo_v:,.2f}"],
+        ["Ventas en Terminales / Tarjeta", f"${tarjeta_v:,.2f}"],
+        ["Ventas en Transferencias / Vales", f"${transferencia_v:,.2f}"],
+        ["Ventas Por Cobrar", f"${cobrar_v:,.2f}"],
+        ["Efectivo Entregado", f"${efectivo_entregado:,.2f}"],
+        ["Utilidad Antes de Costos", f"${utilidad_m:,.2f}"]
+    ]
+
+    t_ventas = Table(data_ventas, colWidths=[250, 250])
+    t_ventas.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9FAFB")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+    ]))
+    story.append(t_ventas)
+    story.append(Spacer(1, 15))
+
+    data_gastos = [
+        ["Desglose de Gastos y Nómina", "Monto"],
+        ["Nómina Personal Operativo", f"${nomina_p:,.2f}"],
+        ["Nómina Comisiones Bailarinas / Chicas", f"${nomina_ch:,.2f}"],
+        ["Gastos de Cocina", f"${g_cocina:,.2f}"],
+        ["Gastos de Compras", f"${g_compras:,.2f}"],
+        ["Vales / Otros Gastos", f"${g_vales:,.2f}"],
+        ["TOTAL GASTOS / NÓMINA", f"${total_gastos:,.2f}"]
+    ]
+
+    t_gastos = Table(data_gastos, colWidths=[250, 250])
+    t_gastos.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9FAFB")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+    ]))
+    story.append(t_gastos)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 # --- MENÚ LATERAL: CONTROL DE FECHA ---
 st.sidebar.header("Menú de Control")
 
@@ -1064,6 +1142,21 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     
     utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
+
+    # BOTÓN PARA DESCARGAR PDF
+    pdf_buffer = generar_pdf_corte(
+        fecha_activa, ventas_totales_con_propinas, efectivo_ventas, tarjeta_ventas, 
+        transferencia_ventas, ventas_por_cobrar, efectivo_entregado, utilidad_monto,
+        nomina_personal_p_total, nomina_chicas_calc, gasto_cocina, gasto_compras, gasto_vales, total_gastos_nomina_efectivo
+    )
+    st.download_button(
+        label="📥 Descargar Reporte de Cierre en PDF",
+        data=pdf_buffer,
+        file_name=f"Reporte_Cierre_{fecha_activa}.pdf",
+        mime="application/pdf",
+        type="primary"
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
     col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
     ventas_cards = [
