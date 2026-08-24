@@ -15,7 +15,7 @@ from models import (
     guardar_gastos_del_dia, cargar_gastos_hoy,
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
-    cambiar_fecha_corte
+    cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha
 )
 
 st.set_page_config(layout="wide")
@@ -158,7 +158,35 @@ else:
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
 
 es_dia_actual = (fecha_activa == hoy_str)
-puede_modificar = (rol_actual_lower == "admin") or es_dia_actual
+
+# --- NUEVA GESTIÓN DE ESTADO: ABRIR, CERRAR Y MODIFICAR CORTE ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔒 Estado del Corte")
+
+corte_esta_bloqueado = verificar_corte_bloqueado(fecha_activa)
+
+if corte_esta_bloqueado:
+    st.sidebar.error(f"El corte del {fecha_activa} está **CERRADO**.")
+    if rol_actual_lower == "admin":
+        if st.sidebar.button("🔓 Abrir / Desbloquear Corte", key="btn_abrir_corte"):
+            desbloquear_corte_fecha(fecha_activa)
+            st.sidebar.success(f"¡Corte del {fecha_activa} abierto correctamente!")
+            st.rerun()
+    else:
+        st.sidebar.info("Corte cerrado (Solo lectura). Contacte al administrador para modificarlo.")
+else:
+    st.sidebar.success(f"El corte del {fecha_activa} está **ABIERTO**.")
+    if rol_actual_lower in ["admin", "cajero"]:
+        if st.sidebar.button("🔒 Cerrar Corte Actual", key="btn_cerrar_corte"):
+            bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
+            st.sidebar.warning(f"¡Corte del {fecha_activa} cerrado y bloqueado!")
+            st.rerun()
+
+# Definimos si se permite modificar según rol, día y bloqueo explícito
+if rol_actual_lower == "admin":
+    puede_modificar = not corte_esta_bloqueado
+else:
+    puede_modificar = es_dia_actual and (not corte_esta_bloqueado)
 
 # --- ZONA DE PELIGRO EN BARRA LATERAL ---
 st.sidebar.markdown("---")
@@ -217,7 +245,6 @@ cols_toolbar = st.columns(num_cols)
 for idx, sec in enumerate(nombres_secciones):
     with cols_toolbar[idx]:
         activo = (st.session_state["seccion_activa"] == sec)
-        # Usamos estilos visuales en el botón según si está activo o no
         label_btn = f"📌 {sec}" if activo else sec
         if st.button(label_btn, use_container_width=True, key=f"toolbar_btn_{idx}"):
             st.session_state["seccion_activa"] = sec
@@ -230,7 +257,7 @@ st.markdown("---")
 if opcion == "1. Subir Cortes Diarios (Excel)":
     st.subheader(f"Carga de Archivos Diarios para la fecha: {fecha_activa}")
     if not puede_modificar:
-        st.warning("🔒 Modo de solo lectura: No se pueden subir ni modificar archivos en cortes históricos anteriores.")
+        st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico. Ábralo previamente para subir archivos.")
     else:
         st.info("Sube los archivos correspondientes al corte del día seleccionado.")
 
@@ -565,30 +592,10 @@ elif opcion == "3. Corte y Nómina Final":
             column_config={
                 "ID": st.column_config.NumberColumn("ID", disabled=True),
                 "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                "Sueldo Base": st.column_config.NumberColumn(
-                    "Sueldo Base ($)",
-                    help="Haz clic para modificar el sueldo base directamente",
-                    format="$%.2f",
-                    required=True
-                ),
-                "Vales": st.column_config.NumberColumn(
-                    "Vales ($)",
-                    help="Haz clic para ingresar vales que restarán al total a pagar",
-                    format="$%.2f",
-                    required=True
-                ),
-                "Transferencia": st.column_config.NumberColumn(
-                    "Transferencia ($)",
-                    help="Monto pagado por transferencia que resta al total",
-                    format="$%.2f",
-                    required=True
-                ),
-                "Descuento": st.column_config.NumberColumn(
-                    "Descuento ($)",
-                    help="Modifica el descuento predeterminado de $100.00",
-                    format="$%.2f",
-                    required=True
-                ),
+                "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
+                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
+                "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
+                "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
             disabled=columnas_deshabilitadas,
@@ -762,24 +769,9 @@ elif opcion == "3. Corte y Nómina Final":
             column_config={
                 "ID": st.column_config.NumberColumn("ID", disabled=True),
                 "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                "Sueldo Base": st.column_config.NumberColumn(
-                    "Sueldo Base ($)",
-                    help="Haz clic para modificar el sueldo base directamente",
-                    format="$%.2f",
-                    required=True
-                ),
-                "Vales": st.column_config.NumberColumn(
-                    "Vales ($)",
-                    help="Haz clic para ingresar vales que restarán al total a pagar",
-                    format="$%.2f",
-                    required=True
-                ),
-                "Transferencia": st.column_config.NumberColumn(
-                    "Transferencia ($)",
-                    help="Monto pagado por transferencia que resta al total",
-                    format="$%.2f",
-                    required=True
-                ),
+                "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
+                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
+                "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
                 "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
@@ -998,7 +990,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     if not puede_modificar:
-        st.warning(f"🔒 Modo de solo lectura: Visualizando el corte histórico del {fecha_activa}. No se pueden editar los gastos.")
+        st.warning(f"🔒 Modo de solo lectura: El corte del {fecha_activa} está cerrado. Ábralo para editar gastos.")
 
     gasto_previo = cargar_gastos_hoy(fecha_activa)
     
