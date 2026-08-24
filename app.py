@@ -717,8 +717,8 @@ elif opcion == "3. Corte y Nómina Final":
 
             propinas = 0.0
             if not ventas_totales.empty and porcentaje_propina > 0.0:
-                if "AYUDANTE" in puesto_upper_check:
-                    # Los ayudantes reciben su porcentaje (ej. 5%) del total de las propinas de todos los meseros (con el 16% descontado en tarjeta)
+                if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    # Se calcula su porcentaje sobre el total de las propinas del restaurante (restando 16% en tarjeta)
                     p_tarj_tot = ventas_totales.get('propina_tarjeta', 0.0).sum() * 0.84
                     p_efec_tot = ventas_totales.get('propina_efectivo', 0.0).sum()
                     p_vale_tot = ventas_totales.get('propina_vales', 0.0).sum()
@@ -914,7 +914,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
             propinas = 0.0
             if not ventas_acumuladas.empty and porcentaje_propina > 0.0:
-                if "AYUDANTE" in puesto_upper_check:
+                if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     p_tarj_tot = ventas_acumuladas.get('propina_tarjeta', 0.0).sum() * 0.84
                     p_efec_tot = ventas_acumuladas.get('propina_efectivo', 0.0).sum()
                     p_vale_tot = ventas_acumuladas.get('propina_vales', 0.0).sum()
