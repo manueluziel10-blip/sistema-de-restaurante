@@ -278,10 +278,34 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
     else:
         st.info("Sube los archivos correspondientes al corte del día seleccionado.")
         
-        if st.button("🗑️ Borrar / Restablecer Todo el Corte de este Día", type="secondary"):
-            limpiar_cortes_dia(fecha_activa)
-            st.success(f"¡Se han eliminado las ventas, productos de chicas y registros de nómina para el día {fecha_activa}!")
-            st.rerun()
+        if "mostrar_form_borrar_dia" not in st.session_state:
+            st.session_state["mostrar_form_borrar_dia"] = False
+
+        if not st.session_state["mostrar_form_borrar_dia"]:
+            if st.button("🗑️ Borrar / Restablecer Todo el Corte de este Día", type="secondary"):
+                st.session_state["mostrar_form_borrar_dia"] = True
+                st.rerun()
+        else:
+            with st.form("form_confirmar_borrar_dia"):
+                st.warning(f"⚠️ ¿Estás seguro de eliminar todas las ventas, productos de chicas y registros de nómina para el día **{fecha_activa}**?")
+                conf_borrar = st.checkbox("Sí, deseo borrar toda la información de este día")
+                
+                col_b1, col_b2 = st.columns(2)
+                btn_ejec_borrar = col_b1.form_submit_button("Confirmar Borrado")
+                btn_canc_borrar = col_b2.form_submit_button("Cancelar")
+                
+                if btn_ejec_borrar:
+                    if conf_borrar:
+                        limpiar_cortes_dia(fecha_activa)
+                        st.session_state["mostrar_form_borrar_dia"] = False
+                        st.success(f"¡Se han eliminado todos los registros del día {fecha_activa} exitosamente!")
+                        st.rerun()
+                    else:
+                        st.error("Debes marcar la casilla de confirmación.")
+                
+                if btn_canc_borrar:
+                    st.session_state["mostrar_form_borrar_dia"] = False
+                    st.rerun()
 
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
@@ -753,7 +777,7 @@ elif opcion == "3. Corte y Nómina Final":
                         p_tarj = filas_mesero.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_mesero.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_mesero.get('propina_vales', 0.0).sum()
-                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_mesero.columns else 0.0
+                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_totales.columns else 0.0
                         total_prop_mesero = p_tarj + p_efec + p_vale + p_cred
                         propinas = total_prop_mesero * (porcentaje_propina / 100.0)
 
