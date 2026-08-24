@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import io
+import base64
 import os
 
 from reportlab.lib.pagesizes import letter
@@ -210,19 +211,25 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         textColor=colors.whitesmoke
     )
 
-    # Cabecera con Logotipo al lado izquierdo
+    # Cabecera con Logotipo seguro por IO bytes
     ruta_logo = "LogoSinBailarina.jpg"
+    logo_flowable = None
     if os.path.exists(ruta_logo):
-        logo = Image(ruta_logo, width=45, height=45)
+        try:
+            with open(ruta_logo, "rb") as image_file:
+                img_bytes = image_file.read()
+            logo_flowable = Image(io.BytesIO(img_bytes), width=45, height=45)
+        except Exception:
+            logo_flowable = Paragraph("<b>[ZULLYS]</b>", cell_style)
     else:
-        logo = Paragraph("<b>[LOGO]</b>", cell_style)
+        logo_flowable = Paragraph("<b>[ZULLYS]</b>", cell_style)
 
     texto_cabecera = [
         Paragraph("ZULLYS MENS CLUB", title_style),
         Paragraph(f"REPORTE GENERAL DE CIERRE DE CAJA — FECHA: {fecha_str}", subtitle_style)
     ]
 
-    tabla_header = Table([[logo, texto_cabecera]], colWidths=[55, 475])
+    tabla_header = Table([[logo_flowable, texto_cabecera]], colWidths=[55, 475])
     tabla_header.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
@@ -1123,8 +1130,14 @@ elif opcion == "3. Corte y Nómina Final":
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
-    st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
-    st.info(f"Este panel consolida la información financiera correspondiente al día {fecha_activa}.")
+    # DISEÑO CON LOGOTIPO EN LA ZONA SOLICITADA
+    col_logo_dash, col_titulo_dash = st.columns([1, 6])
+    with col_logo_dash:
+        if os.path.exists("LogoSinBailarina.jpg"):
+            st.image("LogoSinBailarina.jpg", width=90)
+    with col_titulo_dash:
+        st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
+        st.info(f"Este panel consolida la información financiera correspondiente al día {fecha_activa}.")
 
     ventas_acumuladas = cargar_ventas_df(fecha_activa)
     chicas_acumuladas = cargar_chicas_df(fecha_activa)
@@ -1180,7 +1193,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                         p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_emp.columns else 0.0
+                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
                         propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
             if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
@@ -1506,7 +1519,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                                 p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
                                 p_efec = filas_m.get('propina_efectivo', 0.0).sum()
                                 p_vale = filas_m.get('propina_vales', 0.0).sum()
-                                p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in filas_m.columns else 0.0
+                                p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
                                 propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
                         total_pagar = sueldo_base + propinas_acum
