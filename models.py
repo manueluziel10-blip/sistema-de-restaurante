@@ -601,6 +601,66 @@ def cargar_gastos_hoy(fecha_str: str = None):
     return hoy
 
 
+# --- NUEVAS FUNCIONES PARA REPORTES POR RANGO DE FECHAS ---
+
+def cargar_empleados_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
+    session = get_session()
+    f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+    f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+    
+    query = session.query(
+        Empleado.id,
+        Empleado.nombre,
+        Empleado.tipo,
+        func.sum(NominaDiaria.sueldo_base).label("sueldo_base"),
+        func.sum(NominaDiaria.vales_nomina).label("vales_nomina"),
+        func.sum(NominaDiaria.descuento_nomina).label("descuento_nomina"),
+        func.sum(NominaDiaria.transferencia_nomina).label("transferencia_nomina")
+    ).join(NominaDiaria, Empleado.id == NominaDiaria.empleado_id).filter(
+        NominaDiaria.fecha >= f_ini,
+        NominaDiaria.fecha <= f_fin,
+        Empleado.activo == True
+    ).group_by(Empleado.id, Empleado.nombre, Empleado.tipo).order_by(Empleado.id)
+    
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    
+    if not df.empty:
+        df['sueldo_base'] = df['sueldo_base'].astype(float)
+        df['vales_nomina'] = df['vales_nomina'].astype(float)
+        df['descuento_nomina'] = df['descuento_nomina'].astype(float)
+        df['transferencia_nomina'] = df['transferencia_nomina'].astype(float)
+    return df
+
+
+def cargar_chicas_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
+    session = get_session()
+    f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+    f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+    
+    query = session.query(ProductoChica).filter(
+        ProductoChica.fecha >= f_ini,
+        ProductoChica.fecha <= f_fin
+    )
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    return df
+
+
+def cargar_ventas_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
+    session = get_session()
+    f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+    f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+    
+    query = session.query(CorteVenta).filter(
+        CorteVenta.fecha >= f_ini,
+        CorteVenta.fecha <= f_fin
+    )
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    return df
+
+
 def reiniciar_base_de_datos():
     session = get_session()
     try:
