@@ -211,14 +211,14 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         textColor=colors.whitesmoke
     )
 
-    # Carga segura del logo PNG desde GitHub
+    # Logo grande para el PDF (Ancho 110, Alto 40 aprox, ajustado a la cabecera)
     ruta_logo = "LogoSinBailarina.png"
     logo_flowable = None
     if os.path.exists(ruta_logo):
         try:
             with open(ruta_logo, "rb") as image_file:
                 img_bytes = image_file.read()
-            logo_flowable = Image(io.BytesIO(img_bytes), width=45, height=45)
+            logo_flowable = Image(io.BytesIO(img_bytes), width=110, height=42)
         except Exception:
             logo_flowable = Paragraph("<b>[ZULLYS]</b>", cell_style)
     else:
@@ -229,7 +229,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         Paragraph(f"REPORTE GENERAL DE CIERRE DE CAJA — FECHA: {fecha_str}", subtitle_style)
     ]
 
-    tabla_header = Table([[logo_flowable, texto_cabecera]], colWidths=[55, 475])
+    tabla_header = Table([[logo_flowable, texto_cabecera]], colWidths=[120, 410])
     tabla_header.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
@@ -1130,16 +1130,16 @@ elif opcion == "3. Corte y Nómina Final":
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
-    # CARGAR EL LOGO PNG EN BASE64 PARA LA ZONA ROJA DEL DASHBOARD
+    # Logo ampliado para la interfaz de Streamlit (ancho de 260px)
     ruta_logo_local = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo_local):
         with open(ruta_logo_local, "rb") as f_img:
             encoded_logo = base64.b64encode(f_img.read()).decode("utf-8")
-        logo_dash_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width: 140px; border-radius: 8px; margin-bottom: 10px;">'
+        logo_dash_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width: 260px; border-radius: 8px; margin-bottom: 10px;">'
     else:
         logo_dash_html = "<b>[ZULLYS]</b>"
 
-    col_logo_dash, col_titulo_dash = st.columns([1, 6])
+    col_logo_dash, col_titulo_dash = st.columns([1.5, 5.5])
     with col_logo_dash:
         st.markdown(logo_dash_html, unsafe_allow_html=True)
     with col_titulo_dash:
