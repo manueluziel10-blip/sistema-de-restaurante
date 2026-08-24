@@ -1,5 +1,5 @@
-"""
-Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico por fecha, roles y bloqueos.
+"""""
+Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico completo por fecha, ID y empleado.
 """
 
 from sqlalchemy import (
@@ -28,12 +28,20 @@ class Empleado(Base):
     nombre = Column(String, unique=True, nullable=False)
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
+    activo = Column(Boolean, default=True)
+    creado_en = Column(DateTime, server_default=func.now())
+
+
+class NominaDiaria(Base):
+    __tablename__ = "nomina_diaria"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fecha = Column(Date, nullable=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    sueldo_base = Column(Numeric(10, 2), default=0.0)
     vales_nomina = Column(Numeric(10, 2), default=0.0)
     descuento_nomina = Column(Numeric(10, 2), default=100.0)
     transferencia_nomina = Column(Numeric(10, 2), default=0.0)
     penalizada = Column(Boolean, default=False)
-    activo = Column(Boolean, default=True)
-    creado_en = Column(DateTime, server_default=func.now())
 
 
 class CorteVenta(Base):
@@ -108,11 +116,9 @@ def inicializar_usuarios_por_defecto():
         admin = session.query(UsuarioSistema).filter(UsuarioSistema.username == "admin").first()
         if not admin:
             session.add(UsuarioSistema(username="admin", password="123", rol="admin"))
-        
         cajero = session.query(UsuarioSistema).filter(UsuarioSistema.username == "cajero").first()
         if not cajero:
             session.add(UsuarioSistema(username="cajero", password="123", rol="cajero"))
-        
         session.commit()
     except Exception:
         session.rollback()
@@ -241,6 +247,7 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
 
         session.query(CorteVenta).filter(CorteVenta.fecha == f_ant).update({CorteVenta.fecha: f_nue}, synchronize_session=False)
         session.query(ProductoChica).filter(ProductoChica.fecha == f_ant).update({ProductoChica.fecha: f_nue}, synchronize_session=False)
+        session.query(NominaDiaria).filter(NominaDiaria.fecha == f_ant).update({NominaDiaria.fecha: f_nue}, synchronize_session=False)
         session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue}, synchronize_session=False)
         session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue}, synchronize_session=False)
         
@@ -252,7 +259,7 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         session.close()
 
 
-# --- FUNCIONES GENERALES DE NEGOCIO ---
+# --- FUNCIONES GENERALES DE NEGOCIO Y NÓMINA HISTÓRICA ---
 
 def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300.0, es_comision: bool = True):
     puesto = session.query(PuestoCatalogo).filter(PuestoCatalogo.nombre == nombre_puesto).first()
@@ -262,35 +269,60 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
         session.commit()
 
 
-def cargar_empleados_df() -> pd.DataFrame:
-    session = get_session()
-    try:
-        inspector = inspect(session.bind)
-        columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
-        if 'vales_nomina' not in columnas_tabla:
-            session.execute(db_text("ALTER TABLE empleados ADD COLUMN vales_nomina NUMERIC(10,2) DEFAULT 0.0"))
-            session.commit()
-        if 'descuento_nomina' not in columnas_tabla:
-            session.execute(db_text("ALTER TABLE empleados ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
-            session.commit()
-        if 'transferencia_nomina' not in columnas_tabla:
-            session.execute(db_text("ALTER TABLE empleados ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
-            session.commit()
-        if 'penalizada' not in columnas_tabla:
-            session.execute(db_text("ALTER TABLE empleados ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
-            session.commit()
-    except Exception:
-        session.rollback()
+def asegurar_nomina_dia(session, fecha_date):
+    """Copia o asegura que todos los empleados activos tengan un registro en nomina_diaria para esta fecha."""
+    empleados = session.query(Empleado).filter(Empleado.activo == True).all()
+    for emp in empleados:
+        existe = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == fecha_date,
+            NominaDiaria.empleado_id == emp.id
+        ).first()
+        if not existe:
+            # Buscar si hay un registro previo en otra fecha para heredar o usar el sueldo base del empleado
+            nueva_nom = NominaDiaria(
+                fecha=fecha_date,
+                empleado_id=emp.id,
+                sueldo_base=emp.sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            )
+            session.add(nueva_nom)
+    session.commit()
 
-    query = session.query(Empleado).order_by(Empleado.id)
+
+def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
+    session = get_session()
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+    
+    asegurar_nomina_dia(session, f_date)
+    
+    # Unir la tabla de empleados con la nómina específica de la fecha
+    query = session.query(
+        Empleado.id,
+        Empleado.nombre,
+        Empleado.tipo,
+        NominaDiaria.sueldo_base,
+        NominaDiaria.vales_nomina,
+        NominaDiaria.descuento_nomina,
+        NominaDiaria.transferencia_nomina,
+        NominaDiaria.penalizada
+    ).join(NominaDiaria, Empleado.id == NominaDiaria.empleado_id).filter(
+        NominaDiaria.fecha == f_date,
+        Empleado.activo == True
+    ).order_by(Empleado.id)
+    
     df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    
     if not df.empty:
         df['sueldo_base'] = df['sueldo_base'].astype(float)
         df['vales_nomina'] = df['vales_nomina'].astype(float) if 'vales_nomina' in df.columns else 0.0
         df['descuento_nomina'] = df['descuento_nomina'].astype(float) if 'descuento_nomina' in df.columns else 100.0
         df['transferencia_nomina'] = df['transferencia_nomina'].astype(float) if 'transferencia_nomina' in df.columns else 0.0
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
-    session.close()
     return df
 
 
@@ -305,32 +337,112 @@ def agregar_empleado(nombre, tipo, sueldo_base):
         emp = Empleado(
             nombre=nombre.upper(),
             tipo=tipo,
-            sueldo_base=sueldo_base,
-            vales_nomina=0.0,
-            descuento_nomina=100.0,
-            transferencia_nomina=0.0,
-            penalizada=False
+            sueldo_base=sueldo_base
         )
         session.add(emp)
+        session.commit()
+        session.refresh(emp)
+    
+    # Asegurar que tenga registro en todas las fechas existentes o en la actual
+    fechas_v = session.query(CorteVenta.fecha).distinct().all()
+    fechas_c = session.query(ProductoChica.fecha).distinct().all()
+    fechas_g = session.query(GastoDiario.fecha).distinct().all()
+    todas_fechas = set([f[0] for f in fechas_v + fechas_c + fechas_g if f[0] is not None])
+    todas_fechas.add(datetime.now().date())
+
+    for f_date in todas_fechas:
+        existe = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id == emp.id
+        ).first()
+        if not existe:
+            session.add(NominaDiaria(
+                fecha=f_date,
+                empleado_id=emp.id,
+                sueldo_base=sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            ))
     session.commit()
     session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, fecha_str=None):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
-    datos = {"tipo": nuevo_tipo, "sueldo_base": nuevo_sueldo}
+    
+    # Actualizar maestro de empleado
+    emp = session.query(Empleado).filter(Empleado.id == emp_id).first()
+    if emp:
+        emp.tipo = nuevo_tipo
+        emp.sueldo_base = nuevo_sueldo
+
+    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+
+    nom = session.query(NominaDiaria).filter(
+        NominaDiaria.fecha == f_date,
+        NominaDiaria.empleado_id == emp_id
+    ).first()
+
+    if not nom:
+        nom = NominaDiaria(fecha=f_date, empleado_id=emp_id, sueldo_base=nuevo_sueldo)
+        session.add(nom)
+
+    nom.sueldo_base = nuevo_sueldo
     if nuevo_vales is not None:
-        datos["vales_nomina"] = nuevo_vales
+        nom.vales_nomina = nuevo_vales
     if nueva_penalizacion is not None:
-        datos["penalizada"] = nueva_penalizacion
+        nom.penalizada = nueva_penalizacion
     if nuevo_descuento is not None:
-        datos["descuento_nomina"] = nuevo_descuento
+        nom.descuento_nomina = nuevo_descuento
     if nueva_transferencia is not None:
-        datos["transferencia_nomina"] = nueva_transferencia
-    session.query(Empleado).filter(Empleado.id == emp_id).update(datos)
+        nom.transferencia_nomina = nueva_transferencia
+
     session.commit()
     session.close()
+
+
+def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, fecha_date=None, existing_session=None):
+    session = existing_session if existing_session else get_session()
+    try:
+        asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
+        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        creado = False
+        if not emp:
+            emp = Empleado(
+                nombre=nombre.upper(),
+                tipo=tipo,
+                sueldo_base=sueldo_base
+            )
+            session.add(emp)
+            session.commit()
+            session.refresh(emp)
+            creado = True
+
+        f_date = fecha_date if fecha_date else datetime.now().date()
+        nom = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id == emp.id
+        ).first()
+        if not nom:
+            session.add(NominaDiaria(
+                fecha=f_date,
+                empleado_id=emp.id,
+                sueldo_base=sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            ))
+            session.commit()
+
+        return emp.id, creado
+    finally:
+        if not existing_session:
+            session.close()
 
 
 def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_origen: str, fecha_corte=None, usuario_nombre="sistema"):
@@ -350,29 +462,11 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
         for _, row in df_completo.iterrows():
             nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
-            emp = session.query(Empleado).filter(Empleado.nombre == nombre_mesero).first()
-            
-            if not emp:
-                emp = Empleado(
-                    nombre=nombre_mesero,
-                    tipo=tipo_por_defecto,
-                    sueldo_base=300.0,
-                    vales_nomina=0.0,
-                    descuento_nomina=100.0,
-                    transferencia_nomina=0.0,
-                    penalizada=False
-                )
-                session.add(emp)
-                session.commit()
-                session.refresh(emp)
-            else:
-                if "CHICA" in emp.tipo.upper() or "BAILARINA" in emp.tipo.upper():
-                    emp.tipo = tipo_por_defecto
-                    session.commit()
+            emp_id, _ = obtener_o_crear_empleado(nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date, existing_session=session)
 
             kwargs = {
                 "fecha": f_filtro_date,
-                "idmesero": emp.id,
+                "idmesero": emp_id,
                 "importe": row.get("importe_x", row.get("importe", 0)),
                 "efectivo": row.get("efectivo", 0),
                 "propina_efectivo": row.get("propinaefectivo", 0),
@@ -386,41 +480,11 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
             session.add(CorteVenta(**kwargs))
         session.commit()
-
-        # Bloqueo automático eliminado para permitir edición libre tras cargar archivos
-        # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
-
     except Exception as e:
         session.rollback()
         raise e
     finally:
         session.close()
-
-
-def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, existing_session=None):
-    session = existing_session if existing_session else get_session()
-    try:
-        asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
-        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
-        creado = False
-        if not emp:
-            emp = Empleado(
-                nombre=nombre.upper(),
-                tipo=tipo,
-                sueldo_base=sueldo_base,
-                vales_nomina=0.0,
-                descuento_nomina=100.0,
-                transferencia_nomina=0.0,
-                penalizada=False
-            )
-            session.add(emp)
-            session.commit()
-            session.refresh(emp)
-            creado = True
-        return emp.id, creado
-    finally:
-        if not existing_session:
-            session.close()
 
 
 def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archivo_origen: str, fecha_corte=None, usuario_nombre="sistema"):
@@ -445,7 +509,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             comision_unit = calcular_comision_fn(prod_parte)
             cantidad = float(row["CANTIDAD"]) if pd.notna(row.get("CANTIDAD")) else 1.0
 
-            emp_id, creado = obtener_o_crear_empleado(nombre_persona, existing_session=session)
+            emp_id, creado = obtener_o_crear_empleado(nombre_persona, "Chicas / Bailarinas (Comisiones)", 300.0, fecha_date=f_filtro_date, existing_session=session)
             if creado:
                 nuevas_detectadas.append(nombre_persona)
 
@@ -464,9 +528,6 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
 
             session.add(ProductoChica(**kwargs))
         session.commit()
-
-        # Bloqueo automático eliminado para permitir edición libre tras guardar
-        # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
         return nuevas_detectadas
     except Exception as e:
         session.rollback()
@@ -496,9 +557,6 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
         }
         session.add(GastoDiario(**kwargs))
     session.commit()
-
-    # Bloqueo automático eliminado para permitir edición libre tras guardar gastos
-    # bloquear_corte_fecha(f_filtro_str, usuario_nombre)
     session.close()
 
 
@@ -508,8 +566,9 @@ def obtener_fechas_disponibles() -> list:
         fechas_v = session.query(CorteVenta.fecha).distinct().all()
         fechas_c = session.query(ProductoChica.fecha).distinct().all()
         fechas_g = session.query(GastoDiario.fecha).distinct().all()
+        fechas_n = session.query(NominaDiaria.fecha).distinct().all()
         
-        todas = set([f[0] for f in fechas_v + fechas_c + fechas_g if f[0] is not None])
+        todas = set([f[0] for f in fechas_v + fechas_c + fechas_g + fechas_n if f[0] is not None])
         ordenadas = sorted(list(todas), reverse=True)
         return [f.strftime('%Y-%m-%d') for f in ordenadas]
     finally:
@@ -552,8 +611,8 @@ def reiniciar_base_de_datos():
     session = get_session()
     try:
         session.commit()
-        # Eliminamos explícitamente las tablas con CASCADE para evitar dependencias cruzadas
         session.execute(db_text('DROP TABLE IF EXISTS cortes_bloqueos CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS nomina_diaria CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS cortes_productos_chicas CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS cortes_ventas CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS gastos_diarios CASCADE;'))
@@ -586,7 +645,6 @@ def reiniciar_base_de_datos():
         session.close()
 
 
-# --- CREACIÓN AUTOMÁTICA DE TABLAS FALTANTES ---
 try:
     _session_auto = get_session()
     Base.metadata.create_all(_session_auto.bind)
