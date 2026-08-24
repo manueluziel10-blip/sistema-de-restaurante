@@ -580,3 +580,46 @@ try:
     _session_auto.close()
 except Exception:
     pass
+
+def verificar_corte_bloqueado(fecha_str: str) -> bool:
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        bloqueo = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj, CorteBloqueo.bloqueado == True).first()
+        return bloqueo is not None
+    except Exception:
+        return False
+    finally:
+        session.close()
+
+
+def bloquear_corte_fecha(fecha_str: str, usuario: str):
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        bloqueo = session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj).first()
+        if bloqueo:
+            bloqueo.bloqueado = True
+            bloqueo.bloqueado_por = usuario
+        else:
+            nuevo_b = CorteBloqueo(fecha=f_obj, bloqueado=True, bloqueado_por=usuario)
+            session.add(nuevo_b)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def desbloquear_corte_fecha(fecha_str: str):
+    session = get_session()
+    try:
+        f_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_obj).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
