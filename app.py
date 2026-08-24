@@ -132,7 +132,7 @@ def calcular_comision_gerencia_caja(producto_str):
         return 5.0
     return 0.0
 
-# --- MENÚ LATERAL Y SELECCIÓN DE FECHA (ADMIN Y CAJERO) ---
+# --- MENÚ LATERAL: CONTROL DE FECHA ---
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
@@ -160,19 +160,7 @@ fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj
 es_dia_actual = (fecha_activa == hoy_str)
 puede_modificar = (rol_actual_lower == "admin") or es_dia_actual
 
-opciones_menu = [
-    "1. Subir Cortes Diarios (Excel)",
-    "2. Gestión y Edición de Empleados",
-    "3. Corte y Nómina Final",
-    "4. Cierre de Caja Diario (Dashboard)"
-]
-
-if rol_actual_lower == "admin":
-    opciones_menu.append("5. Gestión de Usuarios y Accesos")
-
-opcion = st.sidebar.selectbox("Selecciona una sección", opciones_menu, key="menu_seccion_principal")
-
-# --- ZONA DE PELIGRO CON VALIDACIÓN DE CONTRASEÑA ---
+# --- ZONA DE PELIGRO EN BARRA LATERAL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚠️ Zona de Peligro")
 
@@ -195,7 +183,6 @@ else:
         
         if btn_ejecutar:
             if confirmar_check:
-                # Validar contraseña del usuario admin actual o general
                 user_val = validar_login(st.session_state["usuario_actual"], pass_admin)
                 if user_val and user_val.get("rol") == "admin":
                     reiniciar_base_de_datos()
@@ -210,6 +197,34 @@ else:
         if btn_cancelar:
             st.session_state["mostrar_form_reinicio"] = False
             st.rerun()
+
+# --- BARRA DE HERRAMIENTAS SUPERIOR (BOTONES EN FORMA DE CUADROS) ---
+if "seccion_activa" not in st.session_state:
+    st.session_state["seccion_activa"] = "1. Subir Cortes Diarios (Excel)"
+
+nombres_secciones = [
+    "1. Subir Cortes Diarios (Excel)",
+    "2. Gestión de Empleados",
+    "3. Corte y Nómina Final",
+    "4. Cierre de Caja (Dashboard)"
+]
+if rol_actual_lower == "admin":
+    nombres_secciones.append("5. Usuarios y Accesos")
+
+num_cols = len(nombres_secciones)
+cols_toolbar = st.columns(num_cols)
+
+for idx, sec in enumerate(nombres_secciones):
+    with cols_toolbar[idx]:
+        activo = (st.session_state["seccion_activa"] == sec)
+        # Usamos estilos visuales en el botón según si está activo o no
+        label_btn = f"📌 {sec}" if activo else sec
+        if st.button(label_btn, use_container_width=True, key=f"toolbar_btn_{idx}"):
+            st.session_state["seccion_activa"] = sec
+            st.rerun()
+
+opcion = st.session_state["seccion_activa"]
+st.markdown("---")
 
 # --- SECCIÓN 1: SUBIR ARCHIVOS DIARIOS ---
 if opcion == "1. Subir Cortes Diarios (Excel)":
@@ -261,7 +276,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     st.error("El archivo no tiene el formato esperado (menos de 5 columnas).")
 
 # --- SECCIÓN 2: GESTIÓN Y EDICIÓN DE EMPLEADOS ---
-elif opcion == "2. Gestión y Edición de Empleados":
+elif opcion == "2. Gestión de Empleados":
     st.subheader("Gestión y Catálogo de Personal")
     
     empleados_df = cargar_empleados_df()
@@ -853,7 +868,7 @@ elif opcion == "3. Corte y Nómina Final":
         sub_o = procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
-elif opcion == "4. Cierre de Caja Diario (Dashboard)":
+elif opcion == "4. Cierre de Caja (Dashboard)":
     st.subheader(f"📊 Dashboard y Resumen de Cierre - Fecha: {fecha_activa}")
     st.info("Este panel consolida las ventas totales, terminales, efectivo, propinas, gastos y nómina diaria basados en tus archivos cargados.")
 
@@ -1361,7 +1376,7 @@ elif opcion == "4. Cierre de Caja Diario (Dashboard)":
         st.info(f"No hay registros de ventas de meseros disponibles para mostrar en el resumen de la fecha {fecha_activa}.")
 
 # --- SECCIÓN 5: GESTIÓN DE USUARIOS Y ACCESOS ---
-elif opcion == "5. Gestión de Usuarios y Accesos":
+elif opcion == "5. Usuarios y Accesos":
     st.subheader("🔐 Gestión de Usuarios y Accesos del Sistema")
     st.info("Aquí puedes registrar nuevos usuarios, modificar credenciales y reasignar fechas de cortes existentes.")
 
