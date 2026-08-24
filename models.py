@@ -635,7 +635,7 @@ def reiniciar_base_de_datos():
         session.execute(db_text('DROP TABLE IF EXISTS gastos_diarios CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS empleados CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS puestos_catalogo CASCADE;'))
-        session.execute(db_text('DROP_TABLE IF EXISTS usuarios_sistema CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS usuarios_sistema CASCADE;'))
         session.commit()
         
         Base.metadata.create_all(session.bind)
