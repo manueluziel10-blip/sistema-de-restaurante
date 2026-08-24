@@ -152,11 +152,12 @@ def limpiar_cortes_dia(fecha_str):
     finally:
         session.close()
 
-def obtener_logo_flowable(fallback_style):
+def obtener_logo_flowable(fallback_style, width_val=90, height_val=35):
     ruta_logo = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo):
         try:
-            return Image(ruta_logo, width=110)
+            # Forzamos ancho y alto controlado para evitar desbordamientos de layout
+            return Image(ruta_logo, width=width_val, height=height_val)
         except Exception:
             return Paragraph("<b>[ZULLYS]</b>", fallback_style)
     return Paragraph("<b>[ZULLYS]</b>", fallback_style)
@@ -179,7 +180,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
     cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
-    logo_flowable = obtener_logo_flowable(cell_style)
+    logo_flowable = obtener_logo_flowable(cell_style, width_val=100, height_val=40)
 
     texto_cabecera = [
         Paragraph("ZULLYS MENS CLUB", title_style),
@@ -266,9 +267,9 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
     cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
     cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
-    logo_flowable = obtener_logo_flowable(cell_style)
+    logo_flowable = obtener_logo_flowable(cell_style, width_val=90, height_val=35)
 
-    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[120, 612])
+    tabla_header = Table([[logo_flowable, [Paragraph("ZULLYS MENS CLUB", title_style), Paragraph(f"{titulo_reporte} — Periodo: {rango_str}", subtitle_style)]]], colWidths=[110, 632])
     tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     
     story.append(tabla_header)
@@ -285,7 +286,6 @@ def generar_pdf_periodo(titulo_reporte, rango_str, df_resultados, total_general)
             rows.append(row_cells)
         
         num_cols = len(df_resultados.columns)
-        # Ancho total disponible en horizontal con márgenes de 25 = 742 puntos exactos
         col_width = 742 / num_cols
 
         t_rep = Table(rows, colWidths=[col_width] * num_cols)
@@ -1100,7 +1100,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
-            # Función para renderizar tablas más compactas ajustando la proporción visual en columnas
             def mostrar_tabla_compacta(df_rep, total_val, nombre_pestana, key_pdf):
                 col_t_izq, col_t_der = st.columns([4, 2])
                 with col_t_izq:
