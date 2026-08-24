@@ -548,7 +548,10 @@ def cargar_gastos_hoy(fecha_str: str = None):
 def reiniciar_base_de_datos():
     session = get_session()
     try:
-        Base.metadata.drop_all(session.bind)
+        # Borrar las tablas en orden inverso de dependencia para evitar conflictos de llaves foráneas
+        for table in reversed(Base.metadata.sorted_tables):
+            table.drop(session.bind, checkfirst=True)
+            
         Base.metadata.create_all(session.bind)
         
         puestos_iniciales = [
