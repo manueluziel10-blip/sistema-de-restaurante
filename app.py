@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import io
+import os
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -155,10 +156,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
     story = []
     
-    # Paleta de colores elegante
-    PRIMARY_COLOR = colors.HexColor("#111827") # Gris muy oscuro / casi negro
-    ACCENT_COLOR = colors.HexColor("#1F2937")
-    LIGHT_BG = colors.HexColor("#F3F4F6")
+    PRIMARY_COLOR = colors.HexColor("#111827")
     ALT_BG = colors.HexColor("#F9FAFB")
     BORDER_COLOR = colors.HexColor("#E5E7EB")
     
@@ -167,20 +165,20 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     title_style = ParagraphStyle(
         'TitleStyle',
         parent=styles['Heading1'],
-        fontSize=16,
+        fontSize=15,
         textColor=PRIMARY_COLOR,
-        alignment=1,
+        alignment=0,
         fontName='Helvetica-Bold',
-        spaceAfter=4
+        spaceAfter=2
     )
     subtitle_style = ParagraphStyle(
         'SubTitleStyle',
         parent=styles['Heading2'],
-        fontSize=10,
+        fontSize=9,
         textColor=colors.HexColor("#6B7280"),
-        alignment=1,
+        alignment=0,
         fontName='Helvetica',
-        spaceAfter=15
+        spaceAfter=0
     )
     section_heading = ParagraphStyle(
         'SectionHeading',
@@ -212,10 +210,27 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         textColor=colors.whitesmoke
     )
 
-    # Cabecera del Reporte
-    story.append(Paragraph("ZULLYS MENS CLUB", title_style))
-    story.append(Paragraph(f"REPORTE GENERAL DE CIERRE DE CAJA — FECHA: {fecha_str}", subtitle_style))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=0, spaceAfter=10))
+    # Cabecera con Logotipo al lado izquierdo
+    ruta_logo = "LogoSinBailarina.jpg"
+    if os.path.exists(ruta_logo):
+        logo = Image(ruta_logo, width=45, height=45)
+    else:
+        logo = Paragraph("<b>[LOGO]</b>", cell_style)
+
+    texto_cabecera = [
+        Paragraph("ZULLYS MENS CLUB", title_style),
+        Paragraph(f"REPORTE GENERAL DE CIERRE DE CAJA — FECHA: {fecha_str}", subtitle_style)
+    ]
+
+    tabla_header = Table([[logo, texto_cabecera]], colWidths=[55, 475])
+    tabla_header.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+
+    story.append(tabla_header)
+    story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=6, spaceAfter=10))
 
     # --- SECCIÓN 1: FINANZAS Y GASTOS EN 2 COLUMNAS ---
     story.append(Paragraph("1. Resumen Financiero y Operativo", section_heading))
@@ -1259,7 +1274,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
-    # PREPARAR DATAFRAME DE MESEROS PARA EL PDF
     resumen_meseros = pd.DataFrame()
     if not ventas_acumuladas.empty and not empleados_dashboard_df.empty:
         df_ventas_meseros = pd.merge(ventas_acumuladas, empleados_dashboard_df[['id', 'nombre']], left_on='idmesero', right_on='id', how='left')
@@ -1278,7 +1292,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             resumen_meseros['otros'] + resumen_meseros['propinacredito']
         )
 
-    # BOTÓN PARA DESCARGAR PDF COMPLETO Y MEJORADO
     pdf_buffer = generar_pdf_corte(
         fecha_activa, ventas_totales_con_propinas, efectivo_ventas, tarjeta_ventas, 
         transferencia_ventas, ventas_por_cobrar, efectivo_entregado, utilidad_monto,
