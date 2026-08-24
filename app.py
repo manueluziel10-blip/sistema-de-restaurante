@@ -370,7 +370,7 @@ if not st.session_state["mostrar_form_reinicio"]:
         st.rerun()
 else:
     with st.sidebar.form("form_confirmar_reinicio"):
-        st.warning("⚠️ Esta acción borrará TODO. Confirma tu identidad.")
+        st.warning("⚠️ Эта acción borrará TODO. Confirma tu identidad.")
         pass_admin = st.text_input("Contraseña de Admin", type="password")
         confirmar_check = st.checkbox("Estoy seguro de borrar la base de datos")
         
@@ -1091,6 +1091,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
         if empleados_rango.empty:
             st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")
         else:
+            # Obtener el total de días únicos con registros en todo el periodo consultado
+            total_dias_periodo = empleados_rango['fecha'].nunique() if 'fecha' in empleados_rango.columns else 1
+
             tab_rep_bailarinas, tab_rep_meseros, tab_rep_seguridad, tab_rep_general = st.tabs([
                 "💃 Bailarinas y Chicas",
                 "👥 Meseros y Ayudantes",
@@ -1216,7 +1219,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_m_val = df_rep_m['Total a Pagar'].sum() if not df_rep_m.empty else 0.0
                     mostrar_tabla_compacta(df_rep_m, total_m_val, "Meseros y Ayudantes", "dl_pdf_m")
 
-            # 3. SEGURIDAD (Corregido para contar correctamente los días que laboraron en el periodo)
+            # 3. SEGURIDAD (Basado en la cantidad de días únicos registrados en el periodo)
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({rango_etiqueta})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1229,7 +1232,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_seg:
                         df_emp_filas = df_seg_rango[df_seg_rango['nombre'] == nombre]
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else total_dias_periodo
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         
                         resumen_seg.append({
@@ -1243,7 +1246,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     total_s_val = df_rep_s['Total a Pagar'].sum() if not df_rep_s.empty else 0.0
                     mostrar_tabla_compacta(df_rep_s, total_s_val, "Personal de Seguridad", "dl_pdf_s")
 
-            # 4. PERSONAL GENERAL Y FIJO (Corregido para contar correctamente los días que laboraron en el periodo)
+            # 4. PERSONAL GENERAL Y FIJO (Basado en la cantidad de días únicos registrados en el periodo)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({rango_etiqueta})")
                 mask_gen_rango = (
@@ -1262,7 +1265,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     
                     for nombre in nombres_gen:
                         df_emp_filas = df_gen_rango[df_gen_rango['nombre'] == nombre]
-                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else total_dias_periodo
                         sueldo_base = float(df_emp_filas['sueldo_base'].sum())
                         tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
