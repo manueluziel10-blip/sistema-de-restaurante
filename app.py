@@ -156,7 +156,6 @@ def obtener_logo_flowable(fallback_style, width_val=90, height_val=35):
     ruta_logo = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo):
         try:
-            # Forzamos ancho y alto controlado para evitar desbordamientos de layout
             return Image(ruta_logo, width=width_val, height=height_val)
         except Exception:
             return Paragraph("<b>[ZULLYS]</b>", fallback_style)
@@ -172,7 +171,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     BORDER_COLOR = colors.HexColor("#E5E7EB")
     
     styles = getSampleStyleSheet()
-    
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceAfter=2)
     subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), fontName='Helvetica')
     section_heading = ParagraphStyle('SectionHeading', parent=styles['Heading3'], fontSize=11, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=6)
@@ -1109,7 +1107,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     pdf_file = generar_pdf_periodo(f"Resumen de {nombre_pestana}", rango_etiqueta, df_rep, total_val)
                     st.download_button(f"📥 Descargar PDF", data=pdf_file, file_name=f"Nomina_{nombre_pestana}_{rango_etiqueta}.pdf", mime="application/pdf", key=key_pdf)
 
-            # 1. BAILARINAS
+            # 1. BAILARINAS (Agrupando correctamente por nombre o ID único por fecha)
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({rango_etiqueta})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1118,12 +1116,18 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.info("No hay registros de bailarinas en este periodo.")
                 else:
                     resumen_bailarinas = []
-                    for _, emp in df_bailarinas_rango.iterrows():
-                        emp_id = emp['id']
-                        nombre = emp['nombre']
-                        sueldo_base = float(emp['sueldo_base'])
-                        descuento = float(emp['descuento_nomina'])
-                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
+                    # Agrupamos por nombre de empleada para calcular correctamente las asistencias únicas por fecha en el rango
+                    nombres_bailarinas = df_bailarinas_rango['nombre'].unique()
+                    
+                    for nombre in nombres_bailarinas:
+                        df_emp_filas = df_bailarinas_rango[df_bailarinas_rango['nombre'] == nombre]
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
+                        descuento = float(df_emp_filas['descuento_nomina'].sum())
+                        
+                        # Tomar el ID representativo
+                        emp_id = df_emp_filas.iloc[0]['id']
 
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         
@@ -1174,11 +1178,15 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.info("No hay registros de meseros o ayudantes en este periodo.")
                 else:
                     resumen_mes = []
-                    for _, emp in df_meseros_rango.iterrows():
-                        emp_id = emp['id']
-                        tipo = emp['tipo'].upper()
-                        sueldo_base = float(emp['sueldo_base'])
-                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
+                    nombres_meseros = df_meseros_rango['nombre'].unique()
+                    
+                    for nombre in nombres_meseros:
+                        df_emp_filas = df_meseros_rango[df_meseros_rango['nombre'] == nombre]
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
+                        emp_id = df_emp_filas.iloc[0]['id']
+                        tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
@@ -1193,8 +1201,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
 
                         total_pagar = sueldo_base + propinas_acum
                         resumen_mes.append({
-                            "Nombre": emp['nombre'],
-                            "Puesto": emp['tipo'],
+                            "Nombre": nombre,
+                            "Puesto": df_emp_filas.iloc[0]['tipo'],
                             "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas Acumuladas": propinas_acum,
@@ -1213,12 +1221,16 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.info("No hay registros de seguridad en este periodo.")
                 else:
                     resumen_seg = []
-                    for _, emp in df_seg_rango.iterrows():
-                        sueldo_base = float(emp['sueldo_base'])
-                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp['id']])
+                    nombres_seg = df_seg_rango['nombre'].unique()
+                    
+                    for nombre in nombres_seg:
+                        df_emp_filas = df_seg_rango[df_seg_rango['nombre'] == nombre]
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
+                        
                         resumen_seg.append({
-                            "Nombre": emp['nombre'],
-                            "Puesto": emp['tipo'],
+                            "Nombre": nombre,
+                            "Puesto": df_emp_filas.iloc[0]['tipo'],
                             "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Total a Pagar": sueldo_base
@@ -1242,12 +1254,13 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 else:
                     resumen_gen = []
                     chicas_con_desc_count = len(df_bailarinas_rango)
+                    nombres_gen = df_gen_rango['nombre'].unique()
                     
-                    for _, emp in df_gen_rango.iterrows():
-                        emp_id = emp['id']
-                        tipo = emp['tipo'].upper()
-                        sueldo_base = float(emp['sueldo_base'])
-                        asistencias_emp = len(empleados_rango[empleados_rango['id'] == emp_id])
+                    for nombre in nombres_gen:
+                        df_emp_filas = df_gen_rango[df_gen_rango['nombre'] == nombre]
+                        asistencias_emp = df_emp_filas['fecha'].nunique() if 'fecha' in df_emp_filas.columns else len(df_emp_filas)
+                        sueldo_base = float(df_emp_filas['sueldo_base'].sum())
+                        tipo = str(df_emp_filas.iloc[0]['tipo']).upper()
                         
                         propinas_o_comis = 0.0
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
@@ -1269,8 +1282,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
 
                         total_pagar = sueldo_base + propinas_o_comis
                         resumen_gen.append({
-                            "Nombre": emp['nombre'],
-                            "Puesto": emp['tipo'],
+                            "Nombre": nombre,
+                            "Puesto": df_emp_filas.iloc[0]['tipo'],
                             "Asistencias": asistencias_emp,
                             "Sueldo Base Acumulado": sueldo_base,
                             "Propinas / Comisiones Acumuladas": propinas_o_comis,
