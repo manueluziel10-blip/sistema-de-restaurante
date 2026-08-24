@@ -548,12 +548,15 @@ def cargar_gastos_hoy(fecha_str: str = None):
 def reiniciar_base_de_datos():
     session = get_session()
     try:
-        inspector = inspect(session.bind)
-        nombres_tablas = inspector.get_table_names()
-        
         session.commit()
-        for tabla in nombres_tablas:
-            session.execute(db_text(f'DROP TABLE IF EXISTS "{tabla}" CASCADE;'))
+        # Eliminamos explícitamente las tablas con CASCADE para evitar dependencias cruzadas
+        session.execute(db_text('DROP TABLE IF EXISTS cortes_bloqueos CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS cortes_productos_chicas CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS cortes_ventas CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS gastos_diarios CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS empleados CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS puestos_catalogo CASCADE;'))
+        session.execute(db_text('DROP TABLE IF EXISTS usuarios_sistema CASCADE;'))
         session.commit()
         
         Base.metadata.create_all(session.bind)
