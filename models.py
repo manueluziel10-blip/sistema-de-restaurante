@@ -311,6 +311,24 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
+    # Sincronización automática: crea nóminas faltantes para empleados activos que ya tengan asistencia en esta fecha
+    try:
+        session.execute(
+            db_text("""
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+                SELECT :fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, FALSE
+                FROM asistencias a
+                JOIN empleados e ON e.id = a.empleado_id
+                WHERE a.fecha = :fecha AND e.activo = TRUE
+                ON CONFLICT (empleado_id, fecha) DO NOTHING;
+            """),
+            {"fecha": f_date}
+        )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error al sincronizar nóminas automáticas: {e}")
+
     query = session.query(
         Empleado.id,
         Empleado.nombre,
