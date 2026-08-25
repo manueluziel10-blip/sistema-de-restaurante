@@ -139,44 +139,21 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencias_automaticas_dia(fecha_str):
-    """Registra automáticamente la asistencia de meseros/chicas con ventas y de todo el personal fijo activo."""
+    """Registra automáticamente la asistencia de TODO el personal activo sin duplicar registros por día."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        ids_empleados = set()
 
-        # 1. Recoger IDs de meseros con ventas en el día
-        ventas_dia = session.query(CorteVenta).filter(CorteVenta.fecha == f_date).all()
-        for v in ventas_dia:
-            if v.idmesero:
-                ids_empleados.add(int(v.idmesero))
-
-        # 2. Recoger IDs de chicas/bailarinas con productos en el día
-        chicas_dia = session.query(ProductoChica).filter(ProductoChica.fecha == f_date).all()
-        for c in chicas_dia:
-            if c.empleado_id:
-                ids_empleados.add(int(c.empleado_id))
-
-        # 3. Incluir automáticamente a TODO el personal activo (incluyendo fijos, seguridad, cajeros, etc.)
         empleados_activos = session.execute(
-            "SELECT id FROM empleados WHERE activo = TRUE"
+            "SELECT id, nombre FROM empleados WHERE activo = TRUE"
         ).fetchall()
         
         for emp in empleados_activos:
-            ids_empleados.add(int(emp[0]))
-
-        # 4. Insertar en la tabla asistencias asegurando que no se dupliquen
-        for emp_id in ids_empleados:
-            # Obtener el nombre del empleado desde la tabla empleados
-            emp_info = session.execute(
-                "SELECT nombre FROM empleados WHERE id = :emp_id",
-                {"emp_id": emp_id}
-            ).fetchone()
-            
-            nombre_emp = emp_info[0] if emp_info else "Desconocido"
+            emp_id = int(emp[0])
+            nombre_emp = emp[1] if emp[1] else "Desconocido"
 
             existe = session.execute(
-                "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha",
+                "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha LIMIT 1",
                 {"emp_id": emp_id, "fecha": f_date}
             ).fetchone()
 
@@ -184,7 +161,7 @@ def registrar_asistencias_automaticas_dia(fecha_str):
                 session.execute(
                     """
                     INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
-                    VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por corte diario')
+                    VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por sistema')
                     """,
                     {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
                 )
@@ -681,6 +658,7 @@ elif opcion == "2. Gestión de Empleados":
                         agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa)
                         registrados += 1
 
+                    registrar_asistencias_automaticas_dia(fecha_activa)
                     st.success(f"¡Importación completada para el día {fecha_activa}! Empleados procesados: {registrados}")
                     st.rerun()
 
@@ -717,6 +695,7 @@ elif opcion == "2. Gestión de Empleados":
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
                     agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa)
+                    registrar_asistencias_automaticas_dia(fecha_activa)
                     st.success(f"¡Guardado con éxito para el {fecha_activa}!")
                     st.rerun()
                 else:
@@ -1473,7 +1452,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
         chicas_rango = cargar_chicas_rango_df(f_ini_str, f_fin_str)
         ventas_rango = cargar_ventas_rango_df(f_ini_str, f_fin_str)
         
-        # Obtenemos las asistencias reales de la base de datos
         mapa_asistencias = obtener_mapa_asistencias(f_ini_str, f_fin_str)
 
         if empleados_rango.empty:
@@ -1501,7 +1479,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                         sueldo_base_diario = float(emp['sueldo_base'])
                         descuento = float(emp['descuento_nomina'])
 
-                        # Asistencias reales desde Neon
                         dias_asistencia = mapa_asistencias.get(emp_id, 0)
                         sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
 
