@@ -27,9 +27,9 @@ from models import (
 st.set_page_config(layout="wide")
 
 PUESTOS_CATALOGO = {
-    "Chicas / Bailarinas (Comisiones)": 300.0,
+    "Chicas / Bailarinas (Comisiones)": 600.0,
     "Mesero (Comisiones)": 300.0,
-    "Barman (Fijo)": 400.0,
+    "Barman (Fijo)": 300.0,
     "Seguridad (Fijo)": 500.0,
     "DJ (Fijo)": 600.0,
     "Animador (Fijo)": 400.0,
