@@ -4,6 +4,7 @@ from datetime import datetime
 import io
 import base64
 import os
+from sqlalchemy import text
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
@@ -18,7 +19,7 @@ from models import (
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
-    get_session, CorteVenta, ProductoChica, NominaDiaria,
+    get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df
 )
 
@@ -145,7 +146,7 @@ def registrar_asistencias_automaticas_dia(fecha_str):
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
 
         empleados_activos = session.execute(
-            "SELECT id, nombre FROM empleados WHERE activo = TRUE"
+            text("SELECT id, nombre FROM empleados WHERE activo = TRUE")
         ).fetchall()
         
         for emp in empleados_activos:
@@ -153,11 +154,11 @@ def registrar_asistencias_automaticas_dia(fecha_str):
             nombre_emp = emp[1] if emp[1] else "Desconocido"
 
             session.execute(
-                """
+                text("""
                 INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
                 VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por sistema')
                 ON CONFLICT (empleado_id, fecha) DO NOTHING
-                """,
+                """),
                 {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
             )
         session.commit()
@@ -172,12 +173,12 @@ def obtener_mapa_asistencias(f_ini, f_fin):
     session = get_session()
     mapa = {}
     try:
-        query = """
+        query = text("""
             SELECT empleado_id, COUNT(DISTINCT fecha) as total
             FROM asistencias
             WHERE fecha BETWEEN :f_ini AND :f_fin
             GROUP BY empleado_id
-        """
+        """)
         res = session.execute(query, {"f_ini": f_ini, "f_fin": f_fin}).fetchall()
         for row in res:
             mapa[int(row[0])] = int(row[1])
@@ -194,7 +195,7 @@ def limpiar_cortes_dia(fecha_str):
         session.query(CorteVenta).filter(CorteVenta.fecha == f_date).delete()
         session.query(ProductoChica).filter(ProductoChica.fecha == f_date).delete()
         session.query(NominaDiaria).filter(NominaDiaria.fecha == f_date).delete()
-        session.execute("DELETE FROM asistencias WHERE fecha = :fecha AND comentarios LIKE 'Automático%'", {"fecha": f_date})
+        session.execute(text("DELETE FROM asistencias WHERE fecha = :fecha AND comentarios LIKE 'Automático%'"), {"fecha": f_date})
         session.commit()
     except Exception as e:
         session.rollback()
@@ -1213,7 +1214,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                         p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
+                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_emp.columns else 0.0
                         propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
             if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
