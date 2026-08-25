@@ -48,6 +48,7 @@ class Asistencia(Base):
     __tablename__ = "asistencias"
     id = Column(Integer, primary_key=True, autoincrement=True)
     empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    nombre_empleado = Column(String)
     fecha = Column(Date, nullable=False)
     estado = Column(String(50), default="Presente")
     comentarios = Column(String, default="Automático por sistema")
