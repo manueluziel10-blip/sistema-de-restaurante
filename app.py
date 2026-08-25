@@ -48,14 +48,14 @@ if query_params.get("modo") == "asistencia":
     st.markdown("""
         <style>
             [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-                background-color: #141D26 !important;
+                background-color: #141D26;
                 border-radius: 10px;
-                border: 1px solid #1F2937 !important;
+                border: 1px solid #1F2937;
                 padding: 5px;
             }
             th {
-                background-color: #1A2634 !important;
-                color: #FFFFFF !important;
+                background-color: #1A2634;
+                color: #FFFFFF;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -82,7 +82,7 @@ if query_params.get("modo") == "asistencia":
                 VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
                 ON CONFLICT (empleado_id, fecha) 
                 DO UPDATE SET estado = :estado, comentarios = :comentarios
-                '''),
+                """),
                 {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
             )
             
@@ -201,14 +201,14 @@ st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
 st.markdown("""
     <style>
         [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-            background-color: #141D26 !important;
+            background-color: #141D26;
             border-radius: 10px;
-            border: 1px solid #1F2937 !important;
+            border: 1px solid #1F2937;
             padding: 5px;
         }
         th {
-            background-color: #1A2634 !important;
-            color: #FFFFFF !important;
+            background-color: #1A2634;
+            color: #FFFFFF;
         }
     </style>
 """, unsafe_allow_html=True)
