@@ -345,11 +345,13 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, **kwargs):
     if emp:
         emp.tipo = tipo
         emp.sueldo_base = sueldo_base
+        emp.activo = True # Aseguramos que esté activo si se vuelve a registrar
     else:
         emp = Empleado(
             nombre=nombre.upper(),
             tipo=tipo,
-            sueldo_base=sueldo_base
+            sueldo_base=sueldo_base,
+            activo=True
         )
         session.add(emp)
         session.commit()
@@ -424,12 +426,16 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
             emp = Empleado(
                 nombre=nombre.upper(),
                 tipo=tipo,
-                sueldo_base=sueldo_base
+                sueldo_base=sueldo_base,
+                activo=True
             )
             session.add(emp)
             session.commit()
             session.refresh(emp)
             creado = True
+        else:
+            emp.activo = True
+            session.commit()
 
         f_date = fecha_date if fecha_date else datetime.now().date()
         nom = session.query(NominaDiaria).filter(
