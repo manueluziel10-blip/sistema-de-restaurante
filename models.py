@@ -340,46 +340,51 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
 
 def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, **kwargs):
     session = get_session()
-    asegurar_puesto_existe(session, tipo)
-    emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
-    if emp:
-        emp.tipo = tipo
-        emp.sueldo_base = sueldo_base
-        emp.activo = True
-    else:
-        emp = Empleado(
-            nombre=nombre.upper(),
-            tipo=tipo,
-            sueldo_base=sueldo_base,
-            activo=True
-        )
-        session.add(emp)
+    try:
+        asegurar_puesto_existe(session, tipo)
+        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        if emp:
+            emp.tipo = tipo
+            emp.sueldo_base = sueldo_base
+            emp.activo = True
+        else:
+            emp = Empleado(
+                nombre=nombre.upper(),
+                tipo=tipo,
+                sueldo_base=sueldo_base,
+                activo=True
+            )
+            session.add(emp)
+            session.commit()
+            session.refresh(emp)
+        
+        f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+        f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+
+        existe_nom = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id == emp.id
+        ).first()
+
+        if not existe_nom:
+            session.add(NominaDiaria(
+                fecha=f_date,
+                empleado_id=emp.id,
+                sueldo_base=sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            ))
+        else:
+            existe_nom.sueldo_base = sueldo_base
+
         session.commit()
-        session.refresh(emp)
-    
-    f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
-    f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
-
-    existe_nom = session.query(NominaDiaria).filter(
-        NominaDiaria.fecha == f_date,
-        NominaDiaria.empleado_id == emp.id
-    ).first()
-
-    if not existe_nom:
-        session.add(NominaDiaria(
-            fecha=f_date,
-            empleado_id=emp.id,
-            sueldo_base=sueldo_base,
-            vales_nomina=0.0,
-            descuento_nomina=100.0,
-            transferencia_nomina=0.0,
-            penalizada=False
-        ))
-    else:
-        existe_nom.sueldo_base = sueldo_base
-
-    session.commit()
-    session.close()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
 def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, fecha_str=None, **kwargs):
