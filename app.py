@@ -78,15 +78,16 @@ if query_params.get("modo") == "asistencia":
         finally:
             session.close()
 
-    # Carga directa con manejo de errores visible para depuración en Streamlit Cloud
+    # Carga segura consultando exclusivamente columnas existentes en la BD
     session_kiosko = get_session()
     empleados_activos_df = pd.DataFrame()
     try:
         res_emps = session_kiosko.execute(
-            text("SELECT id, nombre, tipo, pin FROM public.empleados")
+            text("SELECT id, nombre, tipo FROM public.empleados")
         ).fetchall()
         if res_emps:
-            empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo", "pin"])
+            empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo"])
+            empleados_activos_df['pin'] = '1234' # PIN temporal por defecto
     except Exception as e:
         st.error(f"Error crítico al conectar con la base de datos: {e}")
     finally:
@@ -103,9 +104,7 @@ if query_params.get("modo") == "asistencia":
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
-                pin_correcto = str(fila_emp.get('pin', '1234'))
-                if not pin_correcto or pin_correcto == 'nan' or pin_correcto == 'None':
-                    pin_correcto = '1234'
+                pin_correcto = '1234'
 
                 if pin_ingresado.strip() == pin_correcto.strip():
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
@@ -123,7 +122,7 @@ if query_params.get("modo") == "asistencia":
                     else:
                         st.error("Ocurrió un error al guardar en la base de datos.")
                 else:
-                    st.error("❌ Código PIN incorrecto. Verifica con administración.")
+                    st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
     else:
         st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía. Verifica tus Secrets en Streamlit Cloud.")
 
@@ -1773,9 +1772,7 @@ elif opcion == "✍️ Registro de Asistencia":
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
 
-                pin_correcto = str(fila_emp.get('pin', '1234'))
-                if not pin_correcto or pin_correcto == 'nan':
-                    pin_correcto = '1234'
+                pin_correcto = '1234'
 
                 if pin_ingresado.strip() == pin_correcto.strip():
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
@@ -1797,7 +1794,7 @@ elif opcion == "✍️ Registro de Asistencia":
                     else:
                         st.error("Ocurrió un error al guardar en la base de datos.")
                 else:
-                    st.error("❌ Código PIN incorrecto. Verifica con administración.")
+                    st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
 
         st.markdown("---")
         st.markdown("### 📋 Listado de Asistencias Registradas Hoy")
