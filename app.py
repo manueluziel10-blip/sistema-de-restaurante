@@ -1472,11 +1472,10 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_bailarinas_rango.iterrows():
                         emp_id = emp['id']
                         nombre = emp['nombre']
-                        sueldo_base_diario = float(emp['sueldo_base'])
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
                         descuento = float(emp['descuento_nomina'])
 
                         dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
 
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         
@@ -1532,10 +1531,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_meseros_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
-                        sueldo_base_diario = float(emp['sueldo_base'])
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
                         
                         dias_asistencia_m = mapa_asistencias.get(emp_id, 0)
-                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia_m
                         
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
@@ -1573,9 +1571,8 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     resumen_seg = []
                     for _, emp in df_seg_rango.iterrows():
                         emp_id = emp['id']
-                        sueldo_base_diario = float(emp['sueldo_base'])
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
                         dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
                         
                         total_pagar = sueldo_base_acumulado
                         resumen_seg.append({
@@ -1609,10 +1606,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_gen_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
-                        sueldo_base_diario = float(emp['sueldo_base'])
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
                         
                         dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
                         
                         propinas_o_comis = 0.0
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
