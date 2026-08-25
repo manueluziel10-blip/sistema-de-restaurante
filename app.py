@@ -139,7 +139,7 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencias_automaticas_dia(fecha_str):
-    """Registra automáticamente la asistencia de los empleados que participaron en las ventas o productos del día."""
+    """Registra automáticamente la asistencia y el nombre de los empleados que participaron en las ventas o productos del día."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
@@ -156,6 +156,14 @@ def registrar_asistencias_automaticas_dia(fecha_str):
                 ids_empleados.add(int(c.empleado_id))
 
         for emp_id in ids_empleados:
+            # Obtener el nombre del empleado desde la tabla empleados
+            emp_info = session.execute(
+                "SELECT nombre FROM empleados WHERE id = :emp_id",
+                {"emp_id": emp_id}
+            ).fetchone()
+            
+            nombre_emp = emp_info[0] if emp_info else "Desconocido"
+
             existe = session.execute(
                 "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha",
                 {"emp_id": emp_id, "fecha": f_date}
@@ -163,8 +171,11 @@ def registrar_asistencias_automaticas_dia(fecha_str):
 
             if not existe:
                 session.execute(
-                    "INSERT INTO asistencias (empleado_id, fecha, estado, comentarios) VALUES (:emp_id, :fecha, 'Presente', 'Automático por corte diario')",
-                    {"emp_id": emp_id, "fecha": f_date}
+                    """
+                    INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
+                    VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por corte diario')
+                    """,
+                    {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
                 )
         session.commit()
     except Exception as e:
