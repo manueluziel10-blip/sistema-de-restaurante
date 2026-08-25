@@ -312,6 +312,29 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
+    try:
+        # Aseguramos que todos los empleados activos tengan una fila en nomina_diaria para esta fecha
+        empleados_activos = session.query(Empleado).filter(Empleado.activo == True).all()
+        for emp in empleados_activos:
+            existe_nom = session.query(NominaDiaria).filter(
+                NominaDiaria.fecha == f_date,
+                NominaDiaria.empleado_id == emp.id
+            ).first()
+            if not existe_nom:
+                session.add(NominaDiaria(
+                    fecha=f_date,
+                    empleado_id=emp.id,
+                    sueldo_base=float(emp.sueldo_base) if hasattr(emp, 'sueldo_base') else 300.0,
+                    vales_nomina=0.0,
+                    descuento_nomina=100.0,
+                    transferencia_nomina=0.0,
+                    penalizada=False
+                ))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error asegurando nómina diaria: {e}")
+
     query = session.query(
         Empleado.id,
         Empleado.nombre,
@@ -345,7 +368,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, **kwargs):
     if emp:
         emp.tipo = tipo
         emp.sueldo_base = sueldo_base
-        emp.activo = True # Aseguramos que esté activo si se vuelve a registrar
+        emp.activo = True
     else:
         emp = Empleado(
             nombre=nombre.upper(),
