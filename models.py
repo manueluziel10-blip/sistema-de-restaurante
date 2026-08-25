@@ -297,7 +297,6 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
-    # Consulta exclusivamente los registros de nómina que pertenecen a esta fecha específica
     query = session.query(
         Empleado.id,
         Empleado.nombre,
@@ -664,6 +663,7 @@ def reiniciar_base_de_datos():
     session = get_session()
     try:
         session.commit()
+        session.execute(db_text('DROP TABLE IF EXISTS asistencias CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS cortes_bloqueos CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS nomina_diaria CASCADE;'))
         session.execute(db_text('DROP TABLE IF EXISTS cortes_productos_chicas CASCADE;'))
