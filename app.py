@@ -483,7 +483,7 @@ nombres_secciones = [
     "2. Gestión de Empleados",
     "3. Corte y Nómina Final",
     "4. Cierre de Caja (Dashboard)",
-    "5. Reportes"  # <-- Actualizado a "Reportes"
+    "5. Reportes"
 ]
 if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
@@ -1214,7 +1214,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                         p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
                         p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
                         p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_emp.columns else 0.0
+                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
                         propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
             if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
@@ -1433,14 +1433,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 elif opcion == "5. Reportes":
     st.subheader("📊 Módulo de Reportes")
     
-    # Menú desplegable para escoger los diferentes reportes
     tipo_reporte = st.selectbox(
         "Selecciona el tipo de reporte que deseas consultar:",
         [
             "Reporte de Nómina por Periodo"
-            # Aquí podrás agregar más opciones en el futuro:
-            # "Reporte de Ventas por Periodo",
-            # "Reporte de Asistencias", etc.
         ]
     )
 
