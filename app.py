@@ -71,10 +71,10 @@ if query_params.get("modo") == "asistencia":
                 {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
             )
             session.commit()
-            return True, estado, hora_actual_obj.strftime('%H:%M:%S')
+            return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
         except Exception as e:
             session.rollback()
-            return False, "", ""
+            return False, "", "", str(e)
         finally:
             session.close()
 
@@ -108,7 +108,7 @@ if query_params.get("modo") == "asistencia":
 
                 if pin_ingresado.strip() == pin_correcto.strip():
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
-                    exito, estado_asignado, hora_str = registrar_asistencia_individual_publico(
+                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual_publico(
                         empleado_id=emp_id, nombre_emp=emp_seleccionado,
                         tipo_puesto=tipo_puesto_emp, fecha_str=fecha_hoy_kiosko,
                         hora_actual_obj=hora_actual_sistema
@@ -120,7 +120,7 @@ if query_params.get("modo") == "asistencia":
                         st.markdown(f"- **Hora Local de Registro:** {hora_str}")
                         st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
                     else:
-                        st.error("Ocurrió un error al guardar en la base de datos.")
+                        st.error(f"❌ Error al guardar en la base de datos: {error_sql}")
                 else:
                     st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
     else:
@@ -269,11 +269,11 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_
             {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
         )
         session.commit()
-        return True, estado, hora_actual_obj.strftime('%H:%M:%S')
+        return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
     except Exception as e:
         session.rollback()
         print(f"Error registrando asistencia: {e}")
-        return False, "", ""
+        return False, "", "", str(e)
     finally:
         session.close()
 
@@ -1777,7 +1777,7 @@ elif opcion == "✍️ Registro de Asistencia":
                 if pin_ingresado.strip() == pin_correcto.strip():
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
 
-                    exito, estado_asignado, hora_str = registrar_asistencia_individual(
+                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual(
                         empleado_id=emp_id,
                         nombre_emp=emp_seleccionado,
                         tipo_puesto=tipo_puesto_emp,
@@ -1792,7 +1792,7 @@ elif opcion == "✍️ Registro de Asistencia":
                         st.markdown(f"- **Hora Local de Registro:** {hora_str}")
                         st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
                     else:
-                        st.error("Ocurrió un error al guardar en la base de datos.")
+                        st.error(f"❌ Error al guardar en la base de datos: {error_sql}")
                 else:
                     st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
 
