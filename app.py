@@ -139,7 +139,7 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencias_automaticas_dia(fecha_str):
-    """Registra automáticamente la asistencia de TODO el personal activo sin duplicar registros por día."""
+    """Registra automáticamente la asistencia de TODO el personal activo sin duplicar registros por día usando ON CONFLICT."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
@@ -152,19 +152,14 @@ def registrar_asistencias_automaticas_dia(fecha_str):
             emp_id = int(emp[0])
             nombre_emp = emp[1] if emp[1] else "Desconocido"
 
-            existe = session.execute(
-                "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha LIMIT 1",
-                {"emp_id": emp_id, "fecha": f_date}
-            ).fetchone()
-
-            if not existe:
-                session.execute(
-                    """
-                    INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
-                    VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por sistema')
-                    """,
-                    {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
-                )
+            session.execute(
+                """
+                INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
+                VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', 'Automático por sistema')
+                ON CONFLICT (empleado_id, fecha) DO NOTHING
+                """,
+                {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
+            )
         session.commit()
     except Exception as e:
         session.rollback()

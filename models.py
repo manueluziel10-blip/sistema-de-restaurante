@@ -270,7 +270,7 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 
 def asegurar_nomina_dia(session, fecha_date):
-    """Verifica que la tabla tenga las columnas correctas sin duplicar ni clonar empleados masivamente."""
+    """Verifica que la tabla tenga las columnas correctas."""
     try:
         inspector = inspect(session.bind)
         if 'nomina_diaria' in inspector.get_table_names():
@@ -296,6 +296,25 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
     
     asegurar_nomina_dia(session, f_date)
+    
+    # GARANTIZAR que TODOS los empleados activos aparezcan creando su registro diario si no existe
+    empleados_activos = session.query(Empleado).filter(Empleado.activo == True).all()
+    for emp in empleados_activos:
+        nom_existente = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id == emp.id
+        ).first()
+        if not nom_existente:
+            session.add(NominaDiaria(
+                fecha=f_date,
+                empleado_id=emp.id,
+                sueldo_base=emp.sueldo_base,
+                vales_nomina=0.0,
+                descuento_nomina=100.0,
+                transferencia_nomina=0.0,
+                penalizada=False
+            ))
+    session.commit()
     
     query = session.query(
         Empleado.id,
@@ -600,8 +619,6 @@ def cargar_gastos_hoy(fecha_str: str = None):
     session.close()
     return hoy
 
-
-# --- NUEVAS FUNCIONES PARA REPORTES POR RANGO DE FECHAS ---
 
 def cargar_empleados_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
     session = get_session()
