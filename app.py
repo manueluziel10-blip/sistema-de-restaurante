@@ -26,6 +26,96 @@ from models import (
 
 st.set_page_config(layout="wide")
 
+# --- MODO KIOSKO / ASISTENCIA PÚBLICA (ACCESO DIRECTO PARA EMPLEADOS) ---
+query_params = st.query_params
+if query_params.get("modo") == "asistencia":
+    st.title("Zullys Mens Club — Registro de Asistencia")
+    fecha_hoy_kiosko = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
+    
+    st.markdown("""
+        <style>
+            [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+                background-color: #141D26 !important;
+                border-radius: 10px;
+                border: 1px solid #1F2937 !important;
+                padding: 5px;
+            }
+            th {
+                background-color: #1A2634 !important;
+                color: #FFFFFF !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.info(f"Fecha Activa: **{fecha_hoy_kiosko}**. Selecciona tu nombre e ingresa tu PIN de asistencia.\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
+
+    def registrar_asistencia_individual_publico(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
+        if ('CHICA' in str(tipo_puesto).upper()) or ('BAILARINA' in str(tipo_puesto).upper()):
+            limite_retardo = time(19, 30, 0)
+        else:
+            limite_retardo = time(18, 30, 0)
+
+        estado = "Presente" if hora_actual_obj <= limite_retardo else "Retardo"
+        comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
+
+        session = get_session()
+        try:
+            f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            session.execute(
+                text("""
+                INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
+                VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
+                ON CONFLICT (empleado_id, fecha) 
+                DO UPDATE SET estado = :estado, comentarios = :comentarios
+                """),
+                {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
+            )
+            session.commit()
+            return True, estado, hora_actual_obj.strftime('%H:%M:%S')
+        except Exception as e:
+            session.rollback()
+            return False, "", ""
+        finally:
+            session.close()
+
+    empleados_activos_df = cargar_empleados_df(fecha_hoy_kiosko)
+    if not empleados_activos_df.empty:
+        with st.form("form_auto_asistencia_publico"):
+            lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
+            emp_seleccionado = st.selectbox("Selecciona tu Nombre", lista_nombres_emp)
+            pin_ingresado = st.text_input("Ingresa tu Código PIN de Asistencia", type="password", max_chars=6)
+            btn_registrar = st.form_submit_button("✅ Registrar mi Asistencia Ahora", type="primary")
+
+            if btn_registrar:
+                fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
+                emp_id = int(fila_emp['id'])
+                tipo_puesto_emp = str(fila_emp['tipo'])
+                pin_correcto = str(fila_emp.get('pin', '1234'))
+                if not pin_correcto or pin_correcto == 'nan':
+                    pin_correcto = '1234'
+
+                if pin_ingresado.strip() == pin_correcto.strip():
+                    hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
+                    exito, estado_asignado, hora_str = registrar_asistencia_individual_publico(
+                        empleado_id=emp_id, nombre_emp=emp_seleccionado,
+                        tipo_puesto=tipo_puesto_emp, fecha_str=fecha_hoy_kiosko,
+                        hora_actual_obj=hora_actual_sistema
+                    )
+                    if exito:
+                        color_est = "green" if estado_asignado == "Presente" else "orange"
+                        st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
+                        st.markdown(f"- **Empleado:** {emp_seleccionado}")
+                        st.markdown(f"- **Hora Local de Registro:** {hora_str}")
+                        st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
+                    else:
+                        st.error("Ocurrió un error al guardar en la base de datos.")
+                else:
+                    st.error("❌ Código PIN incorrecto. Verifica con administración.")
+    else:
+        st.warning("No hay empleados activos configurados para esta fecha.")
+
+    st.stop()  # Detiene la ejecución para que no cargue el panel de administración
+
 # --- CONTROL DE SESIÓN Y LOGIN ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -143,10 +233,8 @@ def calcular_comision_gerencia_caja(producto_str):
 def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
     """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora local de Tepic."""
     if es_chica_o_bailarina(tipo_puesto):
-        # Chicas / Bailarinas: Entrada 7:00 PM (19:00), tolerancia hasta 7:30 PM (19:30)
         limite_retardo = time(19, 30, 0)
     else:
-        # Personal general: Entrada 6:30 PM (18:30)
         limite_retardo = time(18, 30, 0)
 
     if hora_actual_obj <= limite_retardo:
@@ -480,7 +568,7 @@ if not st.session_state["mostrar_form_reinicio"]:
         st.rerun()
 else:
     with st.sidebar.form("form_confirmar_reinicio"):
-        st.warning("⚠️ Эта acción borrará TODO. Confirma tu identidad.")
+        st.warning("⚠️ Esta acción borrará TODO. Confirma tu identidad.")
         pass_admin = st.text_input("Contraseña de Admin", type="password")
         confirmar_check = st.checkbox("Estoy seguro de borrar la base de datos")
         
@@ -1570,10 +1658,10 @@ elif opcion == "5. Reportes":
                             if not ventas_rango.empty:
                                 filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
                                 if not filas_m.empty:
-                                    p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
-                                    p_efec = filas_m.get('propina_efectivo', 0.0).sum()
-                                    p_vale = filas_m.get('propina_vales', 0.0).sum()
-                                    p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
+                                    p_tarj = filas_rango.get('propina_tarjeta', 0.0).sum() * 0.84
+                                    p_efec = filas_rango.get('propina_efectivo', 0.0).sum()
+                                    p_vale = filas_rango.get('propina_vales', 0.0).sum()
+                                    p_cred = filas_rango.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
                                     propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
                             total_pagar = sueldo_base_acumulado + propinas_acum
@@ -1677,7 +1765,6 @@ elif opcion == "✍️ Registro de Asistencia":
                     pin_correcto = '1234'
 
                 if pin_ingresado.strip() == pin_correcto.strip():
-                    # Obtener la hora exacta convertida a la zona horaria del Pacífico (Tepic, Nayarit)
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
 
                     exito, estado_asignado, hora_str = registrar_asistencia_individual(
