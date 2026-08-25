@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 import io
 import base64
 import os
@@ -140,7 +141,7 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
-    """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora de registro."""
+    """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora local."""
     if es_chica_o_bailarina(tipo_puesto):
         # Chicas / Bailarinas: Entrada 7:00 PM (19:00), tolerancia hasta 7:30 PM (19:30)
         limite_retardo = time(19, 30, 0)
@@ -417,7 +418,7 @@ st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
 rol_actual_lower = st.session_state["rol_actual"].lower()
-hoy_str = datetime.now().strftime('%Y-%m-%d')
+hoy_str = datetime.now(ZoneInfo("America/Mexico_City")).strftime('%Y-%m-%d')
 
 if rol_actual_lower in ["admin", "cajero"]:
     modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
@@ -428,11 +429,11 @@ if rol_actual_lower in ["admin", "cajero"]:
             st.sidebar.warning(f"⚠️ Visualizando histórico: {fecha_activa_obj}")
         else:
             st.sidebar.info("No hay cortes históricos registrados aún.")
-            fecha_activa_obj = datetime.now().strftime('%Y-%m-%d')
+            fecha_activa_obj = datetime.now(ZoneInfo("America/Mexico_City")).strftime('%Y-%m-%d')
     else:
-        fecha_activa_obj = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now())
+        fecha_activa_obj = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now(ZoneInfo("America/Mexico_City")))
 else:
-    fecha_activa_obj = datetime.now().date()
+    fecha_activa_obj = datetime.now(ZoneInfo("America/Mexico_City")).date()
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
 
 fecha_activa = fecha_activa_obj.strftime('%Y-%m-%d') if hasattr(fecha_activa_obj, 'strftime') else str(fecha_activa_obj)
@@ -680,7 +681,6 @@ elif opcion == "2. Gestión de Empleados":
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
                         sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
-                        pin_emp = str(row['PIN']).strip() if 'PIN' in df_subido.columns and pd.notna(row['PIN']) else "1234"
 
                         if not nombre_emp:
                             continue
@@ -1485,9 +1485,9 @@ elif opcion == "5. Reportes":
 
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            fecha_inicio_per = st.date_input("Fecha de Inicio", datetime.now(), key="rango_ini_per")
+            fecha_inicio_per = st.date_input("Fecha de Inicio", datetime.now(ZoneInfo("America/Mexico_City")), key="rango_ini_per")
         with col_p2:
-            fecha_fin_per = st.date_input("Fecha de Fin", datetime.now(), key="rango_fin_per")
+            fecha_fin_per = st.date_input("Fecha de Fin", datetime.now(ZoneInfo("America/Mexico_City")), key="rango_fin_per")
 
         f_ini_str = fecha_inicio_per.strftime('%Y-%m-%d')
         f_fin_str = fecha_fin_per.strftime('%Y-%m-%d')
@@ -1570,10 +1570,10 @@ elif opcion == "5. Reportes":
                             if not ventas_rango.empty:
                                 filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
                                 if not filas_m.empty:
-                                    p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
-                                    p_efec = filas_m.get('propina_efectivo', 0.0).sum()
-                                    p_vale = filas_m.get('propina_vales', 0.0).sum()
-                                    p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
+                                    p_tarj = filas_rango.get('propina_tarjeta', 0.0).sum() * 0.84
+                                    p_efec = filas_rango.get('propina_efectivo', 0.0).sum()
+                                    p_vale = filas_rango.get('propina_vales', 0.0).sum()
+                                    p_cred = filas_rango.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
                                     propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
                             total_pagar = sueldo_base_acumulado + propinas_acum
@@ -1649,10 +1649,10 @@ elif opcion == "5. Reportes":
                         st.dataframe(df_rep_g, use_container_width=True)
                         st.metric("Total General a Pagar (Personal General y Fijo)", f"${df_rep_g['Total a Pagar'].sum():,.2f}")
 
-# --- SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL CON PIN Y HORA REAL ---
+# --- SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL CON ZONA HORARIA LOCAL ---
 elif opcion == "✍️ Registro de Asistencia":
     st.subheader(f"✍️ Módulo de Autoregistro con Código PIN — Fecha Activa: {fecha_activa}")
-    st.info("Ingresa tu nombre, tu código PIN personal y el sistema registrará automáticamente tu hora y estado:\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
+    st.info("Ingresa tu nombre, tu código PIN personal y el sistema registrará automáticamente tu hora y estado (Hora Local de México):\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
 
     empleados_activos_df = cargar_empleados_df(fecha_activa)
 
@@ -1663,7 +1663,6 @@ elif opcion == "✍️ Registro de Asistencia":
             lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
             emp_seleccionado = st.selectbox("Selecciona tu Nombre", lista_nombres_emp)
             
-            # Campo para ingresar código PIN de seguridad
             pin_ingresado = st.text_input("Ingresa tu Código PIN de Asistencia", type="password", max_chars=6)
             
             btn_registrar_asistencia = st.form_submit_button("✅ Registrar mi Asistencia Ahora", type="primary")
@@ -1673,14 +1672,13 @@ elif opcion == "✍️ Registro de Asistencia":
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
 
-                # Nota: Si el empleado no tiene un PIN específico guardado en la base de datos, por defecto acepta "1234" o el valor predeterminado.
-                # Aquí validamos el PIN (puedes ajustarlo si guardas el PIN en la tabla).
                 pin_correcto = str(fila_emp.get('pin', '1234'))
                 if not pin_correcto or pin_correcto == 'nan':
                     pin_correcto = '1234'
 
                 if pin_ingresado.strip() == pin_correcto.strip():
-                    hora_actual_sistema = datetime.now().time()
+                    # Obtener la hora exacta convertida a la zona horaria de México (Tepic / Centro)
+                    hora_actual_sistema = datetime.now(ZoneInfo("America/Mexico_City")).time()
 
                     exito, estado_asignado, hora_str = registrar_asistencia_individual(
                         empleado_id=emp_id,
@@ -1694,7 +1692,7 @@ elif opcion == "✍️ Registro de Asistencia":
                         color_est = "green" if estado_asignado == "Presente" else "orange"
                         st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
                         st.markdown(f"- **Empleado:** {emp_seleccionado}")
-                        st.markdown(f"- **Hora de Registro:** {hora_str}")
+                        st.markdown(f"- **Hora Local de Registro:** {hora_str}")
                         st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
                     else:
                         st.error("Ocurrió un error al guardar en la base de datos.")
@@ -1740,7 +1738,7 @@ elif opcion == "6. Usuarios y Accesos":
             nuevo_rol = st.selectbox("Rol del Usuario", ["admin", "cajero", "gerente"])
             if st.form_submit_button("Crear Usuario"):
                 if nuevo_user.strip() and nuevo_pass.strip():
-                    crear_username = nuevo_user.strip()
+                    crear_username = newUser.strip() if 'newUser' in locals() else nuevo_user.strip()
                     crear_usuario(crear_username, nuevo_pass.strip(), nuevo_rol)
                     st.success("¡Usuario creado!")
                     st.rerun()
