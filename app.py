@@ -13,7 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 from models import (
-    cargar_empleados_df, agregar_empleado, actualizar_empleado,
+    cargar_empleados_df, agregar_empleado, actualizar_empleado, eliminar_empleado_por_id,
     guardar_corte_ventas, guardar_corte_chicas,
     cargar_ventas_df, cargar_chicas_df,
     guardar_gastos_del_dia, cargar_gastos_hoy,
@@ -825,10 +825,10 @@ elif opcion == "2. Gestión de Empleados":
     col_izq, col_der = st.columns(2)
 
     with col_izq:
-        st.markdown("### Modificar Empleado / Sueldo / Puesto")
+        st.markdown("### Modificar o Eliminar Empleado")
         if not empleados_df.empty:
             nombres_emps = empleados_df['nombre'].tolist()
-            emp_a_editar = st.selectbox("Selecciona empleado a modificar", nombres_emps, key="sel_emp_mod")
+            emp_a_editar = st.selectbox("Selecciona empleado a modificar o eliminar", nombres_emps, key="sel_emp_mod")
 
             emp_actual = empleados_df[empleados_df['nombre'] == emp_a_editar].iloc[0]
             nuevo_tipo_edit = st.selectbox(
@@ -839,10 +839,20 @@ elif opcion == "2. Gestión de Empleados":
             sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
             nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
 
-            if st.button("Actualizar Empleado"):
-                actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
-                st.success(f"¡Datos de {emp_a_editar} actualizados para el {fecha_activa}!")
-                st.rerun()
+            col_btn_1, col_btn_2 = st.columns(2)
+            with col_btn_1:
+                if st.button("Actualizar Empleado"):
+                    actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
+                    st.success(f"¡Datos de {emp_a_editar} actualizados para el {fecha_activa}!")
+                    st.rerun()
+            with col_btn_2:
+                if st.button("🗑️ Eliminar Empleado", type="secondary"):
+                    exito_del = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
+                    if exito_del:
+                        st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
+                        st.rerun()
+                    else:
+                        st.error("No se pudo eliminar el empleado.")
 
     with col_der:
         st.markdown(f"### Agregar Empleado Manual ({fecha_activa})")

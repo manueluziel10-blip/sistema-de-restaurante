@@ -420,6 +420,40 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     session.close()
 
 
+def eliminar_empleado_por_id(emp_id, fecha_str):
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        # 1. Borrar de la nómina diaria de esa fecha
+        session.execute(
+            db_text("DELETE FROM nomina_diaria WHERE empleado_id = :emp_id AND fecha = :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
+        )
+        # 2. Borrar de asistencias de esa fecha
+        session.execute(
+            db_text("DELETE FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
+        )
+        # 3. Borrar productos o comisiones de chicas si aplica
+        session.execute(
+            db_text("DELETE FROM cortes_productos_chicas WHERE empleado_id = :emp_id AND fecha = :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
+        )
+        # 4. Eliminar el registro del empleado
+        session.execute(
+            db_text("DELETE FROM empleados WHERE id = :emp_id"),
+            {"emp_id": emp_id}
+        )
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Error al eliminar empleado: {e}")
+        return False
+    finally:
+        session.close()
+
+
 def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, fecha_date=None, existing_session=None):
     session = existing_session if existing_session else get_session()
     try:
