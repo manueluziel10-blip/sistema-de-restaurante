@@ -139,22 +139,33 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencias_automaticas_dia(fecha_str):
-    """Registra automáticamente la asistencia y el nombre de los empleados que participaron en las ventas o productos del día."""
+    """Registra automáticamente la asistencia de meseros/chicas con ventas y de todo el personal fijo activo."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         ids_empleados = set()
 
+        # 1. Recoger IDs de meseros con ventas en el día
         ventas_dia = session.query(CorteVenta).filter(CorteVenta.fecha == f_date).all()
         for v in ventas_dia:
             if v.idmesero:
                 ids_empleados.add(int(v.idmesero))
 
+        # 2. Recoger IDs de chicas/bailarinas con productos en el día
         chicas_dia = session.query(ProductoChica).filter(ProductoChica.fecha == f_date).all()
         for c in chicas_dia:
             if c.empleado_id:
                 ids_empleados.add(int(c.empleado_id))
 
+        # 3. Incluir automáticamente a TODO el personal activo (incluyendo fijos, seguridad, cajeros, etc.)
+        empleados_activos = session.execute(
+            "SELECT id FROM empleados WHERE activo = TRUE"
+        ).fetchall()
+        
+        for emp in empleados_activos:
+            ids_empleados.add(int(emp[0]))
+
+        # 4. Insertar en la tabla asistencias asegurando que no se dupliquen
         for emp_id in ids_empleados:
             # Obtener el nombre del empleado desde la tabla empleados
             emp_info = session.execute(
