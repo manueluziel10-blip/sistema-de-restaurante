@@ -78,7 +78,18 @@ if query_params.get("modo") == "asistencia":
         finally:
             session.close()
 
-    empleados_activos_df = cargar_empleados_df(fecha_hoy_kiosko)
+    # Carga global de empleados activos para que el modo kiosko nunca esté vacío
+    session_kiosko = get_session()
+    try:
+        res_emps = session_kiosko.execute(
+            text("SELECT id, nombre, tipo, pin FROM empleados WHERE activo = TRUE")
+        ).fetchall()
+        empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo", "pin"])
+    except Exception:
+        empleados_activos_df = pd.DataFrame()
+    finally:
+        session_kiosko.close()
+
     if not empleados_activos_df.empty:
         with st.form("form_auto_asistencia_publico"):
             lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
@@ -91,7 +102,7 @@ if query_params.get("modo") == "asistencia":
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
                 pin_correcto = str(fila_emp.get('pin', '1234'))
-                if not pin_correcto or pin_correcto == 'nan':
+                if not pin_correcto or pin_correcto == 'nan' or pin_correcto == 'None':
                     pin_correcto = '1234'
 
                 if pin_ingresado.strip() == pin_correcto.strip():
@@ -112,7 +123,7 @@ if query_params.get("modo") == "asistencia":
                 else:
                     st.error("❌ Código PIN incorrecto. Verifica con administración.")
     else:
-        st.warning("No hay empleados activos configurados para esta fecha.")
+        st.warning("No hay empleados activos configurados en el sistema.")
 
     st.stop()  # Detiene la ejecución para que no cargue el panel de administración
 
