@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, time
 import io
 import base64
 import os
@@ -139,8 +139,27 @@ def calcular_comision_gerencia_caja(producto_str):
         return 5.0
     return 0.0
 
-def registrar_asistencia_individual(empleado_id, nombre_emp, fecha_str, estado="Presente", comentarios="Registro manual de empleado"):
-    """Registra o actualiza la asistencia de un empleado específico en una fecha."""
+def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
+    """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora de registro."""
+    
+    # Definir reglas de hora límite
+    if es_chica_o_bailarina(tipo_puesto):
+        # Chicas / Bailarinas: Entrada 7:00 PM, tolerancia hasta 7:30 PM (19:30)
+        limite_presente = time(19, 0, 0)
+        limite_retardo = time(19, 30, 0)
+    else:
+        # Personal general: Entrada 6:30 PM (18:30), tolerancia hasta 6:30 PM (18:30)
+        limite_presente = time(18, 30, 0)
+        limite_retardo = time(18, 30, 0)
+
+    # Determinar estado
+    if hora_actual_obj <= limite_retardo:
+        estado = "Presente"
+    else:
+        estado = "Retardo"
+
+    comentarios = f"Autoregistro a las {hora_actual_obj.strftime('%H:%M:%S')}"
+
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
@@ -154,20 +173,18 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, fecha_str, estado="
             {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
         )
         session.commit()
-        return True
+        return True, estado
     except Exception as e:
         session.rollback()
         print(f"Error registrando asistencia: {e}")
-        return False
+        return False, ""
     finally:
         session.close()
 
 def registrar_asistencias_automaticas_dia(fecha_str):
-    """Registra automáticamente la asistencia de TODO el personal activo sin duplicar registros por día usando ON CONFLICT."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-
         empleados_activos = session.execute(
             text("SELECT id, nombre FROM empleados WHERE activo = TRUE")
         ).fetchall()
@@ -192,7 +209,6 @@ def registrar_asistencias_automaticas_dia(fecha_str):
         session.close()
 
 def obtener_mapa_asistencias(f_ini, f_fin):
-    """Consulta los días reales de asistencia por empleado en un rango de fechas."""
     session = get_session()
     mapa = {}
     try:
@@ -507,7 +523,7 @@ nombres_secciones = [
     "3. Corte y Nómina Final",
     "4. Cierre de Caja (Dashboard)",
     "5. Reportes",
-    "✍️ Registro de Asistencia"  # <-- Nueva opción agregada
+    "✍️ Registro de Asistencia"
 ]
 if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
@@ -1636,10 +1652,10 @@ elif opcion == "5. Reportes":
                         st.dataframe(df_rep_g, use_container_width=True)
                         st.metric("Total General a Pagar (Personal General y Fijo)", f"${df_rep_g['Total a Pagar'].sum():,.2f}")
 
-# --- NUEVA SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL ---
+# --- NUEVA SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL AUTOMÁTICO ---
 elif opcion == "✍️ Registro de Asistencia":
     st.subheader(f"✍️ Módulo de Autoregistro de Asistencia — Fecha Activa: {fecha_activa}")
-    st.info("Los empleados pueden registrar su asistencia aquí. Esto quedará guardado automáticamente en el corte diario y en su historial acumulado.")
+    st.info("El sistema evalúa automáticamente tu hora de llegada:\n* **Personal General:** Entrada hasta las **6:30 PM** (Pasado ese horario se marca como Retardo).\n* **Bailarinas / Chicas:** Entrada de **7:00 PM a 7:30 PM** (Pasado las 7:30 PM se marca como Retardo).")
 
     empleados_activos_df = cargar_empleados_df(fecha_activa)
 
@@ -1647,37 +1663,38 @@ elif opcion == "✍️ Registro de Asistencia":
         st.warning("No hay empleados registrados en el sistema para esta fecha. Da de alta al personal primero en la sección 'Gestión de Empleados'.")
     else:
         with st.form("form_auto_asistencia"):
-            # Ordenar alfabéticamente para facilitar la búsqueda
             lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
             emp_seleccionado = st.selectbox("Selecciona tu Nombre", lista_nombres_emp)
             
-            estado_asistencia = st.selectbox("Estado de Asistencia", ["Presente", "Retardo", "Falta Justificada"])
-            comentarios_asistencia = st.text_input("Comentarios / Motivo (Opcional)", value="Check-in personal")
-            
-            btn_registrar_asistencia = st.form_submit_button("✅ Registrar mi Asistencia", type="primary")
+            btn_registrar_asistencia = st.form_submit_button("✅ Registrar mi Asistencia Ahora", type="primary")
 
             if btn_registrar_asistencia:
-                # Buscar ID del empleado seleccionado
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
                 emp_id = int(fila_emp['id'])
+                tipo_puesto_emp = str(fila_emp['tipo'])
 
-                exito = registrar_asistencia_individual(
+                hora_actual_sistema = datetime.now().time()
+
+                exito, estado_asignado = registrar_asistencia_individual(
                     empleado_id=emp_id,
                     nombre_emp=emp_seleccionado,
+                    tipo_puesto=tipo_puesto_emp,
                     fecha_str=fecha_activa,
-                    estado=estado_asistencia,
-                    comentarios=comentarios_asistencia
+                    hora_actual_obj=hora_actual_sistema
                 )
 
                 if exito:
-                    st.success(f"¡Asistencia registrada exitosamente para **{emp_seleccionado}** con estado **{estado_asistencia}** en la fecha {fecha_activa}!")
+                    color_est = "green" if estado_asignado == "Presente" else "orange"
+                    st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
+                    st.markdown(f"- **Empleado:** {emp_seleccionado}")
+                    st.markdown(f"- **Hora de Registro:** {hora_actual_sistema.strftime('%H:%M:%S')}")
+                    st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
                 else:
                     st.error("Ocurrió un error al registrar la asistencia.")
 
         st.markdown("---")
         st.markdown("### 📋 Listado de Asistencias Registradas Hoy")
         
-        # Mostrar las asistencias registradas hasta el momento en la fecha activa
         session = get_session()
         try:
             f_obj = datetime.strptime(fecha_activa, "%Y-%m-%d").date()
