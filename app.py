@@ -75,7 +75,6 @@ if query_params.get("modo") == "asistencia":
         try:
             f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
             
-            # 1. Registrar o actualizar la asistencia
             session.execute(
                 text("""
                 INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
@@ -86,7 +85,6 @@ if query_params.get("modo") == "asistencia":
                 {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
             )
             
-            # 2. Alta automática en la nómina del día si aún no existe
             sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
             session.execute(
                 text("""
@@ -150,7 +148,7 @@ if query_params.get("modo") == "asistencia":
                 else:
                     st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
     else:
-        st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía. Verifica tus Secrets en Streamlit Cloud.")
+        st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía.")
 
     st.stop()
 
@@ -261,11 +259,7 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_
     else:
         limite_retardo = time(18, 30, 0)
 
-    if hora_actual_obj <= limite_retardo:
-        estado = "Presente"
-    else:
-        estado = "Retardo"
-
+    estado = "Presente" if hora_actual_obj <= limite_retardo else "Retardo"
     comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
 
     session = get_session()
@@ -310,7 +304,6 @@ def registrar_asistencias_automaticas_dia(fecha_str):
         for emp in empleados_activos:
             emp_id = int(emp[0])
             nombre_emp = emp[1] if emp[1] else "Desconocido"
-            tipo_emp = emp[2]
             sueldo_emp = float(emp[3]) if emp[3] is not None else 300.0
 
             session.execute(
@@ -390,7 +383,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
     ruta_logo = "LogoSinBailarina.png"
-    logo_flowable = None
     if os.path.exists(ruta_logo):
         try:
             with open(ruta_logo, "rb") as image_file:
@@ -580,7 +572,7 @@ if corte_esta_bloqueado:
             st.sidebar.success(f"¡Corte del {fecha_activa} abierto correctamente!")
             st.rerun()
     else:
-        st.sidebar.info("Corte cerrado (Solo lectura). Contacte al administrador para modificarlo.")
+        st.sidebar.info("Corte cerrado (Solo lectura). Contacte al administrador.")
 else:
     st.sidebar.success(f"El corte del {fecha_activa} está **ABIERTO**.")
     if rol_actual_lower in ["admin", "cajero"]:
@@ -667,7 +659,7 @@ st.markdown("---")
 if opcion == "1. Subir Cortes Diarios (Excel)":
     st.subheader(f"Carga de Archivos Diarios para la fecha: {fecha_activa}")
     if not puede_modificar:
-        st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico. Ábralo previamente para subir archivos.")
+        st.warning("🔒 Modo de solo lectura: El corte está cerrado o es histórico.")
     else:
         st.info("Sube los archivos correspondientes al corte del día seleccionado.")
         
@@ -680,7 +672,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                 st.rerun()
         else:
             with st.form("form_confirmar_borrar_dia"):
-                st.warning(f"⚠️ ¿Estás seguro de eliminar todas las ventas, productos de chicas y registros de nómina para el día **{fecha_activa}**?")
+                st.warning(f"⚠️ ¿Estás seguro de eliminar todas las ventas y registros de este día?")
                 conf_borrar = st.checkbox("Sí, deseo borrar toda la información de este día")
                 
                 col_b1, col_b2 = st.columns(2)
@@ -691,7 +683,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     if conf_borrar:
                         limpiar_cortes_dia(fecha_activa)
                         st.session_state["mostrar_form_borrar_dia"] = False
-                        st.success(f"¡Se han eliminado todos los registros del día {fecha_activa} exitosamente!")
+                        st.success(f"¡Se han eliminado todos los registros del día {fecha_activa}!")
                         st.rerun()
                     else:
                         st.error("Debes marcar la casilla de confirmación.")
@@ -737,7 +729,7 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                         filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
                     )
                     registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Corte procesado y asistencias registradas para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
+                    st.success(f"¡Corte procesado y asistencias registradas! Se registraron {len(nuevas_detectadas)} personas nuevas.")
                     st.rerun()
                 else:
                     st.error("El archivo no tiene el formato esperado.")
@@ -818,7 +810,7 @@ elif opcion == "2. Gestión de Empleados":
                         registrados += 1
 
                     registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Importación completada para el día {fecha_activa}! Empleados procesados: {registrados}")
+                    st.success(f"¡Importación completada! Empleados procesados: {registrados}")
                     st.rerun()
 
     st.markdown("---")
@@ -843,16 +835,16 @@ elif opcion == "2. Gestión de Empleados":
             with col_btn_1:
                 if st.button("Actualizar Empleado"):
                     actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
-                    st.success(f"¡Datos de {emp_a_editar} actualizados para el {fecha_activa}!")
+                    st.success(f"¡Datos de {emp_a_editar} actualizados!")
                     st.rerun()
             with col_btn_2:
                 if st.button("🗑️ Eliminar Empleado", type="secondary"):
-                    exito_del = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
+                    exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
                     if exito_del:
                         st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
                         st.rerun()
                     else:
-                        st.error("No se pudo eliminar el empleado.")
+                        st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
 
     with col_der:
         st.markdown(f"### Agregar Empleado Manual ({fecha_activa})")
@@ -1606,20 +1598,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 # --- SECCIÓN 5: REPORTES ---
 elif opcion == "5. Reportes":
     st.subheader("📊 Módulo de Reportes")
-    
-    tipo_reporte = st.selectbox(
-        "Selecciona el tipo de reporte que deseas consultar:",
-        [
-            "Reporte de Nómina por Periodo"
-        ]
-    )
-
+    tipo_reporte = st.selectbox("Selecciona el tipo de reporte:", ["Reporte de Nómina por Periodo"])
     st.markdown("---")
 
     if tipo_reporte == "Reporte de Nómina por Periodo":
-        st.markdown("### 📅 Reporte Histórico y Acumulado de Nómina por Periodos")
-        st.info("Selecciona un rango de fechas para consultar el resumen de sueldos, comisiones y propinas acumuladas del personal.")
-
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             fecha_inicio_per = st.date_input("Fecha de Inicio", datetime.now(ZoneInfo("America/Mazatlan")), key="rango_ini_per")
@@ -1633,227 +1615,139 @@ elif opcion == "5. Reportes":
             empleados_rango = cargar_empleados_rango_df(f_ini_str, f_fin_str)
             chicas_rango = cargar_chicas_rango_df(f_ini_str, f_fin_str)
             ventas_rango = cargar_ventas_rango_df(f_ini_str, f_fin_str)
-            
             mapa_asistencias = obtener_mapa_asistencias(f_ini_str, f_fin_str)
 
             if empleados_rango.empty:
                 st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")
             else:
                 tab_rep_bailarinas, tab_rep_meseros, tab_rep_seguridad, tab_rep_general = st.tabs([
-                    "💃 Bailarinas y Chicas",
-                    "👥 Meseros y Ayudantes",
-                    "🛡️ Seguridad",
-                    "📋 Personal General y Fijo"
+                    "💃 Bailarinas y Chicas", "👥 Meseros y Ayudantes", "🛡️ Seguridad", "📋 Personal General y Fijo"
                 ])
 
                 with tab_rep_bailarinas:
-                    st.markdown(f"### Resumen de Bailarinas y Chicas ({f_ini_str} al {f_fin_str})")
                     df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
-                    
-                    if df_bailarinas_rango.empty:
-                        st.info("No hay registros de bailarinas en este periodo.")
-                    else:
-                        resumen_bailarinas = []
-                        for _, emp in df_bailarinas_rango.iterrows():
-                            emp_id = emp['id']
-                            nombre = emp['nombre']
-                            sueldo_base_acumulado = float(emp['sueldo_base'])
-                            descuento = float(emp['descuento_nomina'])
-                            dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                            sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
-                            
-                            total_comisiones = 0.0
-                            if not sus_prods.empty:
-                                for _, p in sus_prods.iterrows():
-                                    desc = str(p['descripcion']).upper()
-                                    cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
-                                    com_unit = float(p['comision_unitaria'])
-                                    if 'PRIVADO PROMO' in desc: com_unit = 80.0
-                                    elif 'PRIVADO ARTISTA' in desc: com_unit = 300.0
-                                    elif 'BOONS ARTISTA' in desc: com_unit = 1000.0
-                                    elif 'BOONS' in desc: com_unit = 700.0
-                                    total_comisiones += (cant * com_unit)
+                    resumen_bailarinas = []
+                    for _, emp in df_bailarinas_rango.iterrows():
+                        emp_id = emp['id']
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
+                        descuento = float(emp['descuento_nomina'])
+                        dias_asistencia = mapa_asistencias.get(emp_id, 0)
+                        sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
+                        
+                        total_comisiones = 0.0
+                        if not sus_prods.empty:
+                            for _, p in sus_prods.iterrows():
+                                desc = str(p['descripcion']).upper()
+                                cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
+                                com_unit = float(p['comision_unitaria'])
+                                if 'PRIVADO PROMO' in desc: com_unit = 80.0
+                                elif 'PRIVADO ARTISTA' in desc: com_unit = 300.0
+                                elif 'BOONS ARTISTA' in desc: com_unit = 1000.0
+                                elif 'BOONS' in desc: com_unit = 700.0
+                                total_comisiones += (cant * com_unit)
 
-                            total_pagar = (sueldo_base_acumulado + total_comisiones) - descuento
-                            resumen_bailarinas.append({
-                                "ID": emp_id, "Nombre": nombre, "Asistencias (Días)": dias_asistencia,
-                                "Sueldo Base Acumulado": sueldo_base_acumulado, "Comisiones Acumuladas": total_comisiones,
-                                "Descuentos Acumulados": descuento, "Total a Pagar": total_pagar
-                            })
-
-                        df_rep_b = pd.DataFrame(resumen_bailarinas)
-                        st.dataframe(df_rep_b, use_container_width=True)
-                        st.metric("Total General a Pagar (Bailarinas)", f"${df_rep_b['Total a Pagar'].sum():,.2f}")
+                        total_pagar = (sueldo_base_acumulado + total_comisiones) - descuento
+                        resumen_bailarinas.append({
+                            "ID": emp_id, "Nombre": emp['nombre'], "Asistencias (Días)": dias_asistencia,
+                            "Sueldo Base Acumulado": sueldo_base_acumulado, "Comisiones Acumuladas": total_comisiones,
+                            "Descuentos Acumulados": descuento, "Total a Pagar": total_pagar
+                        })
+                    df_rep_b = pd.DataFrame(resumen_bailarinas)
+                    st.dataframe(df_rep_b, use_container_width=True)
 
                 with tab_rep_meseros:
-                    st.markdown(f"### Resumen de Meseros y Ayudantes ({f_ini_str} al {f_fin_str})")
                     mask_meseros_rango = (
                         empleados_rango['tipo'].astype(str).str.upper().str.contains("MESERO") &
                         ~empleados_rango['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN")
                     ) | empleados_rango['tipo'].astype(str).str.upper().str.contains("AYUDANTE")
                     df_meseros_rango = empleados_rango[mask_meseros_rango]
-
-                    if df_meseros_rango.empty:
-                        st.info("No hay registros de meseros o ayudantes en este periodo.")
-                    else:
-                        resumen_mes = []
-                        for _, emp in df_meseros_rango.iterrows():
-                            emp_id = emp['id']
-                            tipo = emp['tipo'].upper()
-                            sueldo_base_acumulado = float(emp['sueldo_base'])
-                            dias_asistencia_m = mapa_asistencias.get(emp_id, 0)
-                            porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
-                            propinas_acum = 0.0
-                            if not ventas_rango.empty:
-                                filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
-                                if not filas_m.empty:
-                                    p_tarj = filas_rango.get('propina_tarjeta', 0.0).sum() * 0.84
-                                    p_efec = filas_rango.get('propina_efectivo', 0.0).sum()
-                                    p_vale = filas_rango.get('propina_vales', 0.0).sum()
-                                    p_cred = filas_rango.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
-                                    propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
-
-                            total_pagar = sueldo_base_acumulado + propinas_acum
-                            resumen_mes.append({
-                                "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
-                                "Asistencias (Días)": dias_asistencia_m, "Sueldo Base Acumulado": sueldo_base_acumulado,
-                                "Propinas Acumuladas": propinas_acum, "Total a Pagar": total_pagar
-                            })
-                        df_rep_m = pd.DataFrame(resumen_mes)
-                        st.dataframe(df_rep_m, use_container_width=True)
-                        st.metric("Total General a Pagar (Meseros y Ayudantes)", f"${df_rep_m['Total a Pagar'].sum():,.2f}")
+                    resumen_mes = []
+                    for _, emp in df_meseros_rango.iterrows():
+                        emp_id = emp['id']
+                        tipo = emp['tipo'].upper()
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
+                        dias_asistencia_m = mapa_asistencias.get(emp_id, 0)
+                        porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
+                        propinas_acum = 0.0
+                        if not ventas_rango.empty:
+                            filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
+                            if not filas_m.empty:
+                                p_tarj = filas_rango.get('propina_tarjeta', 0.0).sum() * 0.84
+                                p_efec = filas_rango.get('propina_efectivo', 0.0).sum()
+                                propinas_acum = (p_tarj + p_efec) * (porcentaje_propina / 100.0)
+                        resumen_mes.append({
+                            "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
+                            "Asistencias (Días)": dias_asistencia_m, "Sueldo Base Acumulado": sueldo_base_acumulado,
+                            "Propinas Acumuladas": propinas_acum, "Total a Pagar": sueldo_base_acumulado + propinas_acum
+                        })
+                    df_rep_m = pd.DataFrame(resumen_mes)
+                    st.dataframe(df_rep_m, use_container_width=True)
 
                 with tab_rep_seguridad:
-                    st.markdown(f"### Resumen de Personal de Seguridad ({f_ini_str} al {f_fin_str})")
                     df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
-                    if df_seg_rango.empty:
-                        st.info("No hay registros de seguridad en este periodo.")
-                    else:
-                        resumen_seg = []
-                        for _, emp in df_seg_rango.iterrows():
-                            emp_id = emp['id']
-                            sueldo_base_acumulado = float(emp['sueldo_base'])
-                            dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                            resumen_seg.append({
-                                "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
-                                "Asistencias (Días)": dias_asistencia, "Sueldo Base Acumulado": sueldo_base_acumulado,
-                                "Total a Pagar": sueldo_base_acumulado
-                            })
-                        df_rep_s = pd.DataFrame(resumen_seg)
-                        st.dataframe(df_rep_s, use_container_width=True)
-                        st.metric("Total General a Pagar (Seguridad)", f"${df_rep_s['Total a Pagar'].sum():,.2f}")
+                    resumen_seg = []
+                    for _, emp in df_seg_rango.iterrows():
+                        resumen_seg.append({
+                            "ID": emp['id'], "Nombre": emp['nombre'], "Puesto": emp['tipo'],
+                            "Asistencias (Días)": mapa_asistencias.get(emp['id'], 0), "Sueldo Base Acumulado": float(emp['sueldo_base']),
+                            "Total a Pagar": float(emp['sueldo_base'])
+                        })
+                    df_rep_s = pd.DataFrame(resumen_seg)
+                    st.dataframe(df_rep_s, use_container_width=True)
 
                 with tab_rep_general:
-                    st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({f_ini_str} al {f_fin_str})")
                     mask_gen_rango = (
                         ~empleados_rango['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina) &
                         ~empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD|AYUDANTE") &
                         ~(empleados_rango['tipo'].astype(str).str.upper().str.contains("MESERO") & ~empleados_rango['tipo'].astype(str).str.upper().str.contains("CAPITÁN|CAPITAN"))
                     )
                     df_gen_rango = empleados_rango[mask_gen_rango]
-                    if df_gen_rango.empty:
-                        st.info("No hay registros de personal general en este periodo.")
-                    else:
-                        resumen_gen = []
-                        chicas_con_desc_count = len(df_bailarinas_rango)
-                        for _, emp in df_gen_rango.iterrows():
-                            emp_id = emp['id']
-                            tipo = emp['tipo'].upper()
-                            sueldo_base_acumulado = float(emp['sueldo_base'])
-                            dias_asistencia = mapa_asistencias.get(emp_id, 0)
-                            propinas_o_comis = 0.0
-                            if any(p in tipo for p in ["DJ", "ANIMADOR"]):
-                                propinas_o_comis = chicas_con_desc_count * 40.0
-                            elif "BARMAN" in tipo:
-                                p_t = ventas_rango.get('propina_tarjeta', 0.0).sum() * 0.84 if not ventas_rango.empty else 0.0
-                                p_e = ventas_rango.get('propina_efectivo', 0.0).sum() if not ventas_rango.empty else 0.0
-                                propinas_o_comis = (p_t + p_e) * 0.10
-                            elif any(p in tipo for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                                p_t = ventas_rango.get('propina_tarjeta', 0.0).sum() * 0.84 if not ventas_rango.empty else 0.0
-                                p_e = ventas_rango.get('propina_efectivo', 0.0).sum() if not ventas_rango.empty else 0.0
-                                propinas_o_comis = (p_t + p_e) * 0.08
-                                if not chicas_rango.empty:
-                                    for _, pr in chicas_rango.iterrows():
-                                        propinas_o_comis += float(pr['cantidad']) * calcular_comision_gerencia_caja(str(pr['descripcion']))
+                    resumen_gen = []
+                    chicas_con_desc_count = len(df_bailarinas_rango)
+                    for _, emp in df_gen_rango.iterrows():
+                        emp_id = emp['id']
+                        tipo = emp['tipo'].upper()
+                        sueldo_base_acumulado = float(emp['sueldo_base'])
+                        propinas_o_comis = 0.0
+                        if any(p in tipo for p in ["DJ", "ANIMADOR"]):
+                            propinas_o_comis = chicas_con_desc_count * 40.0
+                        resumen_gen.append({
+                            "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
+                            "Asistencias (Días)": mapa_asistencias.get(emp_id, 0), "Sueldo Base Acumulado": sueldo_base_acumulado,
+                            "Total a Pagar": sueldo_base_acumulado + propinas_o_comis
+                        })
+                    df_rep_g = pd.DataFrame(resumen_gen)
+                    st.dataframe(df_rep_g, use_container_width=True)
 
-                            total_pagar = sueldo_base_acumulado + propinas_o_comis
-                            resumen_gen.append({
-                                "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
-                                "Asistencias (Días)": dias_asistencia, "Sueldo Base Acumulado": sueldo_base_acumulado,
-                                "Propinas / Comisiones Acumuladas": propinas_o_comis, "Total a Pagar": total_pagar
-                            })
-                        df_rep_g = pd.DataFrame(resumen_gen)
-                        st.dataframe(df_rep_g, use_container_width=True)
-                        st.metric("Total General a Pagar (Personal General y Fijo)", f"${df_rep_g['Total a Pagar'].sum():,.2f}")
-
-# --- SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL CON ZONA HORARIA LOCAL (TEPIC) ---
+# --- SECCIÓN: REGISTRO DE ASISTENCIA ---
 elif opcion == "✍️ Registro de Asistencia":
     st.subheader(f"✍️ Módulo de Autoregistro con Código PIN — Fecha Activa: {fecha_activa}")
-    st.info("Ingresa tu nombre, tu código PIN personal y el sistema registrará automáticamente tu hora y estado (Hora Local - Tepic, Nayarit):\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
-
     empleados_activos_df = cargar_empleados_df(fecha_activa)
 
     if empleados_activos_df.empty:
-        st.warning("No hay empleados registrados en el sistema para esta fecha. Da de alta al personal primero en la sección 'Gestión de Empleados'.")
+        st.warning("No hay empleados registrados en el sistema para esta fecha.")
     else:
         with st.form("form_auto_asistencia"):
             lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
             emp_seleccionado = st.selectbox("Selecciona tu Nombre", lista_nombres_emp)
-            
             pin_ingresado = st.text_input("Ingresa tu Código PIN de Asistencia", type="password", max_chars=6)
-            
             btn_registrar_asistencia = st.form_submit_button("✅ Registrar mi Asistencia Ahora", type="primary")
 
             if btn_registrar_asistencia:
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
-                emp_id = int(fila_emp['id'])
-                tipo_puesto_emp = str(fila_emp['tipo'])
-
-                pin_correcto = '1234'
-
-                if pin_ingresado.strip() == pin_correcto.strip():
+                if pin_ingresado.strip() == '1234':
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
-
                     exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual(
-                        empleado_id=emp_id,
-                        nombre_emp=emp_seleccionado,
-                        tipo_puesto=tipo_puesto_emp,
-                        fecha_str=fecha_activa,
+                        empleado_id=int(fila_emp['id']), nombre_emp=emp_seleccionado,
+                        tipo_puesto=str(fila_emp['tipo']), fecha_str=fecha_activa,
                         hora_actual_obj=hora_actual_sistema
                     )
-
                     if exito:
-                        color_est = "green" if estado_asignado == "Presente" else "orange"
-                        st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
-                        st.markdown(f"- **Empleado:** {emp_seleccionado}")
-                        st.markdown(f"- **Hora Local de Registro:** {hora_str}")
-                        st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
+                        st.markdown(f"### 🎉 ¡Asistencia registrada con éxito! ({estado_asignado} a las {hora_str})")
                     else:
-                        st.error(f"❌ Error al guardar en la base de datos: {error_sql}")
+                        st.error(f"❌ Error al guardar: {error_sql}")
                 else:
                     st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
-
-        st.markdown("---")
-        st.markdown("### 📋 Listado de Asistencias Registradas Hoy")
-        
-        session = get_session()
-        try:
-            f_obj = datetime.strptime(fecha_activa, "%Y-%m-%d").date()
-            query_asistencias = text("""
-                SELECT nombre_empleado, estado, comentarios, fecha 
-                FROM asistencias 
-                WHERE fecha = :fecha
-            """)
-            res_asist = session.execute(query_asistencias, {"fecha": f_obj}).fetchall()
-            if res_asist:
-                df_asist_hoy = pd.DataFrame(res_asist, columns=["Nombre", "Estado", "Comentarios", "Fecha"])
-                st.dataframe(df_asist_hoy, use_container_width=True)
-            else:
-                st.info("Aún no hay registros de asistencia para el día de hoy.")
-        except Exception as e:
-            st.info("No se pudieron cargar las asistencias del día.")
-        finally:
-            session.close()
 
 # --- SECCIÓN 6: GESTIÓN DE USUARIOS Y ACCESOS ---
 elif opcion == "6. Usuarios y Accesos":
@@ -1872,8 +1766,7 @@ elif opcion == "6. Usuarios y Accesos":
             nuevo_rol = st.selectbox("Rol del Usuario", ["admin", "cajero", "gerente"])
             if st.form_submit_button("Crear Usuario"):
                 if nuevo_user.strip() and nuevo_pass.strip():
-                    crear_username = nuevo_user.strip()
-                    crear_usuario(crear_username, nuevo_pass.strip(), nuevo_rol)
+                    crear_usuario(nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol)
                     st.success("¡Usuario creado!")
                     st.rerun()
 
@@ -1885,7 +1778,7 @@ elif opcion == "6. Usuarios y Accesos":
             with st.form("form_editar_usuario"):
                 edit_user = st.text_input("Nuevo Nombre", value=emp_info['username'])
                 edit_pass = st.text_input("Nueva Contraseña (en blanco para mantener)", type="password")
-                edit_rol = st.selectbox("Rol", ["admin", "cajero", "gerente"], index=["admin", "cajero", "gerente"].index(emp_info['rol']) if emp_info['rol'] in ["admin", "cajero", "gerente"] else 0)
+                edit_rol = st.selectbox("Rol", ["admin", "cajero", "gerente"])
                 if st.form_submit_button("Guardar Cambios"):
                     actualizar_credenciales(int(emp_info['id']), edit_user.strip(), edit_pass.strip(), edit_rol)
                     st.success("¡Actualizado!")

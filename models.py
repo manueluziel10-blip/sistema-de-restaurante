@@ -424,32 +424,47 @@ def eliminar_empleado_por_id(emp_id, fecha_str):
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        # 1. Borrar de la nómina diaria de esa fecha
-        session.execute(
-            db_text("DELETE FROM nomina_diaria WHERE empleado_id = :emp_id AND fecha = :fecha"),
-            {"emp_id": emp_id, "fecha": f_date}
-        )
-        # 2. Borrar de asistencias de esa fecha
-        session.execute(
-            db_text("DELETE FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha"),
-            {"emp_id": emp_id, "fecha": f_date}
-        )
-        # 3. Borrar productos o comisiones de chicas si aplica
+        
+        # 1. Limpiar dependencias asociadas a la fecha activa
         session.execute(
             db_text("DELETE FROM cortes_productos_chicas WHERE empleado_id = :emp_id AND fecha = :fecha"),
             {"emp_id": emp_id, "fecha": f_date}
         )
-        # 4. Eliminar el registro del empleado
         session.execute(
-            db_text("DELETE FROM empleados WHERE id = :emp_id"),
-            {"emp_id": emp_id}
+            db_text("DELETE FROM nomina_diaria WHERE empleado_id = :emp_id AND fecha = :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
         )
+        session.execute(
+            db_text("DELETE FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
+        )
+        
+        # 2. Verificar si tiene registros históricos en otras fechas
+        otras_nominas = session.execute(
+            db_text("SELECT COUNT(*) FROM nomina_diaria WHERE empleado_id = :emp_id AND fecha != :fecha"),
+            {"emp_id": emp_id, "fecha": f_date}
+        ).scalar()
+        
+        if otras_nominas == 0:
+            session.execute(
+                db_text("DELETE FROM cortes_productos_chicas WHERE empleado_id = :emp_id"),
+                {"emp_id": emp_id}
+            )
+            session.execute(
+                db_text("DELETE FROM cortes_ventas WHERE idmesero = :emp_id"),
+                {"emp_id": emp_id}
+            )
+            session.execute(
+                db_text("DELETE FROM empleados WHERE id = :emp_id"),
+                {"emp_id": emp_id}
+            )
+            
         session.commit()
-        return True
+        return True, None
     except Exception as e:
         session.rollback()
-        print(f"Error al eliminar empleado: {e}")
-        return False
+        print(f"Error detallado al eliminar empleado: {e}")
+        return False, str(e)
     finally:
         session.close()
 
