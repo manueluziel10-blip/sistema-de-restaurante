@@ -4,7 +4,7 @@ Modelos SQLAlchemy + funciones de acceso a datos con soporte histórico completo
 
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime,
-    ForeignKey, func, inspect, text as db_text
+    ForeignKey, func, inspect, UniqueConstraint, text as db_text
 )
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
@@ -42,6 +42,20 @@ class NominaDiaria(Base):
     descuento_nomina = Column(Numeric(10, 2), default=100.0)
     transferencia_nomina = Column(Numeric(10, 2), default=0.0)
     penalizada = Column(Boolean, default=False)
+
+
+class Asistencia(Base):
+    __tablename__ = "asistencias"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    fecha = Column(Date, nullable=False)
+    estado = Column(String(50), default="Presente")
+    comentarios = Column(String, default="Automático por sistema")
+    creado_en = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha'),
+    )
 
 
 class CorteVenta(Base):
