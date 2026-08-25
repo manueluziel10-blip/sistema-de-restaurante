@@ -78,15 +78,17 @@ if query_params.get("modo") == "asistencia":
         finally:
             session.close()
 
-    # Carga directa de empleados sin restricciones de filtro booleano
+    # Carga directa con manejo de errores visible para depuración en Streamlit Cloud
     session_kiosko = get_session()
+    empleados_activos_df = pd.DataFrame()
     try:
         res_emps = session_kiosko.execute(
-            text("SELECT id, nombre, tipo, pin FROM empleados")
+            text("SELECT id, nombre, tipo, pin FROM public.empleados")
         ).fetchall()
-        empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo", "pin"])
-    except Exception:
-        empleados_activos_df = pd.DataFrame()
+        if res_emps:
+            empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo", "pin"])
+    except Exception as e:
+        st.error(f"Error crítico al conectar con la base de datos: {e}")
     finally:
         session_kiosko.close()
 
@@ -123,7 +125,7 @@ if query_params.get("modo") == "asistencia":
                 else:
                     st.error("❌ Código PIN incorrecto. Verifica con administración.")
     else:
-        st.warning("No hay empleados configurados en el sistema.")
+        st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía. Verifica tus Secrets en Streamlit Cloud.")
 
     st.stop()  # Detiene la ejecución para que no cargue el panel de administración
 
