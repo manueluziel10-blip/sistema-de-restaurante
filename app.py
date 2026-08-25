@@ -138,6 +138,47 @@ def calcular_comision_gerencia_caja(producto_str):
         return 5.0
     return 0.0
 
+def registrar_asistencias_automaticas_dia(fecha_str):
+    """Registra automáticamente la asistencia de los empleados que participaron en las ventas o productos del día."""
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        ids_empleados = set()
+
+        # Recoger IDs de meseros con ventas en el día
+        ventas_dia = session.query(CorteVenta).filter(CorteVenta.fecha == f_date).all()
+        for v in ventas_dia:
+            if v.idmesero:
+                ids_empleados.add(int(v.idmesero))
+
+        # Recoger IDs de chicas/bailarinas con productos en el día
+        chicas_dia = session.query(ProductoChica).filter(ProductoChica.fecha == f_date).all()
+        for c in chicas_dia:
+            if c.empleado_id:
+                ids_empleados.add(int(c.empleado_id))
+
+        # Insertar en la tabla asistencias si no existe un registro previo para ese empleado en esa fecha
+        for emp_id in ids_empleados:
+            # Verificar si ya existe asistencia para este empleado en esta fecha
+            from models import Asistencia # Asumiendo que se mapeó o se puede insertar por SQL directo
+            # Si usas SQL directo mediante la sesión:
+            existe = session.execute(
+                "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha",
+                {"emp_id": emp_id, "fecha": f_date}
+            ).fetchone()
+
+            if not existe:
+                session.execute(
+                    "INSERT INTO asistencias (empleado_id, fecha, estado, comentarios) VALUES (:emp_id, :fecha, 'Presente', 'Automático por corte diario')",
+                    {"emp_id": emp_id, "fecha": f_date}
+                )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error registrando asistencias automáticas: {e}")
+    finally:
+        session.close()
+
 def limpiar_cortes_dia(fecha_str):
     session = get_session()
     try:
@@ -145,6 +186,8 @@ def limpiar_cortes_dia(fecha_str):
         session.query(CorteVenta).filter(CorteVenta.fecha == f_date).delete()
         session.query(ProductoChica).filter(ProductoChica.fecha == f_date).delete()
         session.query(NominaDiaria).filter(NominaDiaria.fecha == f_date).delete()
+        # Opcional: limpiar también las asistencias automáticas de ese día si se borra el corte
+        session.execute("DELETE FROM asistencias WHERE fecha = :fecha AND comentarios LIKE 'Automático%'", {"fecha": f_date})
         session.commit()
     except Exception as e:
         session.rollback()
@@ -211,7 +254,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
         textColor=colors.whitesmoke
     )
 
-    # Logo grande para el PDF (Ancho 110, Alto 40 aprox, ajustado a la cabecera)
     ruta_logo = "LogoSinBailarina.png"
     logo_flowable = None
     if os.path.exists(ruta_logo):
@@ -239,7 +281,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     story.append(tabla_header)
     story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY_COLOR, spaceBefore=6, spaceAfter=10))
 
-    # --- SECCIÓN 1: FINANZAS Y GASTOS EN 2 COLUMNAS ---
     story.append(Paragraph("1. Resumen Financiero y Operativo", section_heading))
     
     data_finanzas = [
@@ -295,7 +336,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     story.append(tabla_doble)
     story.append(Spacer(1, 10))
 
-    # --- SECCIÓN 2: VENTAS POR MESERO ---
     story.append(Paragraph("2. Resumen de Ventas por Mesero", section_heading))
     if not df_ventas_meseros.empty:
         header_m = [Paragraph("<b>Mesero</b>", cell_header), Paragraph("<b>Efectivo</b>", cell_header), Paragraph("<b>Tarjeta</b>", cell_header), Paragraph("<b>Transf.</b>", cell_header), Paragraph("<b>Por Cobrar</b>", cell_header), Paragraph("<b>Total</b>", cell_header)]
@@ -329,7 +369,6 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     
     story.append(Spacer(1, 10))
 
-    # --- SECCIÓN 3: ESTADO DE SUELDOS Y MULTAS DE CHICAS ---
     story.append(Paragraph("3. Control de Bailarinas / Chicas (Sueldos y Penalizaciones)", section_heading))
     if not df_empleados_pdf.empty:
         df_chicas_only = df_empleados_pdf[df_empleados_pdf['tipo'].apply(es_chica_o_bailarina)]
@@ -545,7 +584,9 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
             
             if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
                 guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-                st.success(f"¡Corte de meseros y propinas guardado correctamente para el día {fecha_activa}!")
+                # Registrar asistencias automáticas tras guardar el corte de meseros
+                registrar_asistencias_automaticas_dia(fecha_activa)
+                st.success(f"¡Corte de meseros y propinas guardado, y asistencias registradas para el día {fecha_activa}!")
                 st.rerun()
 
         if up_chicas is not None:
@@ -560,7 +601,9 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     nuevas_detectadas = guardar_corte_chicas(
                         filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
                     )
-                    st.success(f"¡Corte procesado y guardado para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
+                    # Registrar asistencias automáticas tras guardar el corte de chicas
+                    registrar_asistencias_automaticas_dia(fecha_activa)
+                    st.success(f"¡Corte procesado, guardado y asistencias registradas para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
                     st.rerun()
                 else:
                     st.error("El archivo no tiene el formato esperado.")
@@ -872,7 +915,6 @@ elif opcion == "3. Corte y Nómina Final":
         if actualizado_flag:
             st.rerun()
 
-        # --- RESUMEN GENERAL DE PRODUCTOS / BOTELLAS EN TARJETAS ---
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
         
         tot_b_cant = df_res['_b_cant'].sum()
@@ -1130,7 +1172,6 @@ elif opcion == "3. Corte y Nómina Final":
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
-    # Logo ampliado para la interfaz de Streamlit (ancho de 260px)
     ruta_logo_local = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo_local):
         with open(ruta_logo_local, "rb") as f_img:
@@ -1444,7 +1485,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
-            # 1. BAILARINAS
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({f_ini_str} al {f_fin_str})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1504,7 +1544,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.dataframe(df_rep_b, use_container_width=True)
                     st.metric("Total General a Pagar (Bailarinas)", f"${df_rep_b['Total a Pagar'].sum():,.2f}")
 
-            # 2. MESEROS Y AYUDANTES
             with tab_rep_meseros:
                 st.markdown(f"### Resumen de Meseros y Ayudantes ({f_ini_str} al {f_fin_str})")
                 mask_meseros_rango = (
@@ -1553,7 +1592,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.dataframe(df_rep_m, use_container_width=True)
                     st.metric("Total General a Pagar (Meseros y Ayudantes)", f"${df_rep_m['Total a Pagar'].sum():,.2f}")
 
-            # 3. SEGURIDAD
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({f_ini_str} al {f_fin_str})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1577,7 +1615,6 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.dataframe(df_rep_s, use_container_width=True)
                     st.metric("Total General a Pagar (Seguridad)", f"${df_rep_s['Total a Pagar'].sum():,.2f}")
 
-            # 4. PERSONAL GENERAL Y FIJO (Barman, DJ, Animador, Gerente, etc.)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({f_ini_str} al {f_fin_str})")
                 mask_gen_rango = (
