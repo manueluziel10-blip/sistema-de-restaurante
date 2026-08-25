@@ -145,23 +145,17 @@ def registrar_asistencias_automaticas_dia(fecha_str):
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         ids_empleados = set()
 
-        # Recoger IDs de meseros con ventas en el día
         ventas_dia = session.query(CorteVenta).filter(CorteVenta.fecha == f_date).all()
         for v in ventas_dia:
             if v.idmesero:
                 ids_empleados.add(int(v.idmesero))
 
-        # Recoger IDs de chicas/bailarinas con productos en el día
         chicas_dia = session.query(ProductoChica).filter(ProductoChica.fecha == f_date).all()
         for c in chicas_dia:
             if c.empleado_id:
                 ids_empleados.add(int(c.empleado_id))
 
-        # Insertar en la tabla asistencias si no existe un registro previo para ese empleado en esa fecha
         for emp_id in ids_empleados:
-            # Verificar si ya existe asistencia para este empleado en esta fecha
-            from models import Asistencia # Asumiendo que se mapeó o se puede insertar por SQL directo
-            # Si usas SQL directo mediante la sesión:
             existe = session.execute(
                 "SELECT 1 FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha",
                 {"emp_id": emp_id, "fecha": f_date}
@@ -179,6 +173,26 @@ def registrar_asistencias_automaticas_dia(fecha_str):
     finally:
         session.close()
 
+def obtener_mapa_asistencias(f_ini, f_fin):
+    """Consulta los días reales de asistencia por empleado en un rango de fechas."""
+    session = get_session()
+    mapa = {}
+    try:
+        query = """
+            SELECT empleado_id, COUNT(DISTINCT fecha) as total
+            FROM asistencias
+            WHERE fecha BETWEEN :f_ini AND :f_fin
+            GROUP BY empleado_id
+        """
+        res = session.execute(query, {"f_ini": f_ini, "f_fin": f_fin}).fetchall()
+        for row in res:
+            mapa[int(row[0])] = int(row[1])
+    except Exception as e:
+        print(f"Error al obtener mapa de asistencias: {e}")
+    finally:
+        session.close()
+    return mapa
+
 def limpiar_cortes_dia(fecha_str):
     session = get_session()
     try:
@@ -186,7 +200,6 @@ def limpiar_cortes_dia(fecha_str):
         session.query(CorteVenta).filter(CorteVenta.fecha == f_date).delete()
         session.query(ProductoChica).filter(ProductoChica.fecha == f_date).delete()
         session.query(NominaDiaria).filter(NominaDiaria.fecha == f_date).delete()
-        # Opcional: limpiar también las asistencias automáticas de ese día si se borra el corte
         session.execute("DELETE FROM asistencias WHERE fecha = :fecha AND comentarios LIKE 'Automático%'", {"fecha": f_date})
         session.commit()
     except Exception as e:
@@ -207,52 +220,17 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=15,
-        textColor=PRIMARY_COLOR,
-        alignment=0,
-        fontName='Helvetica-Bold',
-        spaceAfter=2
+        'TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, alignment=0, fontName='Helvetica-Bold', spaceAfter=2
     )
     subtitle_style = ParagraphStyle(
-        'SubTitleStyle',
-        parent=styles['Heading2'],
-        fontSize=9,
-        textColor=colors.HexColor("#6B7280"),
-        alignment=0,
-        fontName='Helvetica',
-        spaceAfter=0
+        'SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), alignment=0, fontName='Helvetica', spaceAfter=0
     )
     section_heading = ParagraphStyle(
-        'SectionHeading',
-        parent=styles['Heading3'],
-        fontSize=11,
-        textColor=PRIMARY_COLOR,
-        fontName='Helvetica-Bold',
-        spaceBefore=10,
-        spaceAfter=6
+        'SectionHeading', parent=styles['Heading3'], fontSize=11, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=6
     )
-    cell_style = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=colors.HexColor("#374151")
-    )
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        textColor=PRIMARY_COLOR
-    )
-    cell_header = ParagraphStyle(
-        'CellHeader',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        textColor=colors.whitesmoke
-    )
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#374151"))
+    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
     ruta_logo = "LogoSinBailarina.png"
     logo_flowable = None
@@ -584,9 +562,8 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
             
             if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
                 guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-                # Registrar asistencias automáticas tras guardar el corte de meseros
                 registrar_asistencias_automaticas_dia(fecha_activa)
-                st.success(f"¡Corte de meseros y propinas guardado, y asistencias registradas para el día {fecha_activa}!")
+                st.success(f"¡Corte de meseros guardado y asistencias registradas para el día {fecha_activa}!")
                 st.rerun()
 
         if up_chicas is not None:
@@ -601,9 +578,8 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     nuevas_detectadas = guardar_corte_chicas(
                         filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
                     )
-                    # Registrar asistencias automáticas tras guardar el corte de chicas
                     registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Corte procesado, guardado y asistencias registradas para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
+                    st.success(f"¡Corte procesado y asistencias registradas para el día {fecha_activa}! Se registraron {len(nuevas_detectadas)} personas nuevas automáticamente.")
                     st.rerun()
                 else:
                     st.error("El archivo no tiene el formato esperado.")
@@ -1474,6 +1450,9 @@ elif opcion == "5. Reporte de Nómina por Periodos":
         empleados_rango = cargar_empleados_rango_df(f_ini_str, f_fin_str)
         chicas_rango = cargar_chicas_rango_df(f_ini_str, f_fin_str)
         ventas_rango = cargar_ventas_rango_df(f_ini_str, f_fin_str)
+        
+        # Obtenemos las asistencias reales de la base de datos
+        mapa_asistencias = obtener_mapa_asistencias(f_ini_str, f_fin_str)
 
         if empleados_rango.empty:
             st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")
@@ -1485,6 +1464,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 "📋 Personal General y Fijo"
             ])
 
+            # 1. BAILARINAS
             with tab_rep_bailarinas:
                 st.markdown(f"### Resumen de Bailarinas y Chicas ({f_ini_str} al {f_fin_str})")
                 df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
@@ -1496,20 +1476,17 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_bailarinas_rango.iterrows():
                         emp_id = emp['id']
                         nombre = emp['nombre']
-                        sueldo_base = float(emp['sueldo_base'])
+                        sueldo_base_diario = float(emp['sueldo_base'])
                         descuento = float(emp['descuento_nomina'])
+
+                        # Asistencias reales desde Neon
+                        dias_asistencia = mapa_asistencias.get(emp_id, 0)
+                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
 
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
                         
                         total_comisiones = 0.0
-                        dias_asistencia = 0
-                        
                         if not sus_prods.empty:
-                            if 'fecha' in sus_prods.columns:
-                                dias_asistencia = sus_prods['fecha'].nunique()
-                            else:
-                                dias_asistencia = 1
-
                             for _, p in sus_prods.iterrows():
                                 desc = str(p['descripcion']).upper()
                                 cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
@@ -1527,14 +1504,14 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                                 sub_prod = cant * com_unit
                                 total_comisiones += sub_prod
 
-                        total_bruto = sueldo_base + total_comisiones
+                        total_bruto = sueldo_base_acumulado + total_comisiones
                         total_pagar = total_bruto - descuento
 
                         resumen_bailarinas.append({
                             "ID": emp_id,
                             "Nombre": nombre,
                             "Asistencias (Días)": dias_asistencia,
-                            "Sueldo Base Acumulado": sueldo_base,
+                            "Sueldo Base Acumulado": sueldo_base_acumulado,
                             "Comisiones Acumuladas": total_comisiones,
                             "Descuentos Acumulados": descuento,
                             "Total a Pagar": total_pagar
@@ -1544,6 +1521,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.dataframe(df_rep_b, use_container_width=True)
                     st.metric("Total General a Pagar (Bailarinas)", f"${df_rep_b['Total a Pagar'].sum():,.2f}")
 
+            # 2. MESEROS Y AYUDANTES
             with tab_rep_meseros:
                 st.markdown(f"### Resumen de Meseros y Ayudantes ({f_ini_str} al {f_fin_str})")
                 mask_meseros_rango = (
@@ -1559,32 +1537,29 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_meseros_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
-                        sueldo_base = float(emp['sueldo_base'])
+                        sueldo_base_diario = float(emp['sueldo_base'])
                         
-                        dias_asistencia_m = 0
+                        dias_asistencia_m = mapa_asistencias.get(emp_id, 0)
+                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia_m
+                        
                         porcentaje_propina = 5.0 if "AYUDANTE" in tipo else 50.0
                         propinas_acum = 0.0
                         if not ventas_rango.empty:
                             filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
                             if not filas_m.empty:
-                                if 'fecha' in filas_m.columns:
-                                    dias_asistencia_m = filas_m['fecha'].nunique()
-                                else:
-                                    dias_asistencia_m = 1
-
                                 p_tarj = filas_m.get('propina_tarjeta', 0.0).sum() * 0.84
                                 p_efec = filas_m.get('propina_efectivo', 0.0).sum()
                                 p_vale = filas_m.get('propina_vales', 0.0).sum()
                                 p_cred = filas_m.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_rango.columns else 0.0
                                 propinas_acum = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
-                        total_pagar = sueldo_base + propinas_acum
+                        total_pagar = sueldo_base_acumulado + propinas_acum
                         resumen_mes.append({
                             "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
                             "Asistencias (Días)": dias_asistencia_m,
-                            "Sueldo Base Acumulado": sueldo_base,
+                            "Sueldo Base Acumulado": sueldo_base_acumulado,
                             "Propinas Acumuladas": propinas_acum,
                             "Total a Pagar": total_pagar
                         })
@@ -1592,6 +1567,7 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     st.dataframe(df_rep_m, use_container_width=True)
                     st.metric("Total General a Pagar (Meseros y Ayudantes)", f"${df_rep_m['Total a Pagar'].sum():,.2f}")
 
+            # 3. SEGURIDAD
             with tab_rep_seguridad:
                 st.markdown(f"### Resumen de Personal de Seguridad ({f_ini_str} al {f_fin_str})")
                 df_seg_rango = empleados_rango[empleados_rango['tipo'].astype(str).str.upper().str.contains("SEGURIDAD")]
@@ -1601,20 +1577,25 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                 else:
                     resumen_seg = []
                     for _, emp in df_seg_rango.iterrows():
-                        sueldo_base = float(emp['sueldo_base'])
-                        total_pagar = sueldo_base
+                        emp_id = emp['id']
+                        sueldo_base_diario = float(emp['sueldo_base'])
+                        dias_asistencia = mapa_asistencias.get(emp_id, 0)
+                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
+                        
+                        total_pagar = sueldo_base_acumulado
                         resumen_seg.append({
-                            "ID": emp['id'],
+                            "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
-                            "Asistencias (Días)": 1,
-                            "Sueldo Base Acumulado": sueldo_base,
+                            "Asistencias (Días)": dias_asistencia,
+                            "Sueldo Base Acumulado": sueldo_base_acumulado,
                             "Total a Pagar": total_pagar
                         })
                     df_rep_s = pd.DataFrame(resumen_seg)
                     st.dataframe(df_rep_s, use_container_width=True)
                     st.metric("Total General a Pagar (Seguridad)", f"${df_rep_s['Total a Pagar'].sum():,.2f}")
 
+            # 4. PERSONAL GENERAL Y FIJO (Barman, DJ, Animador, Gerente, etc.)
             with tab_rep_general:
                 st.markdown(f"### Resumen de Personal General, Gerencia y Fijos ({f_ini_str} al {f_fin_str})")
                 mask_gen_rango = (
@@ -1633,7 +1614,10 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                     for _, emp in df_gen_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
-                        sueldo_base = float(emp['sueldo_base'])
+                        sueldo_base_diario = float(emp['sueldo_base'])
+                        
+                        dias_asistencia = mapa_asistencias.get(emp_id, 0)
+                        sueldo_base_acumulado = sueldo_base_diario * dias_asistencia
                         
                         propinas_o_comis = 0.0
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
@@ -1653,13 +1637,13 @@ elif opcion == "5. Reporte de Nómina por Periodos":
                                 for _, pr in chicas_rango.iterrows():
                                     propinas_o_comis += float(pr['cantidad']) * calcular_comision_gerencia_caja(str(pr['descripcion']))
 
-                        total_pagar = sueldo_base + propinas_o_comis
+                        total_pagar = sueldo_base_acumulado + propinas_o_comis
                         resumen_gen.append({
                             "ID": emp_id,
                             "Nombre": emp['nombre'],
                             "Puesto": emp['tipo'],
-                            "Asistencias (Días)": 1,
-                            "Sueldo Base Acumulado": sueldo_base,
+                            "Asistencias (Días)": dias_asistencia,
+                            "Sueldo Base Acumulado": sueldo_base_acumulado,
                             "Propinas / Comisiones Acumuladas": propinas_o_comis,
                             "Total a Pagar": total_pagar
                         })
