@@ -141,24 +141,19 @@ def calcular_comision_gerencia_caja(producto_str):
 
 def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
     """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora de registro."""
-    
-    # Definir reglas de hora límite
     if es_chica_o_bailarina(tipo_puesto):
-        # Chicas / Bailarinas: Entrada 7:00 PM, tolerancia hasta 7:30 PM (19:30)
-        limite_presente = time(19, 0, 0)
+        # Chicas / Bailarinas: Entrada 7:00 PM (19:00), tolerancia hasta 7:30 PM (19:30)
         limite_retardo = time(19, 30, 0)
     else:
-        # Personal general: Entrada 6:30 PM (18:30), tolerancia hasta 6:30 PM (18:30)
-        limite_presente = time(18, 30, 0)
+        # Personal general: Entrada 6:30 PM (18:30)
         limite_retardo = time(18, 30, 0)
 
-    # Determinar estado
     if hora_actual_obj <= limite_retardo:
         estado = "Presente"
     else:
         estado = "Retardo"
 
-    comentarios = f"Autoregistro a las {hora_actual_obj.strftime('%H:%M:%S')}"
+    comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
 
     session = get_session()
     try:
@@ -173,11 +168,11 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_
             {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
         )
         session.commit()
-        return True, estado
+        return True, estado, hora_actual_obj.strftime('%H:%M:%S')
     except Exception as e:
         session.rollback()
         print(f"Error registrando asistencia: {e}")
-        return False, ""
+        return False, "", ""
     finally:
         session.close()
 
@@ -653,7 +648,7 @@ elif opcion == "2. Gestión de Empleados":
 
         filas_plantilla = []
         for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
-            filas_plantilla.append({"Nombre": f"Ejemplo Empleado {idx}", "Puesto": puesto, "Sueldo Base": sueldo})
+            filas_plantilla.append({"Nombre": f"Ejemplo Empleado {idx}", "Puesto": puesto, "Sueldo Base": sueldo, "PIN": f"100{idx}"})
         df_plantilla = pd.DataFrame(filas_plantilla)
 
         buffer_plantilla = io.BytesIO()
@@ -662,9 +657,9 @@ elif opcion == "2. Gestión de Empleados":
         buffer_plantilla.seek(0)
 
         st.download_button(
-            label="📥 Descargar Plantilla de Excel con Todos los Puestos",
+            label="📥 Descargar Plantilla de Excel con Todos los Puestos y PIN",
             data=buffer_plantilla,
-            file_name="Plantilla_Alta_Empleados_Completa.xlsx",
+            file_name="Plantilla_Alta_Empleados_PIN.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
@@ -685,6 +680,7 @@ elif opcion == "2. Gestión de Empleados":
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
                         sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
+                        pin_emp = str(row['PIN']).strip() if 'PIN' in df_subido.columns and pd.notna(row['PIN']) else "1234"
 
                         if not nombre_emp:
                             continue
@@ -727,6 +723,7 @@ elif opcion == "2. Gestión de Empleados":
             nuevo_nombre = st.text_input("Nombre Completo")
             nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
             nuevo_sueldo = st.number_input("Sueldo Base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
+            nuevo_pin = st.text_input("Código PIN de Asistencia (4 dígitos)", value="1234", max_chars=6)
 
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
@@ -1652,10 +1649,10 @@ elif opcion == "5. Reportes":
                         st.dataframe(df_rep_g, use_container_width=True)
                         st.metric("Total General a Pagar (Personal General y Fijo)", f"${df_rep_g['Total a Pagar'].sum():,.2f}")
 
-# --- NUEVA SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL AUTOMÁTICO ---
+# --- SECCIÓN: REGISTRO DE ASISTENCIA INDIVIDUAL CON PIN Y HORA REAL ---
 elif opcion == "✍️ Registro de Asistencia":
-    st.subheader(f"✍️ Módulo de Autoregistro de Asistencia — Fecha Activa: {fecha_activa}")
-    st.info("El sistema evalúa automáticamente tu hora de llegada:\n* **Personal General:** Entrada hasta las **6:30 PM** (Pasado ese horario se marca como Retardo).\n* **Bailarinas / Chicas:** Entrada de **7:00 PM a 7:30 PM** (Pasado las 7:30 PM se marca como Retardo).")
+    st.subheader(f"✍️ Módulo de Autoregistro con Código PIN — Fecha Activa: {fecha_activa}")
+    st.info("Ingresa tu nombre, tu código PIN personal y el sistema registrará automáticamente tu hora y estado:\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
 
     empleados_activos_df = cargar_empleados_df(fecha_activa)
 
@@ -1666,6 +1663,9 @@ elif opcion == "✍️ Registro de Asistencia":
             lista_nombres_emp = sorted(empleados_activos_df['nombre'].dropna().unique().tolist())
             emp_seleccionado = st.selectbox("Selecciona tu Nombre", lista_nombres_emp)
             
+            # Campo para ingresar código PIN de seguridad
+            pin_ingresado = st.text_input("Ingresa tu Código PIN de Asistencia", type="password", max_chars=6)
+            
             btn_registrar_asistencia = st.form_submit_button("✅ Registrar mi Asistencia Ahora", type="primary")
 
             if btn_registrar_asistencia:
@@ -1673,24 +1673,33 @@ elif opcion == "✍️ Registro de Asistencia":
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
 
-                hora_actual_sistema = datetime.now().time()
+                # Nota: Si el empleado no tiene un PIN específico guardado en la base de datos, por defecto acepta "1234" o el valor predeterminado.
+                # Aquí validamos el PIN (puedes ajustarlo si guardas el PIN en la tabla).
+                pin_correcto = str(fila_emp.get('pin', '1234'))
+                if not pin_correcto or pin_correcto == 'nan':
+                    pin_correcto = '1234'
 
-                exito, estado_asignado = registrar_asistencia_individual(
-                    empleado_id=emp_id,
-                    nombre_emp=emp_seleccionado,
-                    tipo_puesto=tipo_puesto_emp,
-                    fecha_str=fecha_activa,
-                    hora_actual_obj=hora_actual_sistema
-                )
+                if pin_ingresado.strip() == pin_correcto.strip():
+                    hora_actual_sistema = datetime.now().time()
 
-                if exito:
-                    color_est = "green" if estado_asignado == "Presente" else "orange"
-                    st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
-                    st.markdown(f"- **Empleado:** {emp_seleccionado}")
-                    st.markdown(f"- **Hora de Registro:** {hora_actual_sistema.strftime('%H:%M:%S')}")
-                    st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
+                    exito, estado_asignado, hora_str = registrar_asistencia_individual(
+                        empleado_id=emp_id,
+                        nombre_emp=emp_seleccionado,
+                        tipo_puesto=tipo_puesto_emp,
+                        fecha_str=fecha_activa,
+                        hora_actual_obj=hora_actual_sistema
+                    )
+
+                    if exito:
+                        color_est = "green" if estado_asignado == "Presente" else "orange"
+                        st.markdown(f"### 🎉 ¡Asistencia registrada con éxito!")
+                        st.markdown(f"- **Empleado:** {emp_seleccionado}")
+                        st.markdown(f"- **Hora de Registro:** {hora_str}")
+                        st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
+                    else:
+                        st.error("Ocurrió un error al guardar en la base de datos.")
                 else:
-                    st.error("Ocurrió un error al registrar la asistencia.")
+                    st.error("❌ Código PIN incorrecto. Verifica con administración.")
 
         st.markdown("---")
         st.markdown("### 📋 Listado de Asistencias Registradas Hoy")
