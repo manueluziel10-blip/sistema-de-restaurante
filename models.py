@@ -285,7 +285,6 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
 
 
 def asegurar_nomina_dia(session, fecha_date):
-    """Verifica que la tabla tenga las columnas correctas."""
     try:
         inspector = inspect(session.bind)
         if 'nomina_diaria' in inspector.get_table_names():

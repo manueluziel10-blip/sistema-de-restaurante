@@ -26,6 +26,19 @@ from models import (
 
 st.set_page_config(layout="wide")
 
+PUESTOS_CATALOGO = {
+    "Chicas / Bailarinas (Comisiones)": 300.0,
+    "Mesero (Comisiones)": 300.0,
+    "Barman (Fijo)": 400.0,
+    "Seguridad (Fijo)": 500.0,
+    "DJ (Fijo)": 600.0,
+    "Animador (Fijo)": 400.0,
+    "Gerente (Fijo)": 500.0,
+    "Capitán de Mesero (Fijo)": 400.0,
+    "Ayudante de Mesero (Fijo)": 300.0,
+    "Cajero (Fijo)": 400.0
+}
+
 # --- MODO KIOSKO / ASISTENCIA PÚBLICA (ACCESO DIRECTO PARA EMPLEADOS) ---
 query_params = st.query_params
 if query_params.get("modo") == "asistencia":
@@ -61,15 +74,29 @@ if query_params.get("modo") == "asistencia":
         session = get_session()
         try:
             f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            
+            # 1. Registrar o actualizar la asistencia
             session.execute(
                 text("""
                 INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
                 VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
                 ON CONFLICT (empleado_id, fecha) 
                 DO UPDATE SET estado = :estado, comentarios = :comentarios
-                """),
+                '''),
                 {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
             )
+            
+            # 2. Alta automática en la nómina del día si aún no existe
+            sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
+            session.execute(
+                text("""
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                ON CONFLICT DO NOTHING
+                """),
+                {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
+            )
+
             session.commit()
             return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
         except Exception as e:
@@ -78,7 +105,6 @@ if query_params.get("modo") == "asistencia":
         finally:
             session.close()
 
-    # Carga segura consultando exclusivamente columnas existentes en la BD
     session_kiosko = get_session()
     empleados_activos_df = pd.DataFrame()
     try:
@@ -87,7 +113,7 @@ if query_params.get("modo") == "asistencia":
         ).fetchall()
         if res_emps:
             empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo"])
-            empleados_activos_df['pin'] = '1234' # PIN temporal por defecto
+            empleados_activos_df['pin'] = '1234'
     except Exception as e:
         st.error(f"Error crítico al conectar con la base de datos: {e}")
     finally:
@@ -126,7 +152,7 @@ if query_params.get("modo") == "asistencia":
     else:
         st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía. Verifica tus Secrets en Streamlit Cloud.")
 
-    st.stop()  # Detiene la ejecución para que no cargue el panel de administración
+    st.stop()
 
 # --- CONTROL DE SESIÓN Y LOGIN ---
 if "autenticado" not in st.session_state:
@@ -187,19 +213,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-PUESTOS_CATALOGO = {
-    "Chicas / Bailarinas (Comisiones)": 300.0,
-    "Mesero (Comisiones)": 300.0,
-    "Barman (Fijo)": 400.0,
-    "Seguridad (Fijo)": 500.0,
-    "DJ (Fijo)": 600.0,
-    "Animador (Fijo)": 400.0,
-    "Gerente (Fijo)": 500.0,
-    "Capitán de Mesero (Fijo)": 400.0,
-    "Ayudante de Mesero (Fijo)": 300.0,
-    "Cajero (Fijo)": 400.0
-}
-
 def es_chica_o_bailarina(tipo_str):
     t = str(tipo_str).upper()
     return ('CHICA' in t) or ('BAILARINA' in t)
@@ -243,7 +256,6 @@ def calcular_comision_gerencia_caja(producto_str):
     return 0.0
 
 def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
-    """Calcula automáticamente si es Presente o Retardo basándose en el puesto y la hora local de Tepic."""
     if es_chica_o_bailarina(tipo_puesto):
         limite_retardo = time(19, 30, 0)
     else:
@@ -268,11 +280,21 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_
             """),
             {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
         )
+        
+        sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
+        session.execute(
+            text("""
+            INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+            VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+            ON CONFLICT DO NOTHING
+            """),
+            {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
+        )
+
         session.commit()
         return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
     except Exception as e:
         session.rollback()
-        print(f"Error registrando asistencia: {e}")
         return False, "", "", str(e)
     finally:
         session.close()
@@ -282,12 +304,14 @@ def registrar_asistencias_automaticas_dia(fecha_str):
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         empleados_activos = session.execute(
-            text("SELECT id, nombre FROM empleados WHERE activo = TRUE")
+            text("SELECT id, nombre, tipo, sueldo_base FROM empleados WHERE activo = TRUE")
         ).fetchall()
         
         for emp in empleados_activos:
             emp_id = int(emp[0])
             nombre_emp = emp[1] if emp[1] else "Desconocido"
+            tipo_emp = emp[2]
+            sueldo_emp = float(emp[3]) if emp[3] is not None else 300.0
 
             session.execute(
                 text("""
@@ -296,6 +320,15 @@ def registrar_asistencias_automaticas_dia(fecha_str):
                 ON CONFLICT (empleado_id, fecha) DO NOTHING
                 """),
                 {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date}
+            )
+
+            session.execute(
+                text("""
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                ON CONFLICT DO NOTHING
+                """),
+                {"fecha": f_date, "emp_id": emp_id, "sueldo": sueldo_emp}
             )
         session.commit()
     except Exception as e:
@@ -349,15 +382,9 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, alignment=0, fontName='Helvetica-Bold', spaceAfter=2
-    )
-    subtitle_style = ParagraphStyle(
-        'SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), alignment=0, fontName='Helvetica', spaceAfter=0
-    )
-    section_heading = ParagraphStyle(
-        'SectionHeading', parent=styles['Heading3'], fontSize=11, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=6
-    )
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=PRIMARY_COLOR, alignment=0, fontName='Helvetica-Bold', spaceAfter=2)
+    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=9, textColor=colors.HexColor("#6B7280"), alignment=0, fontName='Helvetica', spaceAfter=0)
+    section_heading = ParagraphStyle('SectionHeading', parent=styles['Heading3'], fontSize=11, textColor=PRIMARY_COLOR, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=6)
     cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#374151"))
     cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=PRIMARY_COLOR)
     cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
