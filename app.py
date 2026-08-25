@@ -78,11 +78,11 @@ if query_params.get("modo") == "asistencia":
         finally:
             session.close()
 
-    # Carga global de empleados activos para que el modo kiosko nunca esté vacío
+    # Carga directa de empleados sin restricciones de filtro booleano
     session_kiosko = get_session()
     try:
         res_emps = session_kiosko.execute(
-            text("SELECT id, nombre, tipo, pin FROM empleados WHERE activo = TRUE")
+            text("SELECT id, nombre, tipo, pin FROM empleados")
         ).fetchall()
         empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo", "pin"])
     except Exception:
@@ -123,7 +123,7 @@ if query_params.get("modo") == "asistencia":
                 else:
                     st.error("❌ Código PIN incorrecto. Verifica con administración.")
     else:
-        st.warning("No hay empleados activos configurados en el sistema.")
+        st.warning("No hay empleados configurados en el sistema.")
 
     st.stop()  # Detiene la ejecución para que no cargue el panel de administración
 
