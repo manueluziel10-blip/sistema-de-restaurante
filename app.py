@@ -1163,19 +1163,19 @@ elif opcion == "3. Corte y Nómina Final":
             propinas = 0.0
             if not ventas_totales.empty and porcentaje_propina > 0.0:
                 if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    p_tarj_tot = ventas_totales.get('propina_tarjeta', 0.0).sum() * 0.84
-                    p_efec_tot = ventas_totales.get('propina_efectivo', 0.0).sum()
-                    p_vale_tot = ventas_totales.get('propina_vales', 0.0).sum()
-                    p_cred_tot = ventas_totales.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_totales.columns else 0.0
+                    p_tarj_tot = (ventas_totales['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_totales.columns else 0.0
+                    p_efec_tot = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+                    p_vale_tot = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
+                    p_cred_tot = ventas_totales['propinacredito'].sum() if 'propinacredito' in ventas_totales.columns else 0.0
                     total_propinas_restaurante = p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot
                     propinas = total_propinas_restaurante * (porcentaje_propina / 100.0)
                 else:
                     filas_mesero = ventas_totales[ventas_totales['idmesero'] == emp_id]
                     if not filas_mesero.empty:
-                        p_tarj = filas_mesero.get('propina_tarjeta', 0.0).sum() * 0.84
-                        p_efec = filas_mesero.get('propina_efectivo', 0.0).sum()
-                        p_vale = filas_mesero.get('propina_vales', 0.0).sum()
-                        p_cred = filas_mesero.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_totales.columns else 0.0
+                        p_tarj = (filas_mesero['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_mesero.columns else 0.0
+                        p_efec = filas_mesero['propina_efectivo'].sum() if 'propina_efectivo' in filas_mesero.columns else 0.0
+                        p_vale = filas_mesero['propina_vales'].sum() if 'propina_vales' in filas_mesero.columns else 0.0
+                        p_cred = filas_mesero['propinacredito'].sum() if 'propinacredito' in filas_mesero.columns else 0.0
                         total_prop_mesero = p_tarj + p_efec + p_vale + p_cred
                         propinas = total_prop_mesero * (porcentaje_propina / 100.0)
 
@@ -1369,18 +1369,18 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             propinas = 0.0
             if not ventas_acumuladas.empty and porcentaje_propina > 0.0:
                 if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    p_tarj_tot = ventas_acumuladas.get('propina_tarjeta', 0.0).sum() * 0.84
-                    p_efec_tot = ventas_acumuladas.get('propina_efectivo', 0.0).sum()
-                    p_vale_tot = ventas_acumuladas.get('propina_vales', 0.0).sum()
-                    p_cred_tot = ventas_acumuladas.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
+                    p_tarj_tot = (ventas_acumuladas['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0
+                    p_efec_tot = ventas_acumuladas['propina_efectivo'].sum() if 'propina_efectivo' in ventas_acumuladas.columns else 0.0
+                    p_vale_tot = ventas_acumuladas['propina_vales'].sum() if 'propina_vales' in ventas_acumuladas.columns else 0.0
+                    p_cred_tot = ventas_acumuladas['propinacredito'].sum() if 'propinacredito' in ventas_acumuladas.columns else 0.0
                     propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
                 else:
                     filas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
                     if not filas_emp.empty:
-                        p_tarj = filas_emp.get('propina_tarjeta', 0.0).sum() * 0.84
-                        p_efec = filas_emp.get('propina_efectivo', 0.0).sum()
-                        p_vale = filas_emp.get('propina_vales', 0.0).sum()
-                        p_cred = filas_emp.get('propina_credito', 0.0).sum() if 'propina_credito' in ventas_acumuladas.columns else 0.0
+                        p_tarj = (filas_emp['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_emp.columns else 0.0
+                        p_efec = filas_emp['propina_efectivo'].sum() if 'propina_efectivo' in filas_emp.columns else 0.0
+                        p_vale = filas_emp['propina_vales'].sum() if 'propina_vales' in filas_emp.columns else 0.0
+                        p_cred = filas_emp['propinacredito'].sum() if 'propinacredito' in filas_emp.columns else 0.0
                         propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
 
             if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
@@ -1460,10 +1460,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
     efectivo_ventas, tarjeta_ventas, transferencia_ventas, ventas_por_cobrar = 0.0, 0.0, 0.0, 0.0
     if not ventas_acumuladas.empty:
-        efectivo_ventas = float((ventas_acumuladas.get('efectivo', 0.0) + ventas_acumuladas.get('propina_efectivo', 0.0)).sum())
-        tarjeta_ventas = float((ventas_acumuladas.get('tarjeta', 0.0) + ventas_acumuladas.get('propina_tarjeta', 0.0)).sum())
-        transferencia_ventas = float((ventas_acumuladas.get('vales', 0.0) + ventas_acumuladas.get('propina_vales', 0.0)).sum())
-        ventas_por_cobrar = float((ventas_acumuladas.get('otros', 0.0) + ventas_acumuladas.get('propinacredito', 0.0)).sum())
+        efectivo_ventas = float(((ventas_acumuladas['efectivo'] if 'efectivo' in ventas_acumuladas.columns else 0.0) + (ventas_acumuladas['propina_efectivo'] if 'propina_efectivo' in ventas_acumuladas.columns else 0.0)).sum())
+        tarjeta_ventas = float(((ventas_acumuladas['tarjeta'] if 'tarjeta' in ventas_acumuladas.columns else 0.0) + (ventas_acumuladas['propina_tarjeta'] if 'propina_tarjeta' in ventas_acumuladas.columns else 0.0)).sum())
+        transferencia_ventas = float(((ventas_acumuladas['vales'] if 'vales' in ventas_acumuladas.columns else 0.0) + (ventas_acumuladas['propina_vales'] if 'propina_vales' in ventas_acumuladas.columns else 0.0)).sum())
+        ventas_por_cobrar = float(((ventas_acumuladas['otros'] if 'otros' in ventas_acumuladas.columns else 0.0) + (ventas_acumuladas['propinacredito'] if 'propinacredito' in ventas_acumuladas.columns else 0.0)).sum())
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
@@ -1672,8 +1672,8 @@ elif opcion == "5. Reportes":
                         if not ventas_rango.empty:
                             filas_m = ventas_rango[ventas_rango['idmesero'] == emp_id]
                             if not filas_m.empty:
-                                p_tarj = filas_rango.get('propina_tarjeta', 0.0).sum() * 0.84
-                                p_efec = filas_rango.get('propina_efectivo', 0.0).sum()
+                                p_tarj = (filas_m['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_m.columns else 0.0
+                                p_efec = filas_m['propina_efectivo'].sum() if 'propina_efectivo' in filas_m.columns else 0.0
                                 propinas_acum = (p_tarj + p_efec) * (porcentaje_propina / 100.0)
                         resumen_mes.append({
                             "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
