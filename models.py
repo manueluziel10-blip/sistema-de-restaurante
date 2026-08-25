@@ -297,25 +297,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     asegurar_nomina_dia(session, f_date)
     
-    # GARANTIZAR que TODOS los empleados activos aparezcan creando su registro diario si no existe
-    empleados_activos = session.query(Empleado).filter(Empleado.activo == True).all()
-    for emp in empleados_activos:
-        nom_existente = session.query(NominaDiaria).filter(
-            NominaDiaria.fecha == f_date,
-            NominaDiaria.empleado_id == emp.id
-        ).first()
-        if not nom_existente:
-            session.add(NominaDiaria(
-                fecha=f_date,
-                empleado_id=emp.id,
-                sueldo_base=emp.sueldo_base,
-                vales_nomina=0.0,
-                descuento_nomina=100.0,
-                transferencia_nomina=0.0,
-                penalizada=False
-            ))
-    session.commit()
-    
+    # Consulta exclusivamente los registros de nómina que pertenecen a esta fecha específica
     query = session.query(
         Empleado.id,
         Empleado.nombre,
