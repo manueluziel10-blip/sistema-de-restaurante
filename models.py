@@ -906,14 +906,34 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
         df_completo = df_completo.fillna(0)
 
+        # No se da de alta ni se marca actividad para filas con TODO en $0
+        # (ventas y propinas). Soft Restaurant exporta el reporte de
+        # propinas con TODOS los meseros/cajeros registrados, aunque ese
+        # día no hayan ido a trabajar — vienen con puros ceros. Sin este
+        # filtro, esas filas "fantasma" se daban de alta y se les pagaba
+        # sueldo base como si hubieran trabajado.
+        columnas_actividad = [c for c in [
+            'importe_v', 'importe_p', 'importe', 'efectivo', 'tarjeta', 'vales', 'otros',
+            'propina', 'propinaefectivo', 'propinatarjeta', 'propinavales', 'propinacredito',
+            'propinatotal', 'comision', 'cuentas', 'nopersonas'
+        ] if c in df_completo.columns]
+
+        filas_sin_actividad = 0
+        if columnas_actividad:
+            suma_actividad = df_completo[columnas_actividad].apply(pd.to_numeric, errors='coerce').fillna(0).abs().sum(axis=1)
+            filas_sin_actividad = int((suma_actividad == 0).sum())
+            df_completo = df_completo[suma_actividad > 0].copy()
+
         cache_empleados = {}
         nuevas_filas = []
+        ids_con_actividad = []
         for _, row in df_completo.iterrows():
             nombre_mesero = normalizar_nombre(row.get("nombre_resuelto", "MESERO"))
             emp_id, _ = obtener_o_crear_empleado(
                 nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date,
                 existing_session=session, cache=cache_empleados
             )
+            ids_con_actividad.append(emp_id)
 
             nuevas_filas.append(CorteVenta(
                 fecha=f_filtro_date,
@@ -931,6 +951,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
 
         session.add_all(nuevas_filas)
         session.commit()
+        return list(set(ids_con_actividad)), filas_sin_actividad
     except Exception as e:
         session.rollback()
         raise e
@@ -954,6 +975,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
         nuevas_detectadas = []
         cache_empleados = {}
         nuevas_filas = []
+        ids_con_actividad = []
         for _, row in filas_chicas.iterrows():
             desc = str(row["DESCRIPCION"])
             if ">" in desc:
@@ -972,6 +994,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             )
             if creado:
                 nuevas_detectadas.append(nombre_persona)
+            ids_con_actividad.append(emp_id)
 
             nuevas_filas.append(ProductoChica(
                 fecha=f_filtro_date,
@@ -988,7 +1011,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
 
         session.add_all(nuevas_filas)
         session.commit()
-        return nuevas_detectadas
+        return nuevas_detectadas, list(set(ids_con_actividad))
     except Exception as e:
         session.rollback()
         raise e

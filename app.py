@@ -699,9 +699,14 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                 st.dataframe(df_v.head(), width=700)
 
                 if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
-                    guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-                    registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Corte de meseros guardado y asistencias registradas para el día {fecha_activa}!")
+                    ids_con_actividad, filas_omitidas = guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
+                    # Solo se marca asistencia a quien tuvo ventas/propinas
+                    # reales ese día — no a todo el personal activo del
+                    # sistema (Soft Restaurant exporta el reporte con todos
+                    # los meseros/cajeros en $0 aunque no hayan trabajado).
+                    registrar_asistencia_lista_empleados(ids_con_actividad, fecha_activa)
+                    mensaje_omitidos = f" Se omitieron {filas_omitidas} registro(s) sin actividad (todo en $0)." if filas_omitidas else ""
+                    st.success(f"¡Corte de meseros guardado! Asistencia registrada para {len(ids_con_actividad)} persona(s) con actividad real el {fecha_activa}.{mensaje_omitidos}")
                     st.rerun()
 
         if up_chicas is not None:
@@ -713,10 +718,10 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     df_c.columns = ['CLAVE', 'DESCRIPCION', 'GRUPO', 'PRECIO', 'CANTIDAD'] + list(df_c.columns[5:])
                     filas_chicas = df_c[df_c['DESCRIPCION'].astype(str).str.contains('>')].copy()
 
-                    nuevas_detectadas = guardar_corte_chicas(
+                    nuevas_detectadas, ids_con_actividad = guardar_corte_chicas(
                         filas_chicas, calcular_comision_chica, archivo_origen=up_chicas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"]
                     )
-                    registrar_asistencias_automaticas_dia(fecha_activa)
+                    registrar_asistencia_lista_empleados(ids_con_actividad, fecha_activa)
                     st.success(f"¡Corte procesado y asistencias registradas! Se registraron {len(nuevas_detectadas)} personas nuevas.")
                     st.rerun()
                 else:
