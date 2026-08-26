@@ -9,10 +9,45 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
 from datetime import datetime
+import hashlib
+import hmac
+import os
+import secrets
 
 from database import get_session
 
 Base = declarative_base()
+
+
+# --- UTILIDADES DE HASH (contraseñas de usuarios y PIN de empleados) ---
+# Usa PBKDF2-HMAC-SHA256 (parte de la librería estándar, sin dependencias extra).
+# El valor guardado en BD tiene el formato "salt_hex$hash_hex".
+
+def _hash_valor(valor_plano: str, salt_hex: str = None) -> str:
+    if salt_hex is None:
+        salt_hex = secrets.token_hex(16)
+    salt_bytes = bytes.fromhex(salt_hex)
+    hash_bytes = hashlib.pbkdf2_hmac('sha256', valor_plano.encode('utf-8'), salt_bytes, 100_000)
+    return f"{salt_hex}${hash_bytes.hex()}"
+
+
+def _es_valor_hasheado(valor_guardado: str) -> bool:
+    return isinstance(valor_guardado, str) and '$' in valor_guardado and len(valor_guardado.split('$')[0]) == 32
+
+
+def _verificar_valor(valor_plano: str, valor_guardado: str) -> bool:
+    if not valor_guardado:
+        return False
+    if not _es_valor_hasheado(valor_guardado):
+        # Compatibilidad con datos viejos guardados en texto plano
+        return hmac.compare_digest(str(valor_plano), str(valor_guardado))
+    salt_hex, hash_hex = valor_guardado.split('$', 1)
+    intento = _hash_valor(valor_plano, salt_hex)
+    return hmac.compare_digest(intento, valor_guardado)
+
+
+def generar_pin_aleatorio() -> str:
+    return f"{secrets.randbelow(10000):04d}"
 
 
 class PuestoCatalogo(Base):
@@ -29,6 +64,7 @@ class Empleado(Base):
     tipo = Column(String, ForeignKey("puestos_catalogo.nombre"), nullable=False)
     sueldo_base = Column(Numeric(10, 2), nullable=False)
     activo = Column(Boolean, default=True)
+    pin_hash = Column(String, nullable=True)
     creado_en = Column(DateTime, server_default=func.now())
 
 
@@ -126,14 +162,16 @@ class CorteBloqueo(Base):
 # --- FUNCIONES DE AUTENTICACIÓN Y BLOQUEOS ---
 
 def inicializar_usuarios_por_defecto():
+    # NOTA: cambia estas contraseñas por defecto ("admin123" / "cajero123")
+    # la primera vez que entres al sistema, desde "6. Usuarios y Accesos".
     session = get_session()
     try:
         admin = session.query(UsuarioSistema).filter(UsuarioSistema.username == "admin").first()
         if not admin:
-            session.add(UsuarioSistema(username="admin", password="123", rol="admin"))
+            session.add(UsuarioSistema(username="admin", password=_hash_valor("admin123"), rol="admin"))
         cajero = session.query(UsuarioSistema).filter(UsuarioSistema.username == "cajero").first()
         if not cajero:
-            session.add(UsuarioSistema(username="cajero", password="123", rol="cajero"))
+            session.add(UsuarioSistema(username="cajero", password=_hash_valor("cajero123"), rol="cajero"))
         session.commit()
     except Exception:
         session.rollback()
@@ -144,13 +182,16 @@ def inicializar_usuarios_por_defecto():
 def validar_login(username, password):
     session = get_session()
     try:
-        user = session.query(UsuarioSistema).filter(
-            UsuarioSistema.username == username, 
-            UsuarioSistema.password == password
-        ).first()
-        if user:
-            return {"username": user.username, "rol": user.rol}
-        return None
+        user = session.query(UsuarioSistema).filter(UsuarioSistema.username == username).first()
+        if not user:
+            return None
+        if not _verificar_valor(password, user.password):
+            return None
+        # Migración transparente: si la contraseña seguía en texto plano, la re-guardamos hasheada.
+        if not _es_valor_hasheado(user.password):
+            user.password = _hash_valor(password)
+            session.commit()
+        return {"username": user.username, "rol": user.rol}
     finally:
         session.close()
 
@@ -170,7 +211,7 @@ def crear_usuario(username, password, rol):
     try:
         existe = session.query(UsuarioSistema).filter(UsuarioSistema.username == username).first()
         if not existe:
-            nuevo = UsuarioSistema(username=username, password=password, rol=rol)
+            nuevo = UsuarioSistema(username=username, password=_hash_valor(password), rol=rol)
             session.add(nuevo)
             session.commit()
     except Exception as e:
@@ -187,7 +228,7 @@ def actualizar_credenciales(usuario_id, nuevo_username, nueva_password, nuevo_ro
         if user:
             user.username = nuevo_username
             if nueva_password and nueva_password.strip():
-                user.password = nueva_password
+                user.password = _hash_valor(nueva_password)
             user.rol = nuevo_rol
             session.commit()
     except Exception as e:
@@ -304,12 +345,58 @@ def asegurar_nomina_dia(session, fecha_date):
         session.rollback()
 
 
+def asegurar_columnas_empleado(session):
+    try:
+        inspector = inspect(session.bind)
+        if 'empleados' in inspector.get_table_names():
+            columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
+            if 'pin_hash' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
+                session.commit()
+    except Exception:
+        session.rollback()
+
+
+def establecer_pin_empleado(empleado_id: int, pin_plano: str):
+    """Asigna (o cambia) el PIN individual de un empleado, guardado con hash."""
+    session = get_session()
+    try:
+        asegurar_columnas_empleado(session)
+        emp = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if emp:
+            emp.pin_hash = _hash_valor(str(pin_plano).strip())
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def verificar_pin_empleado(empleado_id: int, pin_ingresado: str) -> bool:
+    """Valida el PIN de un empleado contra su hash individual.
+    Si el empleado aún no tiene PIN configurado, no permite el acceso
+    (en vez de aceptar un PIN genérico como antes)."""
+    session = get_session()
+    try:
+        asegurar_columnas_empleado(session)
+        emp = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if not emp or not emp.pin_hash:
+            return False
+        return _verificar_valor(str(pin_ingresado).strip(), emp.pin_hash)
+    finally:
+        session.close()
+
+
 def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
     f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
     f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
     
     asegurar_nomina_dia(session, f_date)
+    asegurar_columnas_empleado(session)
     
     # Sincronización automática: crea nóminas faltantes para empleados activos que ya tengan asistencia en esta fecha
     try:
@@ -355,21 +442,27 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     return df
 
 
-def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, **kwargs):
+def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwargs):
     session = get_session()
     try:
+        asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo)
         emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
         if emp:
             emp.tipo = tipo
             emp.sueldo_base = sueldo_base
             emp.activo = True
+            if pin:
+                emp.pin_hash = _hash_valor(str(pin).strip())
+            session.commit()
         else:
+            pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
             emp = Empleado(
                 nombre=nombre.upper(),
                 tipo=tipo,
                 sueldo_base=sueldo_base,
-                activo=True
+                activo=True,
+                pin_hash=_hash_valor(pin_final)
             )
             session.add(emp)
             session.commit()
@@ -490,6 +583,7 @@ def eliminar_empleado_por_id(emp_id, fecha_str):
 def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, fecha_date=None, existing_session=None):
     session = existing_session if existing_session else get_session()
     try:
+        asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
         emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
         creado = False
@@ -498,7 +592,8 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
                 nombre=nombre.upper(),
                 tipo=tipo,
                 sueldo_base=sueldo_base,
-                activo=True
+                activo=True,
+                pin_hash=_hash_valor(generar_pin_aleatorio())
             )
             session.add(emp)
             session.commit()
@@ -794,5 +889,8 @@ try:
     _session_auto = get_session()
     Base.metadata.create_all(_session_auto.bind)
     _session_auto.close()
-except Exception:
-    pass
+except Exception as _err_inicial:
+    # No se traga el error: se deja constancia visible en consola/logs.
+    # Si la BD no está disponible al arrancar, es mejor saberlo de inmediato
+    # que descubrirlo más tarde con fallas difíciles de rastrear.
+    print(f"[models.py] ADVERTENCIA: no se pudo inicializar la conexión/tablas al arrancar: {_err_inicial}")

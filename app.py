@@ -21,7 +21,8 @@ from models import (
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
     get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
-    cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df
+    cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
+    verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio
 )
 
 st.set_page_config(layout="wide")
@@ -111,7 +112,6 @@ if query_params.get("modo") == "asistencia":
         ).fetchall()
         if res_emps:
             empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo"])
-            empleados_activos_df['pin'] = '1234'
     except Exception as e:
         st.error(f"Error crítico al conectar con la base de datos: {e}")
     finally:
@@ -128,9 +128,8 @@ if query_params.get("modo") == "asistencia":
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
                 emp_id = int(fila_emp['id'])
                 tipo_puesto_emp = str(fila_emp['tipo'])
-                pin_correcto = '1234'
 
-                if pin_ingresado.strip() == pin_correcto.strip():
+                if verificar_pin_empleado(emp_id, pin_ingresado):
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
                     exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual_publico(
                         empleado_id=emp_id, nombre_emp=emp_seleccionado,
@@ -146,7 +145,7 @@ if query_params.get("modo") == "asistencia":
                     else:
                         st.error(f"❌ Error al guardar en la base de datos: {error_sql}")
                 else:
-                    st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
+                    st.error("❌ Código PIN incorrecto o el empleado aún no tiene un PIN configurado. Pide a un administrador que te asigne uno en '2. Gestión de Empleados'.")
     else:
         st.warning("No hay empleados configurados en el sistema o la base de datos consultada está vacía.")
 
@@ -599,16 +598,17 @@ if not st.session_state["mostrar_form_reinicio"]:
         st.rerun()
 else:
     with st.sidebar.form("form_confirmar_reinicio"):
-        st.warning("⚠️ Esta acción borrará TODO. Confirma tu identidad.")
+        st.warning("⚠️ Esta acción borrará TODO (empleados, ventas, comisiones, nóminas, usuarios). No se puede deshacer.")
         pass_admin = st.text_input("Contraseña de Admin", type="password")
-        confirmar_check = st.checkbox("Estoy seguro de borrar la base de datos")
+        texto_confirmacion = st.text_input('Escribe exactamente "BORRAR TODO" para confirmar')
+        confirmar_check = st.checkbox("Entiendo que esta acción es irreversible")
         
         col_f1, col_f2 = st.columns(2)
         btn_ejecutar = col_f1.form_submit_button("Sí, Borrar")
         btn_cancelar = col_f2.form_submit_button("Cancelar")
         
         if btn_ejecutar:
-            if confirmar_check:
+            if confirmar_check and texto_confirmacion.strip() == "BORRAR TODO":
                 usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
                 user_val = validar_login(usuario_actual_limpio, pass_admin)
                 if not user_val and usuario_actual_limpio == "admin":
@@ -621,8 +621,10 @@ else:
                     st.rerun()
                 else:
                     st.error("Contraseña incorrecta o permisos insuficientes.")
-            else:
+            elif not confirmar_check:
                 st.error("Debes marcar la casilla de confirmación.")
+            else:
+                st.error('Debes escribir exactamente "BORRAR TODO" para continuar.')
         
         if btn_cancelar:
             st.session_state["mostrar_form_reinicio"] = False
@@ -800,13 +802,14 @@ elif opcion == "2. Gestión de Empleados":
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
                         sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
+                        pin_emp = str(row['PIN']).strip() if 'PIN' in df_subido.columns and pd.notna(row.get('PIN')) else None
 
                         if not nombre_emp:
                             continue
                         if puesto_emp not in PUESTOS_CATALOGO:
                             puesto_emp = "Mesero (Comisiones)"
 
-                        agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa)
+                        agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa, pin=pin_emp)
                         registrados += 1
 
                     registrar_asistencias_automaticas_dia(fecha_activa)
@@ -846,19 +849,34 @@ elif opcion == "2. Gestión de Empleados":
                     else:
                         st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
 
+            with st.expander(f"🔑 Reasignar PIN de asistencia de {emp_a_editar}"):
+                nuevo_pin_reset = st.text_input(
+                    "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
+                    max_chars=6, key="pin_reset_input"
+                )
+                if st.button("Guardar Nuevo PIN", key="btn_pin_reset"):
+                    if nuevo_pin_reset.strip():
+                        establecer_pin_empleado(int(emp_actual['id']), nuevo_pin_reset.strip())
+                        st.success(f"¡Nuevo PIN para {emp_a_editar}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
+                    else:
+                        st.error("El PIN no puede estar vacío.")
+
     with col_der:
         st.markdown(f"### Agregar Empleado Manual ({fecha_activa})")
         with st.form("form_empleado"):
             nuevo_nombre = st.text_input("Nombre Completo")
             nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
             nuevo_sueldo = st.number_input("Sueldo Base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
-            nuevo_pin = st.text_input("Código PIN de Asistencia (4 dígitos)", value="1234", max_chars=6)
+            nuevo_pin = st.text_input(
+                "Código PIN de Asistencia (4 dígitos, único para este empleado)",
+                value=generar_pin_aleatorio(), max_chars=6
+            )
 
             if st.form_submit_button("Guardar Empleado"):
                 if nuevo_nombre.strip():
-                    agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa)
+                    agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
                     registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Guardado con éxito para el {fecha_activa}!")
+                    st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
                     st.rerun()
                 else:
                     st.error("El nombre no puede estar vacío.")
@@ -1735,7 +1753,7 @@ elif opcion == "✍️ Registro de Asistencia":
 
             if btn_registrar_asistencia:
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
-                if pin_ingresado.strip() == '1234':
+                if verificar_pin_empleado(int(fila_emp['id']), pin_ingresado):
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
                     exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual(
                         empleado_id=int(fila_emp['id']), nombre_emp=emp_seleccionado,
@@ -1747,7 +1765,7 @@ elif opcion == "✍️ Registro de Asistencia":
                     else:
                         st.error(f"❌ Error al guardar: {error_sql}")
                 else:
-                    st.error("❌ Código PIN incorrecto. (Usa 1234 temporalmente).")
+                    st.error("❌ Código PIN incorrecto o el empleado aún no tiene un PIN configurado.")
 
 # --- SECCIÓN 6: GESTIÓN DE USUARIOS Y ACCESOS ---
 elif opcion == "6. Usuarios y Accesos":
