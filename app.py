@@ -16,7 +16,7 @@ from models import (
     cargar_empleados_df, agregar_empleado, actualizar_empleado, eliminar_empleado_por_id,
     guardar_corte_ventas, guardar_corte_chicas,
     cargar_ventas_df, cargar_chicas_df,
-    guardar_gastos_del_dia, cargar_gastos_hoy,
+    guardar_gastos_del_dia, cargar_gastos_hoy, sumar_consumo_cocina_dia,
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
@@ -96,8 +96,8 @@ if query_params.get("modo") == "asistencia":
             sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
             session.execute(
                 text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
                 ON CONFLICT DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
@@ -246,8 +246,8 @@ def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_
         sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
         session.execute(
             text("""
-            INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-            VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+            INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+            VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
             ON CONFLICT DO NOTHING
             """),
             {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
@@ -285,8 +285,8 @@ def registrar_asistencias_automaticas_dia(fecha_str):
 
             session.execute(
                 text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
                 ON CONFLICT DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": emp_id, "sueldo": sueldo_emp}
@@ -673,6 +673,7 @@ nombres_secciones = [
     "1. Subir Cortes Diarios (Excel)",
     "2. Gestión de Empleados",
     "3. Corte y Nómina Final",
+    "💰 Pagos y Comedor",
     "4. Cierre de Caja (Dashboard)",
     "5. Reportes",
     "✍️ Registro de Asistencia"
@@ -990,6 +991,7 @@ elif opcion == "3. Corte y Nómina Final":
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             descuento_emp = float(emp.get('descuento_nomina', 100.0))
+            cocina_emp = float(emp.get('consumo_cocina', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
             penalizada_cambiada = st.checkbox(
@@ -1000,7 +1002,7 @@ elif opcion == "3. Corte y Nómina Final":
             )
 
             if puede_modificar and (penalizada_cambiada != penalizada_actual):
-                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, fecha_str=fecha_activa)
+                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa)
                 st.rerun()
 
             sus_filas = pd.DataFrame()
@@ -1011,7 +1013,7 @@ elif opcion == "3. Corte y Nómina Final":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp
 
             fila_resultado = {
                 "ID": emp_id,
@@ -1022,6 +1024,7 @@ elif opcion == "3. Corte y Nómina Final":
                 "Vales": vales_emp,
                 "Transferencia": transf_emp,
                 "Descuento": descuento_emp,
+                "Cocina": cocina_emp,
                 "Comisiones": extras,
             }
             for cat in CATEGORIAS_CHICAS:
@@ -1048,7 +1051,7 @@ elif opcion == "3. Corte y Nómina Final":
         df_estilizado = df_res[cols_mostrar].style.apply(resaltar_filas, axis=1).map(pintar_negativos, subset=['Total a Pagar'])
         editor_key = f"editor_sueldos_{key_sufijo}"
         
-        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento"]]
+        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento", "Cocina"]]
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
 
@@ -1062,6 +1065,7 @@ elif opcion == "3. Corte y Nómina Final":
                 "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
                 "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
                 "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
+                "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
             disabled=columnas_deshabilitadas,
@@ -1080,10 +1084,11 @@ elif opcion == "3. Corte y Nómina Final":
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
                 nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_modificada['Transferencia'])
                 nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
+                nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_modificada['Cocina'])
                 puesto_emp = fila_modificada['Puesto']
                 penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
-                
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, fecha_str=fecha_activa)
+
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
                 actualizado_flag = True
 
         if actualizado_flag:
@@ -1113,6 +1118,7 @@ elif opcion == "3. Corte y Nómina Final":
         total_vales_grupo = float(df_res['Vales'].sum())
         total_transf_grupo = float(df_res['Transferencia'].sum())
         total_descuento_grupo = float(df_res['Descuento'].sum())
+        total_cocina_grupo = float(df_res['Cocina'].sum())
         total_sueldos_grupo = float(df_res['Sueldo Base'].sum())
         total_comisiones_grupo = float(df_res['Comisiones'].sum())
 
@@ -1126,11 +1132,13 @@ elif opcion == "3. Corte y Nómina Final":
         with col_m4:
             st.metric(f"Total Descuentos", f"${total_descuento_grupo:,.2f}")
 
-        col_m5, col_m6 = st.columns(2)
+        col_m5, col_m6, col_m7 = st.columns(3)
         with col_m5:
             st.metric(f"Total Sueldos Base", f"${total_sueldos_grupo:,.2f}")
         with col_m6:
             st.metric(f"Total Comisiones", f"${total_comisiones_grupo:,.2f}")
+        with col_m7:
+            st.metric(f"Total Cocina", f"${total_cocina_grupo:,.2f}")
 
         return df_editado, subtotal
 
@@ -1155,7 +1163,8 @@ elif opcion == "3. Corte y Nómina Final":
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
-            
+            cocina_emp = float(emp.get('consumo_cocina', 0.0))
+
             puesto_upper_check = tipo.upper()
             comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
@@ -1207,7 +1216,7 @@ elif opcion == "3. Corte y Nómina Final":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -1217,13 +1226,13 @@ elif opcion == "3. Corte y Nómina Final":
             res_general.append({
                 "ID": emp_id, "Nombre": nombre, "Puesto": tipo,
                 "Total a Pagar": total_pagar, "Sueldo Base": sueldo_base,
-                "Vales": vales_emp, "Transferencia": transf_emp,
+                "Vales": vales_emp, "Transferencia": transf_emp, "Cocina": cocina_emp,
                 "Propina (%)": etiqueta_propina,
                 "Comisiones": comisiones_prod, "_propinas_num": propinas
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Propina (%)", "Comisiones"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Propina (%)", "Comisiones"]
         editor_key_gen = f"editor_sueldos_gen_{key_sufijo}"
 
         def resaltar_filas_gen(row):
@@ -1248,6 +1257,7 @@ elif opcion == "3. Corte y Nómina Final":
                 "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
                 "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
                 "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
+                "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
                 "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                 "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
             },
@@ -1266,11 +1276,12 @@ elif opcion == "3. Corte y Nómina Final":
                 nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_mod_gen['Sueldo Base'])
                 nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
                 nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
+                nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
                 puesto_emp = fila_mod_gen['Puesto']
                 penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                 descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
-                
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, fecha_str=fecha_activa)
+
+                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
                 actualizado_gen_flag = True
 
         if actualizado_gen_flag:
@@ -1284,6 +1295,7 @@ elif opcion == "3. Corte y Nómina Final":
         sub_g = float(df_res_general['Total a Pagar'].sum())
         total_vales_gen = float(df_res_general['Vales'].sum())
         total_transf_gen = float(df_res_general['Transferencia'].sum())
+        total_cocina_gen = float(df_res_general['Cocina'].sum())
 
         col_t1, col_t2, col_t3, col_t4 = st.columns(4)
         col_t1.metric("Total Sueldos Base", f"${tot_sb:,.2f}")
@@ -1291,11 +1303,13 @@ elif opcion == "3. Corte y Nómina Final":
         col_t3.metric("Total Comisiones", f"${tot_com:,.2f}")
         col_t4.metric(f"Subtotal", f"${sub_g:,.2f}")
 
-        col_m1, col_m2 = st.columns(2)
+        col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             st.metric(f"Total Vales", f"${total_vales_gen:,.2f}")
         with col_m2:
             st.metric(f"Total Transferencias", f"${total_transf_gen:,.2f}")
+        with col_m3:
+            st.metric(f"Total Cocina", f"${total_cocina_gen:,.2f}")
 
         return float(df_res_general['Total a Pagar'].sum())
 
@@ -1333,6 +1347,123 @@ elif opcion == "3. Corte y Nómina Final":
         else:
             df_general_otros = pd.DataFrame()
         procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
+
+# --- SECCIÓN: PAGOS Y COMEDOR ---
+elif opcion == "💰 Pagos y Comedor":
+    st.subheader(f"💰 Pagos y Comedor - Fecha: {fecha_activa}")
+    st.info("Consolida, para todos los empleados de la fecha activa, cuánto se les debe de nómina (ya descontada la Cocina) y cuánto se les descontó de comedor.")
+
+    empleados_pagos_df = cargar_empleados_df(fecha_activa)
+    ventas_pagos = cargar_ventas_df(fecha_activa)
+    chicas_pagos = cargar_chicas_df(fecha_activa)
+
+    filas_pagos = []
+
+    if not empleados_pagos_df.empty:
+        df_chicas_pagos_todas = empleados_pagos_df[empleados_pagos_df['tipo'].apply(es_chica_o_bailarina)]
+        if 'descuento_nomina' in df_chicas_pagos_todas.columns:
+            chicas_con_descuento_pagos = len(df_chicas_pagos_todas[df_chicas_pagos_todas['descuento_nomina'] > 0.0])
+        else:
+            chicas_con_descuento_pagos = len(df_chicas_pagos_todas)
+
+        for _, emp in empleados_pagos_df.iterrows():
+            emp_id = emp['id']
+            nombre = emp['nombre']
+            tipo = emp['tipo']
+            sueldo_base = float(emp['sueldo_base'])
+            vales_emp = float(emp.get('vales_nomina', 0.0))
+            transf_emp = float(emp.get('transferencia_nomina', 0.0))
+            descuento_emp = float(emp.get('descuento_nomina', 100.0))
+            cocina_emp = float(emp.get('consumo_cocina', 0.0))
+            penalizada_emp = bool(emp.get('penalizada', False))
+
+            if es_chica_o_bailarina(tipo):
+                sus_filas = pd.DataFrame()
+                if not chicas_pagos.empty and 'empleado_id' in chicas_pagos.columns:
+                    sus_filas = chicas_pagos[chicas_pagos['empleado_id'] == emp_id]
+                detalle = calcular_comisiones_detalle(sus_filas, penalizada=penalizada_emp)
+                total_bruto = sueldo_base + detalle["total"]
+                total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp
+            else:
+                puesto_upper_check = tipo.upper()
+                comisiones_prod = 0.0
+                if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+                    porcentaje_propina = 0.0
+                    comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_pagos)
+                elif "SEGURIDAD" in puesto_upper_check:
+                    porcentaje_propina = 0.0
+                elif "BARMAN" in puesto_upper_check:
+                    porcentaje_propina = 10.0
+                elif "AYUDANTE" in puesto_upper_check:
+                    porcentaje_propina = 5.0
+                elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    porcentaje_propina = 8.0
+                else:
+                    porcentaje_propina = 50.0
+
+                propinas = 0.0
+                if not ventas_pagos.empty and porcentaje_propina > 0.0:
+                    if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                        p_tarj_tot = (ventas_pagos['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_pagos.columns else 0.0
+                        p_efec_tot = ventas_pagos['propina_efectivo'].sum() if 'propina_efectivo' in ventas_pagos.columns else 0.0
+                        p_vale_tot = ventas_pagos['propina_vales'].sum() if 'propina_vales' in ventas_pagos.columns else 0.0
+                        p_cred_tot = ventas_pagos['propinacredito'].sum() if 'propinacredito' in ventas_pagos.columns else 0.0
+                        propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
+                        if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                            propinas += calcular_propina_ventas_propias(ventas_pagos, emp_id)
+                    else:
+                        filas_emp = ventas_pagos[ventas_pagos['idmesero'] == emp_id]
+                        if not filas_emp.empty:
+                            p_tarj = (filas_emp['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_emp.columns else 0.0
+                            p_efec = filas_emp['propina_efectivo'].sum() if 'propina_efectivo' in filas_emp.columns else 0.0
+                            p_vale = filas_emp['propina_vales'].sum() if 'propina_vales' in filas_emp.columns else 0.0
+                            p_cred = filas_emp['propinacredito'].sum() if 'propinacredito' in filas_emp.columns else 0.0
+                            propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
+
+                if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                    if not chicas_pagos.empty:
+                        for _, f_prod in chicas_pagos.iterrows():
+                            desc = str(f_prod['descripcion'])
+                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                            comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
+
+                total_bruto = sueldo_base + propinas + comisiones_prod
+                total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp
+
+            filas_pagos.append({
+                "Nombre": nombre,
+                "Puesto": tipo,
+                "Total a Pagar ($)": total_pagar,
+                "Cocina ($)": cocina_emp,
+            })
+
+    df_pagos = pd.DataFrame(filas_pagos)
+    total_a_pagar_personal = float(df_pagos["Total a Pagar ($)"].sum()) if not df_pagos.empty else 0.0
+    total_cocina_personal = sumar_consumo_cocina_dia(fecha_activa)
+
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #00E676;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">TOTAL A PAGAR AL PERSONAL</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${total_a_pagar_personal:,.2f}</div></div>""", unsafe_allow_html=True)
+    with col_p2:
+        st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #FF7043;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">TOTAL QUE DEBE EL PERSONAL DE COCINA</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${total_cocina_personal:,.2f}</div></div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown(f"#### Detalle por Empleado ({fecha_activa})")
+    if df_pagos.empty:
+        st.info(f"No hay empleados con nómina registrada para la fecha {fecha_activa}.")
+    else:
+        def pintar_negativos_pagos(val):
+            if isinstance(val, (int, float)) and val < 0:
+                return 'color: #FF5252; font-weight: bold;'
+            return ''
+
+        st.dataframe(
+            df_pagos.style.map(pintar_negativos_pagos, subset=["Total a Pagar ($)"]).format(
+                {"Total a Pagar ($)": "${:,.2f}", "Cocina ($)": "${:,.2f}"}
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
@@ -1467,13 +1598,13 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         st.warning(f"🔒 Modo de solo lectura: El corte del {fecha_activa} está cerrado.")
 
     gasto_previo = cargar_gastos_hoy(fecha_activa)
-    g_cocina_val = float(gasto_previo.gasto_cocina) if gasto_previo else 0.0
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
     g_vales_val = float(gasto_previo.gasto_vales) if gasto_previo else 0.0
 
     col_g1, col_g2, col_g3 = st.columns(3)
     with col_g1:
-        gasto_cocina = st.number_input("Gastos - Cocina ($)", value=g_cocina_val, format="%.2f", disabled=not puede_modificar)
+        gasto_cocina = sumar_consumo_cocina_dia(fecha_activa)
+        st.metric("Gastos - Cocina ($)", f"${gasto_cocina:,.2f}", help="Se calcula solo, sumando la columna Cocina de todos los empleados en '3. Corte y Nómina Final' para esta fecha.")
     with col_g2:
         gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", disabled=not puede_modificar)
     with col_g3:
