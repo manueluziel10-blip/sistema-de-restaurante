@@ -656,6 +656,22 @@ def registrar_asistencia_lista_empleados(empleado_ids: list, fecha_str: str,
                 """),
                 {"fecha": f_date, "emp_id": emp_id, "sueldo": float(sueldo_emp) if sueldo_emp is not None else 300.0}
             )
+            # Si la fila de nómina de este día YA existía (por ejemplo, se
+            # creó antes con el sueldo por defecto al subir el corte de
+            # ventas/comisiones, antes de procesar el Alta Masiva con el
+            # sueldo real), el INSERT de arriba no la toca por el
+            # ON CONFLICT DO NOTHING. Este UPDATE la sincroniza con el
+            # sueldo actual del catálogo, sin importar el orden en que se
+            # hayan subido los archivos — y sin tocar vales/descuento/
+            # transferencia/penalizada que ya se hayan capturado ese día.
+            session.execute(
+                db_text("""
+                    UPDATE nomina_diaria
+                    SET sueldo_base = :sueldo
+                    WHERE empleado_id = :emp_id AND fecha = :fecha
+                """),
+                {"sueldo": float(sueldo_emp) if sueldo_emp is not None else 300.0, "emp_id": emp_id, "fecha": f_date}
+            )
         session.commit()
     except Exception as e:
         session.rollback()

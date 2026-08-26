@@ -662,6 +662,80 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
                     st.session_state["mostrar_form_borrar_dia"] = False
                     st.rerun()
 
+        st.markdown("---")
+        st.markdown("### 📂 Paso 1: Alta Masiva de Personal (Excel)")
+        st.warning(
+            "⚠️ **Si hoy tienes personal nuevo, sube primero este archivo, ANTES de las "
+            "ventas/propinas/comisiones de abajo.** Si subes primero las ventas, esos "
+            "empleados se crean automáticamente con el sueldo por defecto de su puesto, "
+            "y aunque luego subas el Alta Masiva con el sueldo correcto, puede quedar "
+            "una diferencia. Si no tienes personal nuevo hoy, puedes saltarte este paso."
+        )
+
+        with st.expander("📂 Alta Masiva por Excel", expanded=False):
+            filas_plantilla = []
+            for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
+                filas_plantilla.append({"Nombre": f"Ejemplo Empleado {idx}", "Puesto": puesto, "Sueldo Base": sueldo, "PIN": f"100{idx}"})
+            df_plantilla = pd.DataFrame(filas_plantilla)
+
+            buffer_plantilla = io.BytesIO()
+            with pd.ExcelWriter(buffer_plantilla, engine='openpyxl') as writer:
+                df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla_Personal')
+            buffer_plantilla.seek(0)
+
+            st.download_button(
+                label="📥 Descargar Plantilla de Excel con Todos los Puestos y PIN",
+                data=buffer_plantilla,
+                file_name="Plantilla_Alta_Empleados_PIN.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.markdown("---")
+            up_excel_personal = st.file_uploader("Sube tu archivo Excel de empleados", type=["xls", "xlsx"], key="subir_excel_personal")
+
+            if up_excel_personal is not None:
+                df_subido = pd.read_excel(up_excel_personal)
+                st.dataframe(df_subido.head(), use_container_width=True)
+
+                if st.button("Procesar e Importar Personal"):
+                    columnas_necesarias = {'Nombre', 'Puesto', 'Sueldo Base'}
+                    if not columnas_necesarias.issubset(df_subido.columns):
+                        st.error("El archivo Excel debe contener las columnas: Nombre, Puesto y Sueldo Base.")
+                    else:
+                        filas_para_importar = []
+                        for _, row in df_subido.iterrows():
+                            nombre_emp = str(row['Nombre']).strip()
+                            puesto_emp = str(row['Puesto']).strip()
+                            sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
+                            pin_emp = str(row['PIN']).strip() if 'PIN' in df_subido.columns and pd.notna(row.get('PIN')) else None
+
+                            if not nombre_emp:
+                                continue
+                            if puesto_emp not in PUESTOS_CATALOGO:
+                                puesto_emp = "Mesero (Comisiones)"
+
+                            filas_para_importar.append({
+                                "nombre": nombre_emp, "tipo": puesto_emp,
+                                "sueldo_base": sueldo_emp, "pin": pin_emp
+                            })
+
+                        # Una sola conexión para todo el archivo, en vez de una
+                        # por cada empleado — mucho más rápido con listas largas.
+                        ids_procesados = agregar_empleados_catalogo_bulk(filas_para_importar)
+
+                        # Se marca asistencia SOLO para los empleados de este
+                        # archivo (no para todos los activos del sistema).
+                        registrar_asistencia_lista_empleados(ids_procesados, fecha_activa)
+
+                        st.success(
+                            f"¡Importación completada! Empleados procesados: {len(ids_procesados)}, "
+                            f"marcados como presentes el {fecha_activa}."
+                        )
+                        st.rerun()
+
+        st.markdown("---")
+        st.markdown("### 🧾 Paso 2: Ventas, Propinas y Comisiones")
+
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
             up_ventas = st.file_uploader("Subir 'ventasmeseros.xls'", type=["xls", "xlsx"], key="subir_ventas_meseros")
@@ -733,10 +807,9 @@ elif opcion == "2. Gestión de Empleados":
     
     empleados_df = cargar_empleados_df(fecha_activa)
 
-    tab_gest_chicas, tab_gest_general, tab_carga_masiva = st.tabs([
+    tab_gest_chicas, tab_gest_general = st.tabs([
         "💃 Bailarinas y Chicas de Salón",
-        "📋 Personal Operativo y General",
-        "📂 Alta Masiva por Excel"
+        "📋 Personal Operativo y General"
     ])
 
     with tab_gest_chicas:
@@ -755,69 +828,7 @@ elif opcion == "2. Gestión de Empleados":
         else:
             st.info("No hay registros en esta fecha.")
 
-    with tab_carga_masiva:
-        st.markdown("### Importar o Actualizar Personal Masivamente")
-        st.info(f"Sube un archivo de Excel para dar de alta al personal en la fecha activa: **{fecha_activa}**.")
-
-        filas_plantilla = []
-        for idx, (puesto, sueldo) in enumerate(PUESTOS_CATALOGO.items(), start=1):
-            filas_plantilla.append({"Nombre": f"Ejemplo Empleado {idx}", "Puesto": puesto, "Sueldo Base": sueldo, "PIN": f"100{idx}"})
-        df_plantilla = pd.DataFrame(filas_plantilla)
-
-        buffer_plantilla = io.BytesIO()
-        with pd.ExcelWriter(buffer_plantilla, engine='openpyxl') as writer:
-            df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla_Personal')
-        buffer_plantilla.seek(0)
-
-        st.download_button(
-            label="📥 Descargar Plantilla de Excel con Todos los Puestos y PIN",
-            data=buffer_plantilla,
-            file_name="Plantilla_Alta_Empleados_PIN.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        st.markdown("---")
-        up_excel_personal = st.file_uploader("Sube tu archivo Excel de empleados", type=["xls", "xlsx"], key="subir_excel_personal")
-
-        if up_excel_personal is not None:
-            df_subido = pd.read_excel(up_excel_personal)
-            st.dataframe(df_subido.head(), use_container_width=True)
-
-            if st.button("Procesar e Importar Personal"):
-                columnas_necesarias = {'Nombre', 'Puesto', 'Sueldo Base'}
-                if not columnas_necesarias.issubset(df_subido.columns):
-                    st.error("El archivo Excel debe contener las columnas: Nombre, Puesto y Sueldo Base.")
-                else:
-                    filas_para_importar = []
-                    for _, row in df_subido.iterrows():
-                        nombre_emp = str(row['Nombre']).strip()
-                        puesto_emp = str(row['Puesto']).strip()
-                        sueldo_emp = float(row['Sueldo Base']) if pd.notna(row['Sueldo Base']) else 0.0
-                        pin_emp = str(row['PIN']).strip() if 'PIN' in df_subido.columns and pd.notna(row.get('PIN')) else None
-
-                        if not nombre_emp:
-                            continue
-                        if puesto_emp not in PUESTOS_CATALOGO:
-                            puesto_emp = "Mesero (Comisiones)"
-
-                        filas_para_importar.append({
-                            "nombre": nombre_emp, "tipo": puesto_emp,
-                            "sueldo_base": sueldo_emp, "pin": pin_emp
-                        })
-
-                    # Una sola conexión para todo el archivo, en vez de una
-                    # por cada empleado — mucho más rápido con listas largas.
-                    ids_procesados = agregar_empleados_catalogo_bulk(filas_para_importar)
-
-                    # Se marca asistencia SOLO para los empleados de este
-                    # archivo (no para todos los activos del sistema).
-                    registrar_asistencia_lista_empleados(ids_procesados, fecha_activa)
-
-                    st.success(
-                        f"¡Importación completada! Empleados procesados: {len(ids_procesados)}, "
-                        f"marcados como presentes el {fecha_activa}."
-                    )
-                    st.rerun()
+    st.info("📂 ¿Buscas la Alta Masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
 
     st.markdown("---")
     col_izq, col_der = st.columns(2)
