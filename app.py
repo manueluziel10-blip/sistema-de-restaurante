@@ -24,7 +24,7 @@ from models import (
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
     obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
-    agregar_empleado_catalogo, registrar_asistencia_lista_empleados
+    agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -765,8 +765,7 @@ elif opcion == "2. Gestión de Empleados":
                 if not columnas_necesarias.issubset(df_subido.columns):
                     st.error("El archivo Excel debe contener las columnas: Nombre, Puesto y Sueldo Base.")
                 else:
-                    registrados = 0
-                    ids_procesados = []
+                    filas_para_importar = []
                     for _, row in df_subido.iterrows():
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
@@ -778,17 +777,21 @@ elif opcion == "2. Gestión de Empleados":
                         if puesto_emp not in PUESTOS_CATALOGO:
                             puesto_emp = "Mesero (Comisiones)"
 
-                        # Se actualiza el catálogo de personal...
-                        emp_id_procesado = agregar_empleado_catalogo(nombre_emp, puesto_emp, sueldo_emp, pin=pin_emp)
-                        ids_procesados.append(emp_id_procesado)
-                        registrados += 1
+                        filas_para_importar.append({
+                            "nombre": nombre_emp, "tipo": puesto_emp,
+                            "sueldo_base": sueldo_emp, "pin": pin_emp
+                        })
 
-                    # ...y se marca asistencia SOLO para los empleados de este
+                    # Una sola conexión para todo el archivo, en vez de una
+                    # por cada empleado — mucho más rápido con listas largas.
+                    ids_procesados = agregar_empleados_catalogo_bulk(filas_para_importar)
+
+                    # Se marca asistencia SOLO para los empleados de este
                     # archivo (no para todos los activos del sistema).
                     registrar_asistencia_lista_empleados(ids_procesados, fecha_activa)
 
                     st.success(
-                        f"¡Importación completada! Empleados procesados: {registrados}, "
+                        f"¡Importación completada! Empleados procesados: {len(ids_procesados)}, "
                         f"marcados como presentes el {fecha_activa}."
                     )
                     st.rerun()

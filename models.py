@@ -513,11 +513,9 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
     empleados) — NO crea ni toca ningún registro de nomina_diaria.
     Devuelve el id del empleado (nuevo o existente).
 
-    Se usa en la importación masiva por Excel ("Alta Masiva"): subir esa
-    plantilla es dar de alta/actualizar el catálogo de personal, no
-    significa por sí solo que trabajaron el día activo. Para marcar
-    asistencia de justo estos empleados, ver
-    registrar_asistencia_lista_empleados().
+    Se usa para altas individuales sueltas. Para importar varios
+    empleados de un Excel a la vez, usar agregar_empleados_catalogo_bulk
+    (una sola conexión para todo el archivo, mucho más rápida).
     """
     session = get_session()
     try:
@@ -545,6 +543,67 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
             session.commit()
             session.refresh(emp)
             return emp.id
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def agregar_empleados_catalogo_bulk(filas: list) -> list:
+    """Versión en lote de agregar_empleado_catalogo, pensada para la
+    importación masiva por Excel. Antes, cada fila del archivo abría su
+    propia conexión a la base de datos (get_session/commit/close) y
+    volvía a verificar el esquema y el catálogo de puestos desde cero —
+    con un Excel de 50+ empleados eso son 50+ viajes redondos a la BD.
+    Aquí se hace todo en UNA sola sesión: el esquema y los puestos se
+    verifican una sola vez, y solo hay un commit al final.
+
+    filas: lista de dicts con llaves 'nombre', 'tipo', 'sueldo_base',
+    y opcionalmente 'pin'.
+    Devuelve una lista de empleado_id en el mismo orden que 'filas'.
+    """
+    if not filas:
+        return []
+    session = get_session()
+    try:
+        asegurar_columnas_empleado(session)
+        # Solo se asegura cada puesto distinto una vez, no por fila.
+        puestos_unicos = {f['tipo'] for f in filas}
+        for puesto in puestos_unicos:
+            asegurar_puesto_existe(session, puesto)
+
+        nombres_norm = [f['nombre'].upper() for f in filas]
+        existentes = session.query(Empleado).filter(Empleado.nombre.in_(nombres_norm)).all()
+        mapa_existentes = {e.nombre: e for e in existentes}
+
+        ids_resultado = []
+        for f in filas:
+            nombre_norm = f['nombre'].upper()
+            pin = f.get('pin')
+            emp = mapa_existentes.get(nombre_norm)
+            if emp:
+                emp.tipo = f['tipo']
+                emp.sueldo_base = f['sueldo_base']
+                emp.activo = True
+                if pin:
+                    emp.pin_hash = _hash_valor(str(pin).strip())
+            else:
+                pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
+                emp = Empleado(
+                    nombre=nombre_norm,
+                    tipo=f['tipo'],
+                    sueldo_base=f['sueldo_base'],
+                    activo=True,
+                    pin_hash=_hash_valor(pin_final)
+                )
+                session.add(emp)
+                session.flush()  # asigna el id sin comitear toda la transacción
+                mapa_existentes[nombre_norm] = emp
+            ids_resultado.append(emp.id)
+
+        session.commit()
+        return ids_resultado
     except Exception as e:
         session.rollback()
         raise e
@@ -732,28 +791,45 @@ def eliminar_empleado_por_id(emp_id, fecha_str):
         session.close()
 
 
-def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0, fecha_date=None, existing_session=None):
+def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comisiones)", sueldo_base: float = 300.0,
+                              fecha_date=None, existing_session=None, cache: dict = None):
+    """cache: dict opcional {nombre_upper: empleado_id} que el caller
+    mantiene durante todo un archivo/corte. Si el nombre ya se resolvió
+    antes en esta misma carga (típico: el mismo mesero aparece en
+    decenas o cientos de filas del Excel), se evita volver a consultar
+    o crear — solo se regresa el id ya conocido. Esto es lo que más
+    acelera la carga de archivos grandes, ya que antes cada fila volvía
+    a golpear la base de datos aunque fuera el mismo empleado."""
+    nombre_norm = nombre.upper()
+    if cache is not None and nombre_norm in cache:
+        return cache[nombre_norm], False
+
     session = existing_session if existing_session else get_session()
     try:
-        asegurar_columnas_empleado(session)
-        asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
-        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        if existing_session is None:
+            # Llamada aislada (sin sesión/lote compartido): se asegura el
+            # esquema aquí. Cuando SÍ hay existing_session, se asume que
+            # el caller ya hizo esto una sola vez antes del bucle.
+            asegurar_columnas_empleado(session)
+            asegurar_puesto_existe(session, tipo, sueldo_base, es_comision=True)
+
+        emp = session.query(Empleado).filter(Empleado.nombre == nombre_norm).first()
         creado = False
         if not emp:
             emp = Empleado(
-                nombre=nombre.upper(),
+                nombre=nombre_norm,
                 tipo=tipo,
                 sueldo_base=sueldo_base,
                 activo=True,
                 pin_hash=_hash_valor(generar_pin_aleatorio())
             )
             session.add(emp)
-            session.commit()
-            session.refresh(emp)
+            # flush() asigna el id sin cerrar/comitear toda la transacción
+            # — mucho más barato que session.commit() en cada fila.
+            session.flush()
             creado = True
         else:
             emp.activo = True
-            session.commit()
 
         f_date = fecha_date if fecha_date else datetime.now().date()
         nom = session.query(NominaDiaria).filter(
@@ -770,7 +846,13 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
                 transferencia_nomina=0.0,
                 penalizada=False
             ))
+            session.flush()
+
+        if existing_session is None:
             session.commit()
+
+        if cache is not None:
+            cache[nombre_norm] = emp.id
 
         return emp.id, creado
     finally:
@@ -788,30 +870,38 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         session.commit()
 
         tipo_por_defecto = "Mesero (Comisiones)"
+        # Esquema y catálogo de puesto: UNA sola vez para todo el archivo,
+        # no en cada fila (antes esto se repetía por cada venta).
+        asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo_por_defecto)
 
         df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
         df_completo = df_completo.fillna(0)
 
+        cache_empleados = {}
+        nuevas_filas = []
         for _, row in df_completo.iterrows():
             nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
-            emp_id, _ = obtener_o_crear_empleado(nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date, existing_session=session)
+            emp_id, _ = obtener_o_crear_empleado(
+                nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date,
+                existing_session=session, cache=cache_empleados
+            )
 
-            kwargs = {
-                "fecha": f_filtro_date,
-                "idmesero": emp_id,
-                "importe": row.get("importe_x", row.get("importe", 0)),
-                "efectivo": row.get("efectivo", 0),
-                "propina_efectivo": row.get("propinaefectivo", 0),
-                "tarjeta": row.get("tarjeta", 0),
-                "propina_tarjeta": row.get("propinatarjeta", 0),
-                "vales": row.get("vales", 0),
-                "propina_vales": row.get("propinavales", 0),
-                "otros": row.get("otros", 0),
-                "archivo_origen": archivo_origen,
-            }
+            nuevas_filas.append(CorteVenta(
+                fecha=f_filtro_date,
+                idmesero=emp_id,
+                importe=row.get("importe_x", row.get("importe", 0)),
+                efectivo=row.get("efectivo", 0),
+                propina_efectivo=row.get("propinaefectivo", 0),
+                tarjeta=row.get("tarjeta", 0),
+                propina_tarjeta=row.get("propinatarjeta", 0),
+                vales=row.get("vales", 0),
+                propina_vales=row.get("propinavales", 0),
+                otros=row.get("otros", 0),
+                archivo_origen=archivo_origen,
+            ))
 
-            session.add(CorteVenta(**kwargs))
+        session.add_all(nuevas_filas)
         session.commit()
     except Exception as e:
         session.rollback()
@@ -829,7 +919,13 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
         session.query(ProductoChica).filter(ProductoChica.fecha == f_filtro_date).delete()
         session.commit()
 
+        # Esquema y catálogo de puesto: UNA sola vez para todo el archivo.
+        asegurar_columnas_empleado(session)
+        asegurar_puesto_existe(session, "Chicas / Bailarinas (Comisiones)", 300.0, es_comision=True)
+
         nuevas_detectadas = []
+        cache_empleados = {}
+        nuevas_filas = []
         for _, row in filas_chicas.iterrows():
             desc = str(row["DESCRIPCION"])
             if ">" in desc:
@@ -842,24 +938,27 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             comision_unit = calcular_comision_fn(prod_parte)
             cantidad = float(row["CANTIDAD"]) if pd.notna(row.get("CANTIDAD")) else 1.0
 
-            emp_id, creado = obtener_o_crear_empleado(nombre_persona, "Chicas / Bailarinas (Comisiones)", 300.0, fecha_date=f_filtro_date, existing_session=session)
+            emp_id, creado = obtener_o_crear_empleado(
+                nombre_persona, "Chicas / Bailarinas (Comisiones)", 300.0, fecha_date=f_filtro_date,
+                existing_session=session, cache=cache_empleados
+            )
             if creado:
                 nuevas_detectadas.append(nombre_persona)
 
-            kwargs = {
-                "fecha": f_filtro_date,
-                "clave": row.get("CLAVE"),
-                "descripcion": desc,
-                "grupo": row.get("GRUPO"),
-                "precio": row.get("PRECIO"),
-                "cantidad": cantidad,
-                "empleado_nombre": nombre_persona,
-                "empleado_id": emp_id,
-                "comision_unitaria": comision_unit,
-                "archivo_origen": archivo_origen,
-            }
+            nuevas_filas.append(ProductoChica(
+                fecha=f_filtro_date,
+                clave=row.get("CLAVE"),
+                descripcion=desc,
+                grupo=row.get("GRUPO"),
+                precio=row.get("PRECIO"),
+                cantidad=cantidad,
+                empleado_nombre=nombre_persona,
+                empleado_id=emp_id,
+                comision_unitaria=comision_unit,
+                archivo_origen=archivo_origen,
+            ))
 
-            session.add(ProductoChica(**kwargs))
+        session.add_all(nuevas_filas)
         session.commit()
         return nuevas_detectadas
     except Exception as e:
