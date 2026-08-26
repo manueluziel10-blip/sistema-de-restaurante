@@ -22,7 +22,7 @@ from models import (
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
     get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
-    obtener_penalizaciones_rango,
+    obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio
 )
 from comisiones import (
@@ -1514,6 +1514,23 @@ elif opcion == "5. Reportes":
             chicas_rango = cargar_chicas_rango_df(f_ini_str, f_fin_str)
             ventas_rango = cargar_ventas_rango_df(f_ini_str, f_fin_str)
             mapa_asistencias = obtener_mapa_asistencias(f_ini_str, f_fin_str)
+
+            df_diagnostico = diagnosticar_dias_rango(f_ini_str, f_fin_str)
+            if not df_diagnostico.empty:
+                st.warning(
+                    f"⚠️ Se detectaron {len(df_diagnostico)} empleado(s) con días de asistencia "
+                    f"que NO tienen su registro de sueldo del día (por eso el 'Sueldo Base Acumulado' "
+                    f"sale más bajo de lo esperado)."
+                )
+                with st.expander("🔍 Ver detalle de días afectados por empleado"):
+                    st.dataframe(df_diagnostico, use_container_width=True)
+                if st.button("🛠️ Reparar nómina faltante de este periodo", key="btn_reparar_nomina_periodo"):
+                    creadas = reparar_nomina_faltante_rango(f_ini_str, f_fin_str)
+                    st.success(
+                        f"¡Reparado! Se crearon {creadas} registro(s) de nómina diaria faltantes. "
+                        f"Vuelve a darle clic a 'Consultar Periodo' para ver el reporte actualizado."
+                    )
+                st.markdown("---")
 
             if empleados_rango.empty:
                 st.warning(f"No se encontraron registros de nómina entre {f_ini_str} y {f_fin_str}.")

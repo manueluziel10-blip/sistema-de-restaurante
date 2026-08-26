@@ -810,6 +810,90 @@ def obtener_penalizaciones_rango(fecha_inicio: str, fecha_fin: str) -> dict:
         session.close()
 
 
+def diagnosticar_dias_rango(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
+    """Para cada empleado, compara sus días de asistencia contra sus días
+    con registro en nomina_diaria dentro del rango. Detecta:
+    - días con asistencia pero SIN fila en nomina_diaria (no se les paga ese día)
+    - días con fila en nomina_diaria pero con sueldo_base en $0
+
+    Sirve para explicar por qué "Asistencias (Días)" y "Sueldo Base
+    Acumulado" no coinciden en el reporte por periodo."""
+    session = get_session()
+    try:
+        f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+        f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+
+        asis = session.query(Asistencia.empleado_id, Asistencia.nombre_empleado, Asistencia.fecha).filter(
+            Asistencia.fecha >= f_ini, Asistencia.fecha <= f_fin
+        ).all()
+        nom = session.query(NominaDiaria.empleado_id, NominaDiaria.fecha, NominaDiaria.sueldo_base).filter(
+            NominaDiaria.fecha >= f_ini, NominaDiaria.fecha <= f_fin
+        ).all()
+
+        mapa_asis = {}
+        for emp_id, nombre, fecha in asis:
+            info = mapa_asis.setdefault(emp_id, {"nombre": nombre, "fechas": set()})
+            info["fechas"].add(fecha)
+
+        mapa_nom = {}
+        for emp_id, fecha, sueldo in nom:
+            mapa_nom.setdefault(emp_id, {})[fecha] = float(sueldo) if sueldo is not None else 0.0
+
+        filas = []
+        for emp_id, info in mapa_asis.items():
+            fechas_asistencia = info["fechas"]
+            fechas_nomina_dict = mapa_nom.get(emp_id, {})
+            fechas_nomina = set(fechas_nomina_dict.keys())
+
+            dias_sin_nomina = sorted(fechas_asistencia - fechas_nomina)
+            dias_nomina_cero = sorted(f for f in (fechas_asistencia & fechas_nomina) if fechas_nomina_dict[f] == 0.0)
+
+            if dias_sin_nomina or dias_nomina_cero:
+                filas.append({
+                    "empleado_id": emp_id,
+                    "nombre": info["nombre"],
+                    "dias_asistencia_sin_nomina": ", ".join(str(f) for f in dias_sin_nomina) or "-",
+                    "dias_con_sueldo_base_en_cero": ", ".join(str(f) for f in dias_nomina_cero) or "-",
+                    "total_dias_afectados": len(dias_sin_nomina) + len(dias_nomina_cero),
+                })
+        return pd.DataFrame(filas)
+    finally:
+        session.close()
+
+
+def reparar_nomina_faltante_rango(fecha_inicio: str, fecha_fin: str) -> int:
+    """Crea la fila de nomina_diaria (con el sueldo_base actual del
+    empleado) para cada día del rango en el que exista asistencia pero
+    falte el registro de nómina. NO toca días donde ya existe una fila
+    (aunque esté en $0, para no pisar un $0 puesto a propósito por un
+    admin). Devuelve cuántas filas se crearon."""
+    session = get_session()
+    try:
+        f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+        f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+
+        resultado = session.execute(
+            db_text("""
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+                SELECT DISTINCT a.fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, FALSE
+                FROM asistencias a
+                JOIN empleados e ON e.id = a.empleado_id
+                WHERE a.fecha BETWEEN :f_ini AND :f_fin
+                ON CONFLICT (empleado_id, fecha) DO NOTHING
+                RETURNING 1;
+            """),
+            {"f_ini": f_ini, "f_fin": f_fin}
+        )
+        filas_creadas = len(resultado.fetchall())
+        session.commit()
+        return filas_creadas
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 def cargar_empleados_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
     session = get_session()
     f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
