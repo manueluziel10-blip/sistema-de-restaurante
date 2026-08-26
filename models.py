@@ -14,6 +14,7 @@ import hmac
 import os
 import secrets
 import unicodedata
+import io
 
 from database import get_session
 
@@ -1268,6 +1269,125 @@ def cargar_ventas_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     return df
+
+
+def exportar_base_datos_excel() -> io.BytesIO:
+    """Exporta TODAS las tablas del sistema a un solo archivo Excel (una
+    hoja por tabla). Pensado como respaldo completo antes de un
+    'Reiniciar Base de Datos' — luego se puede restaurar con
+    importar_base_datos_excel()."""
+    session = get_session()
+    try:
+        tablas = {
+            'puestos_catalogo': PuestoCatalogo,
+            'usuarios_sistema': UsuarioSistema,
+            'empleados': Empleado,
+            'nomina_diaria': NominaDiaria,
+            'asistencias': Asistencia,
+            'cortes_ventas': CorteVenta,
+            'cortes_productos_chicas': ProductoChica,
+            'gastos_diarios': GastoDiario,
+            'cortes_bloqueos': CorteBloqueo,
+        }
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            for nombre_hoja, modelo in tablas.items():
+                query = session.query(modelo)
+                df = pd.read_sql(query.statement, session.bind)
+                df.to_excel(writer, index=False, sheet_name=nombre_hoja[:31])
+        buffer.seek(0)
+        return buffer
+    finally:
+        session.close()
+
+
+def _normalizar_fechas_para_importar(df: pd.DataFrame) -> pd.DataFrame:
+    """Convierte columnas de fecha (leídas de Excel como Timestamp) al
+    tipo date de Python, que es lo que esperan las columnas Date."""
+    for col in ('fecha', 'fecha_bloqueo'):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+    return df
+
+
+def importar_base_datos_excel(archivo) -> dict:
+    """Restaura TODAS las tablas desde un archivo generado por
+    exportar_base_datos_excel(). REEMPLAZA el contenido actual de cada
+    tabla (se vacía todo primero), conservando los IDs originales del
+    archivo para que las relaciones (empleado_id, idmesero, etc.) sigan
+    apuntando a quien corresponde, y al final reinicia los contadores
+    de autoincremento para que los próximos registros nuevos no choquen
+    con los ids restaurados.
+
+    Devuelve un dict {nombre_tabla: filas_importadas}."""
+    session = get_session()
+    resultado = {}
+    try:
+        # (nombre_hoja, modelo, columna_id_autoincrement_o_None)
+        orden_tablas = [
+            ('puestos_catalogo', PuestoCatalogo, None),
+            ('usuarios_sistema', UsuarioSistema, 'id'),
+            ('empleados', Empleado, 'id'),
+            ('nomina_diaria', NominaDiaria, 'id'),
+            ('asistencias', Asistencia, 'id'),
+            ('cortes_ventas', CorteVenta, 'id'),
+            ('cortes_productos_chicas', ProductoChica, 'id'),
+            ('gastos_diarios', GastoDiario, 'id'),
+            ('cortes_bloqueos', CorteBloqueo, 'id'),
+        ]
+
+        xls = pd.ExcelFile(archivo)
+
+        # Se vacía todo (en cascada, por las relaciones) antes de recargar.
+        session.execute(db_text("""
+            TRUNCATE TABLE
+                cortes_productos_chicas, cortes_ventas, nomina_diaria,
+                asistencias, cortes_bloqueos, gastos_diarios,
+                empleados, puestos_catalogo, usuarios_sistema
+            RESTART IDENTITY CASCADE
+        """))
+        session.commit()
+
+        for nombre_hoja, modelo, col_id in orden_tablas:
+            if nombre_hoja not in xls.sheet_names:
+                resultado[nombre_hoja] = 0
+                continue
+
+            df = pd.read_excel(xls, sheet_name=nombre_hoja)
+            if df.empty:
+                resultado[nombre_hoja] = 0
+                continue
+
+            df = _normalizar_fechas_para_importar(df)
+
+            registros = df.to_dict(orient='records')
+            # NaN -> None DESPUÉS de convertir a diccionarios: un DataFrame
+            # numérico no puede contener None (pandas lo revierte a NaN),
+            # pero un diccionario de Python sí, y eso es lo que necesita
+            # SQLAlchemy para insertar NULL correctamente.
+            registros = [
+                {k: (None if (v is not None and pd.isna(v)) else v) for k, v in fila.items()}
+                for fila in registros
+            ]
+            session.bulk_insert_mappings(modelo, registros)
+            session.commit()
+            resultado[nombre_hoja] = len(registros)
+
+        # Reinicia cada secuencia de autoincremento al máximo id restaurado.
+        for nombre_hoja, modelo, col_id in orden_tablas:
+            if col_id:
+                session.execute(db_text(
+                    f"SELECT setval(pg_get_serial_sequence('{nombre_hoja}', '{col_id}'), "
+                    f"COALESCE((SELECT MAX({col_id}) FROM {nombre_hoja}), 1), true)"
+                ))
+        session.commit()
+
+        return resultado
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
 def reiniciar_base_de_datos():

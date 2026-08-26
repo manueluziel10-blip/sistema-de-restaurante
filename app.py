@@ -24,7 +24,8 @@ from models import (
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
     obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
-    agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados
+    agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
+    exportar_base_datos_excel, importar_base_datos_excel
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -552,6 +553,72 @@ if rol_actual_lower == "admin":
     puede_modificar = not corte_esta_bloqueado
 else:
     puede_modificar = es_dia_actual and (not corte_esta_bloqueado)
+
+# --- RESPALDO DE BASE DE DATOS (EXPORTAR / IMPORTAR) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("💾 Respaldo de Base de Datos")
+
+try:
+    buffer_respaldo = exportar_base_datos_excel()
+    st.sidebar.download_button(
+        label="📥 Descargar Respaldo Completo (Excel)",
+        data=buffer_respaldo,
+        file_name=f"Respaldo_ZullysDB_{datetime.now(ZoneInfo('America/Mazatlan')).strftime('%Y-%m-%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Descarga TODAS las tablas (empleados, ventas, comisiones, nómina, asistencias, usuarios) en un solo Excel."
+    )
+except Exception as e:
+    st.sidebar.error(f"No se pudo generar el respaldo: {e}")
+
+if "mostrar_form_restaurar" not in st.session_state:
+    st.session_state["mostrar_form_restaurar"] = False
+
+if not st.session_state["mostrar_form_restaurar"]:
+    if st.sidebar.button("📤 Restaurar desde Respaldo"):
+        st.session_state["mostrar_form_restaurar"] = True
+        st.rerun()
+else:
+    with st.sidebar.form("form_confirmar_restaurar"):
+        st.warning(
+            "⚠️ Esto REEMPLAZA TODOS los datos actuales (empleados, ventas, "
+            "comisiones, nóminas, usuarios) con lo que traiga el archivo. "
+            "Úsalo para recuperar un respaldo después de un reinicio."
+        )
+        archivo_restaurar = st.file_uploader("Sube el archivo de respaldo (.xlsx)", type=["xlsx"], key="subir_respaldo_restaurar")
+        pass_admin_restaurar = st.text_input("Contraseña de Admin", type="password", key="pass_admin_restaurar")
+        texto_confirmacion_restaurar = st.text_input('Escribe exactamente "RESTAURAR" para confirmar', key="texto_confirmar_restaurar")
+        confirmar_check_restaurar = st.checkbox("Entiendo que esto reemplaza todos los datos actuales", key="check_confirmar_restaurar")
+
+        col_r1, col_r2 = st.columns(2)
+        btn_ejecutar_restaurar = col_r1.form_submit_button("Sí, Restaurar")
+        btn_cancelar_restaurar = col_r2.form_submit_button("Cancelar")
+
+        if btn_ejecutar_restaurar:
+            if archivo_restaurar is None:
+                st.error("Sube un archivo de respaldo primero.")
+            elif not confirmar_check_restaurar or texto_confirmacion_restaurar.strip() != "RESTAURAR":
+                st.error('Marca la casilla y escribe exactamente "RESTAURAR" para continuar.')
+            else:
+                usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
+                user_val = validar_login(usuario_actual_limpio, pass_admin_restaurar)
+                if not user_val and usuario_actual_limpio == "admin":
+                    user_val = validar_login("admin", pass_admin_restaurar)
+
+                if user_val and user_val.get("rol") == "admin":
+                    try:
+                        resultado_restaurar = importar_base_datos_excel(archivo_restaurar)
+                        resumen_restaurar = ", ".join(f"{k}: {v}" for k, v in resultado_restaurar.items())
+                        st.session_state["mostrar_form_restaurar"] = False
+                        st.sidebar.success(f"¡Base de datos restaurada! {resumen_restaurar}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al restaurar: {e}")
+                else:
+                    st.error("Contraseña incorrecta o permisos insuficientes.")
+
+        if btn_cancelar_restaurar:
+            st.session_state["mostrar_form_restaurar"] = False
+            st.rerun()
 
 # --- ZONA DE PELIGRO EN BARRA LATERAL ---
 st.sidebar.markdown("---")
