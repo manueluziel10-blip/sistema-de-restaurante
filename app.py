@@ -22,7 +22,12 @@ from models import (
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
     get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
+    obtener_penalizaciones_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio
+)
+from comisiones import (
+    calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
+    calcular_bono_dj_animador, CATEGORIAS_CHICAS
 )
 
 st.set_page_config(layout="wide")
@@ -213,44 +218,6 @@ st.markdown("""
 def es_chica_o_bailarina(tipo_str):
     t = str(tipo_str).upper()
     return ('CHICA' in t) or ('BAILARINA' in t)
-
-def calcular_comision_chica(producto_str):
-    p = producto_str.upper().strip()
-    if 'PRIVADO PROMO' in p:
-        return 80.0
-    elif 'PRIVADO ARTISTA' in p:
-        return 300.0
-    elif 'BOONS ARTISTA' in p:
-        return 1000.0
-    elif 'BOONS' in p:
-        return 700.0
-    elif 'COPA LADY' in p:
-        return 100.0
-    elif 'MINI STRONGBOW' in p:
-        return 250.0
-    elif 'VIP30' in p:
-        return 1900.0
-    elif 'VIP 15' in p or 'VIP15' in p:
-        return 1000.0
-    elif 'VIP5' in p or 'PRIVADO' in p:
-        return 100.0
-    elif 'VIP3' in p:
-        return 50.0
-    return 0.0
-
-def calcular_comision_gerencia_caja(producto_str):
-    p = producto_str.upper().strip()
-    if 'MOET IMPERIAL' in p:
-        return 170.0
-    elif 'VINO ESPUMOSO' in p:
-        return 60.0
-    elif 'BOONS' in p:
-        return 30.0
-    elif 'STRONGBOW' in p:
-        return 10.0
-    elif 'COPA' in p:
-        return 5.0
-    return 0.0
 
 def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
     if es_chica_o_bailarina(tipo_puesto):
@@ -922,99 +889,35 @@ elif opcion == "3. Corte y Nómina Final":
                 actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, fecha_str=fecha_activa)
                 st.rerun()
 
-            extras = 0.0
-            boons_cant, boons_monto = 0.0, 0.0
-            copa_cant, copa_monto = 0.0, 0.0
-            strong_cant, strong_monto = 0.0, 0.0
-            vip3_cant, vip3_monto = 0.0, 0.0
-            priv_promo_cant, priv_promo_monto = 0.0, 0.0
-            vip5_priv_art_cant, vip5_priv_art_monto = 0.0, 0.0
-            vip15_cant, vip15_monto = 0.0, 0.0
-            vip30_cant, vip30_monto = 0.0, 0.0
-
+            sus_filas = pd.DataFrame()
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
-                if not sus_filas.empty:
-                    for _, f_prod in sus_filas.iterrows():
-                        desc = str(f_prod['descripcion']).upper()
-                        cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                        com_unit = 80.0 if 'PRIVADO PROMO' in desc else (300.0 if 'PRIVADO ARTISTA' in desc else float(f_prod['comision_unitaria']))
-                        subtotal_prod = cant * com_unit
-                        
-                        if 'PRIVADO PROMO' in desc:
-                            priv_promo_cant += cant
-                            priv_promo_monto += subtotal_prod
-                        elif 'PRIVADO ARTISTA' in desc:
-                            vip5_priv_art_cant += cant
-                            vip5_priv_art_monto += subtotal_prod
-                        elif 'BOONS ARTISTA' in desc:
-                            boons_cant += cant
-                            boons_monto += subtotal_prod
-                        elif 'BOONS' in desc:
-                            boons_cant += cant
-                            boons_monto += subtotal_prod
-                        elif 'COPA LADY' in desc:
-                            copa_cant += cant
-                            copa_monto += subtotal_prod
-                        elif 'MINI STRONGBOW' in desc:
-                            strong_cant += cant
-                            strong_monto += subtotal_prod
-                        elif 'VIP30' in desc:
-                            vip30_cant += cant
-                            vip30_monto += subtotal_prod
-                        elif 'VIP 15' in desc or 'VIP15' in desc:
-                            vip15_cant += cant
-                            vip15_monto += subtotal_prod
-                        elif 'VIP5' in desc or 'PRIVADO' in desc:
-                            vip5_priv_art_cant += cant
-                            vip5_priv_art_monto += subtotal_prod
-                        elif 'VIP3' in desc:
-                            vip3_cant += cant
-                            vip3_monto += subtotal_prod
 
-                    extras = boons_monto + copa_monto + strong_monto + vip3_monto + priv_promo_monto + vip5_priv_art_monto + vip15_monto + vip30_monto
-
-            if penalizada_cambiada:
-                extras = extras / 2.0
-                boons_monto /= 2.0
-                copa_monto /= 2.0
-                strong_monto /= 2.0
-                vip3_monto /= 2.0
-                priv_promo_monto /= 2.0
-                vip5_priv_art_monto /= 2.0
-                vip15_monto /= 2.0
-                vip30_monto /= 2.0
+            detalle = calcular_comisiones_detalle(sus_filas, penalizada=penalizada_cambiada)
+            extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
             total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp
-            
-            res_grupo.append({
+
+            fila_resultado = {
                 "ID": emp_id,
-                "Nombre": nombre, 
+                "Nombre": nombre,
                 "Puesto": emp['tipo'],
                 "Total a Pagar": total_pagar,
                 "Sueldo Base": sueldo_base,
                 "Vales": vales_emp,
                 "Transferencia": transf_emp,
                 "Descuento": descuento_emp,
-                "Comisiones": extras, 
-                "Boons": f"{int(boons_cant)} (${boons_monto:,.2f})",
-                "Copa Lady": f"{int(copa_cant)} (${copa_monto:,.2f})",
-                "Strongbow": f"{int(strong_cant)} (${strong_monto:,.2f})",
-                "VIP 3": f"{int(vip3_cant)} (${vip3_monto:,.2f})",
-                "Privados Promo": f"{int(priv_promo_cant)} (${priv_promo_monto:,.2f})",
-                "VIP 5 / Priv / Artista": f"{int(vip5_priv_art_cant)} (${vip5_priv_art_monto:,.2f})",
-                "VIP 15": f"{int(vip15_cant)} (${vip15_monto:,.2f})",
-                "VIP 30": f"{int(vip30_cant)} (${vip30_monto:,.2f})",
-                "_b_cant": boons_cant, "_b_m": boons_monto,
-                "_c_cant": copa_cant, "_c_m": copa_monto,
-                "_s_cant": strong_cant, "_s_m": strong_monto,
-                "_v3_cant": vip3_cant, "_v3_m": vip3_monto,
-                "_priv_promo_cant": priv_promo_cant, "_priv_promo_m": priv_promo_monto,
-                "_v5_art_cant": vip5_priv_art_cant, "_v5_art_m": vip5_priv_art_monto,
-                "_v15_cant": vip15_cant, "_v15_m": vip15_monto,
-                "_v30_cant": vip30_cant, "_v30_m": vip30_monto
-            })
+                "Comisiones": extras,
+            }
+            for cat in CATEGORIAS_CHICAS:
+                cant = detalle[f"{cat}_cant"]
+                monto = detalle[f"{cat}_monto"]
+                fila_resultado[cat] = f"{int(cant)} (${monto:,.2f})"
+                fila_resultado[f"_{cat}_cant"] = cant
+                fila_resultado[f"_{cat}_m"] = monto
+
+            res_grupo.append(fila_resultado)
         
         df_res = pd.DataFrame(res_grupo)
         cols_mostrar = [c for c in df_res.columns if not c.startswith("_")]
@@ -1073,36 +976,13 @@ elif opcion == "3. Corte y Nómina Final":
             st.rerun()
 
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
-        
-        tot_b_cant = df_res['_b_cant'].sum()
-        tot_b_m = df_res['_b_m'].sum()
-        tot_c_cant = df_res['_c_cant'].sum()
-        tot_c_m = df_res['_c_m'].sum()
-        tot_s_cant = df_res['_s_cant'].sum()
-        tot_s_m = df_res['_s_m'].sum()
-        tot_v3_cant = df_res['_v3_cant'].sum()
-        tot_v3_m = df_res['_v3_m'].sum()
-        tot_priv_p_cant = df_res['_priv_promo_cant'].sum()
-        tot_priv_p_m = df_res['_priv_promo_m'].sum()
-        tot_v5_art_cant = df_res['_v5_art_cant'].sum()
-        tot_v5_art_m = df_res['_v5_art_m'].sum()
-        tot_v15_cant = df_res['_v15_cant'].sum()
-        tot_v15_m = df_res['_v15_m'].sum()
-        tot_v30_cant = df_res['_v30_cant'].sum()
-        tot_v30_m = df_res['_v30_m'].sum()
 
-        cols_prod = st.columns(8)
         productos_resumen = [
-            ("Boons", tot_b_cant, tot_b_m),
-            ("Copa Lady", tot_c_cant, tot_c_m),
-            ("Strongbow", tot_s_cant, tot_s_m),
-            ("VIP 3", tot_v3_cant, tot_v3_m),
-            ("Privados Promo", tot_priv_p_cant, tot_priv_p_m),
-            ("VIP 5 / Art", tot_v5_art_cant, tot_v5_art_m),
-            ("VIP 15", tot_v15_cant, tot_v15_m),
-            ("VIP 30", tot_v30_cant, tot_v30_m)
+            (cat, df_res[f"_{cat}_cant"].sum(), df_res[f"_{cat}_m"].sum())
+            for cat in CATEGORIAS_CHICAS
         ]
-        
+
+        cols_prod = st.columns(len(productos_resumen))
         for idx, (nombre_p, cant_p, monto_p) in enumerate(productos_resumen):
             with cols_prod[idx]:
                 st.markdown(f"""
@@ -1166,7 +1046,7 @@ elif opcion == "3. Corte y Nómina Final":
             comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
-                comisiones_prod = chicas_con_descuento_count * 40.0
+                comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_count)
             elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
@@ -1372,7 +1252,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
-                comisiones_prod = chicas_con_descuento_dash * 40.0
+                comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_dash)
             elif "SEGURIDAD" in puesto_upper_check:
                 porcentaje_propina = 0.0
             elif "BARMAN" in puesto_upper_check:
@@ -1643,6 +1523,7 @@ elif opcion == "5. Reportes":
                 ])
 
                 with tab_rep_bailarinas:
+                    mapa_penalizaciones = obtener_penalizaciones_rango(f_ini_str, f_fin_str)
                     df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
                     resumen_bailarinas = []
                     for _, emp in df_bailarinas_rango.iterrows():
@@ -1651,22 +1532,15 @@ elif opcion == "5. Reportes":
                         descuento = float(emp['descuento_nomina'])
                         dias_asistencia = mapa_asistencias.get(emp_id, 0)
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
-                        
-                        total_comisiones = 0.0
-                        if not sus_prods.empty:
-                            for _, p in sus_prods.iterrows():
-                                desc = str(p['descripcion']).upper()
-                                cant = float(p['cantidad']) if pd.notna(p['cantidad']) else 0.0
-                                com_unit = float(p['comision_unitaria'])
-                                if 'PRIVADO PROMO' in desc: com_unit = 80.0
-                                elif 'PRIVADO ARTISTA' in desc: com_unit = 300.0
-                                elif 'BOONS ARTISTA' in desc: com_unit = 1000.0
-                                elif 'BOONS' in desc: com_unit = 700.0
-                                total_comisiones += (cant * com_unit)
+
+                        fechas_penalizadas_emp = mapa_penalizaciones.get(emp_id, set())
+                        detalle = calcular_comisiones_detalle(sus_prods, fechas_penalizadas=fechas_penalizadas_emp)
+                        total_comisiones = detalle["total"]
 
                         total_pagar = (sueldo_base_acumulado + total_comisiones) - descuento
                         resumen_bailarinas.append({
                             "ID": emp_id, "Nombre": emp['nombre'], "Asistencias (Días)": dias_asistencia,
+                            "Días Penalizados": len(fechas_penalizadas_emp),
                             "Sueldo Base Acumulado": sueldo_base_acumulado, "Comisiones Acumuladas": total_comisiones,
                             "Descuentos Acumulados": descuento, "Total a Pagar": total_pagar
                         })
@@ -1721,21 +1595,45 @@ elif opcion == "5. Reportes":
                     )
                     df_gen_rango = empleados_rango[mask_gen_rango]
                     resumen_gen = []
-                    chicas_con_desc_count = len(df_bailarinas_rango)
+                    # Mismo criterio que el corte diario: solo cuentan las chicas
+                    # que tuvieron descuento_nomina acumulado > 0 en el periodo.
+                    chicas_con_desc_count = len(df_bailarinas_rango[df_bailarinas_rango['descuento_nomina'] > 0.0]) if not df_bailarinas_rango.empty else 0
                     for _, emp in df_gen_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
                         sueldo_base_acumulado = float(emp['sueldo_base'])
                         propinas_o_comis = 0.0
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
-                            propinas_o_comis = chicas_con_desc_count * 40.0
+                            propinas_o_comis = calcular_bono_dj_animador(chicas_con_desc_count)
+                        elif any(p in tipo for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                            if not chicas_rango.empty:
+                                for _, f_prod in chicas_rango.iterrows():
+                                    cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                                    propinas_o_comis += cant * calcular_comision_gerencia_caja(str(f_prod['descripcion']))
                         resumen_gen.append({
                             "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
                             "Asistencias (Días)": mapa_asistencias.get(emp_id, 0), "Sueldo Base Acumulado": sueldo_base_acumulado,
+                            "Comisiones Acumuladas": propinas_o_comis,
                             "Total a Pagar": sueldo_base_acumulado + propinas_o_comis
                         })
                     df_rep_g = pd.DataFrame(resumen_gen)
                     st.dataframe(df_rep_g, use_container_width=True)
+
+                st.markdown("---")
+                buffer_reporte_periodo = io.BytesIO()
+                with pd.ExcelWriter(buffer_reporte_periodo, engine='openpyxl') as writer:
+                    (df_rep_b if not df_rep_b.empty else pd.DataFrame([{"Info": "Sin registros"}])).to_excel(writer, index=False, sheet_name='Bailarinas y Chicas')
+                    (df_rep_m if not df_rep_m.empty else pd.DataFrame([{"Info": "Sin registros"}])).to_excel(writer, index=False, sheet_name='Meseros y Ayudantes')
+                    (df_rep_s if not df_rep_s.empty else pd.DataFrame([{"Info": "Sin registros"}])).to_excel(writer, index=False, sheet_name='Seguridad')
+                    (df_rep_g if not df_rep_g.empty else pd.DataFrame([{"Info": "Sin registros"}])).to_excel(writer, index=False, sheet_name='General y Fijo')
+                buffer_reporte_periodo.seek(0)
+
+                st.download_button(
+                    label="📥 Descargar Reporte del Periodo en Excel (todas las pestañas)",
+                    data=buffer_reporte_periodo,
+                    file_name=f"Reporte_Nomina_{f_ini_str}_a_{f_fin_str}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
 # --- SECCIÓN: REGISTRO DE ASISTENCIA ---
 elif opcion == "✍️ Registro de Asistencia":

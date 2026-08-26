@@ -788,6 +788,28 @@ def cargar_gastos_hoy(fecha_str: str = None):
     return hoy
 
 
+def obtener_penalizaciones_rango(fecha_inicio: str, fecha_fin: str) -> dict:
+    """Devuelve {empleado_id: set(fechas)} con los días marcados como
+    'penalizada' dentro del rango, para aplicar la mitad de comisión
+    día por día en los reportes por periodo (la penalización es un
+    flag diario en NominaDiaria, no aplica al periodo completo)."""
+    session = get_session()
+    try:
+        f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+        f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+        filas = session.query(NominaDiaria.empleado_id, NominaDiaria.fecha).filter(
+            NominaDiaria.fecha >= f_ini,
+            NominaDiaria.fecha <= f_fin,
+            NominaDiaria.penalizada == True
+        ).all()
+        mapa = {}
+        for emp_id, fecha in filas:
+            mapa.setdefault(emp_id, set()).add(fecha)
+        return mapa
+    finally:
+        session.close()
+
+
 def cargar_empleados_rango_df(fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
     session = get_session()
     f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
