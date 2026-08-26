@@ -886,13 +886,30 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo_por_defecto)
 
-        df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='left', suffixes=('_v', '_p'))
+        # IMPORTANTE: how='outer' (antes 'left'). Con 'left' se perdían por
+        # completo los registros que solo existen en el archivo de propinas
+        # — típico de un Cajero/Gerente/Capitán que cobra una cuenta y recibe
+        # propina directo, sin generar su propia línea en "ventasmeseros.xls".
+        df_completo = pd.merge(df_v, df_propinas, on='idmesero', how='outer', suffixes=('_v', '_p'))
+
+        # El nombre puede venir solo de uno de los dos archivos —se resuelve
+        # ANTES de rellenar NaN con 0 (si no, un nombre faltante se
+        # convertiría en el número 0 en vez de tomarse del otro archivo).
+        if 'nombre_v' in df_completo.columns and 'nombre_p' in df_completo.columns:
+            df_completo['nombre_resuelto'] = df_completo['nombre_v'].combine_first(df_completo['nombre_p'])
+        elif 'nombre_v' in df_completo.columns:
+            df_completo['nombre_resuelto'] = df_completo['nombre_v']
+        elif 'nombre_p' in df_completo.columns:
+            df_completo['nombre_resuelto'] = df_completo['nombre_p']
+        else:
+            df_completo['nombre_resuelto'] = "MESERO"
+
         df_completo = df_completo.fillna(0)
 
         cache_empleados = {}
         nuevas_filas = []
         for _, row in df_completo.iterrows():
-            nombre_mesero = normalizar_nombre(row.get("nombre_v", row.get("nombre_p", "MESERO")))
+            nombre_mesero = normalizar_nombre(row.get("nombre_resuelto", "MESERO"))
             emp_id, _ = obtener_o_crear_empleado(
                 nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date,
                 existing_session=session, cache=cache_empleados
