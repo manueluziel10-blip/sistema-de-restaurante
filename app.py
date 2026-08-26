@@ -673,18 +673,36 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
         if up_ventas is not None and up_propinas is not None:
             df_v = pd.read_excel(up_ventas)
             df_p = pd.read_excel(up_propinas)
-            
-            df_v['idmesero'] = pd.to_numeric(df_v['idmesero'], errors='coerce').fillna(0).astype(int)
-            df_p['idmesero'] = pd.to_numeric(df_p['idmesero'], errors='coerce').fillna(0).astype(int)
 
-            st.success("¡Archivos de ventas y propinas cargados correctamente!")
-            st.dataframe(df_v.head(), width=700)
-            
-            if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
-                guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
-                registrar_asistencias_automaticas_dia(fecha_activa)
-                st.success(f"¡Corte de meseros guardado y asistencias registradas para el día {fecha_activa}!")
-                st.rerun()
+            # Normaliza encabezados (quita espacios y homogeneiza mayúsculas)
+            # por si el Excel exportado trae variaciones menores de formato,
+            # en vez de tronar con un KeyError críptico.
+            df_v.columns = [str(c).strip().lower() for c in df_v.columns]
+            df_p.columns = [str(c).strip().lower() for c in df_p.columns]
+
+            columnas_faltantes = []
+            if 'idmesero' not in df_v.columns:
+                columnas_faltantes.append(f"'{up_ventas.name}' (columnas encontradas: {list(df_v.columns)})")
+            if 'idmesero' not in df_p.columns:
+                columnas_faltantes.append(f"'{up_propinas.name}' (columnas encontradas: {list(df_p.columns)})")
+
+            if columnas_faltantes:
+                st.error(
+                    "❌ No se encontró la columna 'idmesero' en: " + " | ".join(columnas_faltantes) +
+                    ". Revisa que el archivo sea el reporte correcto exportado desde Soft Restaurant."
+                )
+            else:
+                df_v['idmesero'] = pd.to_numeric(df_v['idmesero'], errors='coerce').fillna(0).astype(int)
+                df_p['idmesero'] = pd.to_numeric(df_p['idmesero'], errors='coerce').fillna(0).astype(int)
+
+                st.success("¡Archivos de ventas y propinas cargados correctamente!")
+                st.dataframe(df_v.head(), width=700)
+
+                if st.button("Guardar corte de Meseros", key="btn_guardar_corte_meseros"):
+                    guardar_corte_ventas(df_v, df_p, archivo_origen=up_ventas.name, fecha_corte=fecha_activa, usuario_nombre=st.session_state["usuario_actual"])
+                    registrar_asistencias_automaticas_dia(fecha_activa)
+                    st.success(f"¡Corte de meseros guardado y asistencias registradas para el día {fecha_activa}!")
+                    st.rerun()
 
         if up_chicas is not None:
             df_c = pd.read_excel(up_chicas, skiprows=4)

@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import unicodedata
 
 from database import get_session
 
@@ -48,6 +49,16 @@ def _verificar_valor(valor_plano: str, valor_guardado: str) -> bool:
 
 def generar_pin_aleatorio() -> str:
     return f"{secrets.randbelow(10000):04d}"
+
+
+def normalizar_nombre(nombre) -> str:
+    """Normaliza un nombre de empleado para comparar/guardar de forma
+    consistente: quita espacios extra, pasa a mayúsculas y elimina
+    acentos/diacríticos — así "DÍAZ" y "DIAZ" se tratan como el mismo
+    empleado en vez de crear un duplicado por una tilde de diferencia
+    entre el Excel y lo que ya está en la base de datos."""
+    texto = str(nombre).strip().upper()
+    return unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
 
 
 class PuestoCatalogo(Base):
@@ -521,7 +532,7 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
     try:
         asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo)
-        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        emp = session.query(Empleado).filter(Empleado.nombre == normalizar_nombre(nombre)).first()
         if emp:
             emp.tipo = tipo
             emp.sueldo_base = sueldo_base
@@ -533,7 +544,7 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
         else:
             pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
             emp = Empleado(
-                nombre=nombre.upper(),
+                nombre=normalizar_nombre(nombre),
                 tipo=tipo,
                 sueldo_base=sueldo_base,
                 activo=True,
@@ -573,13 +584,13 @@ def agregar_empleados_catalogo_bulk(filas: list) -> list:
         for puesto in puestos_unicos:
             asegurar_puesto_existe(session, puesto)
 
-        nombres_norm = [f['nombre'].upper() for f in filas]
+        nombres_norm = [normalizar_nombre(f['nombre']) for f in filas]
         existentes = session.query(Empleado).filter(Empleado.nombre.in_(nombres_norm)).all()
         mapa_existentes = {e.nombre: e for e in existentes}
 
         ids_resultado = []
         for f in filas:
-            nombre_norm = f['nombre'].upper()
+            nombre_norm = normalizar_nombre(f['nombre'])
             pin = f.get('pin')
             emp = mapa_existentes.get(nombre_norm)
             if emp:
@@ -658,7 +669,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
     try:
         asegurar_columnas_empleado(session)
         asegurar_puesto_existe(session, tipo)
-        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        emp = session.query(Empleado).filter(Empleado.nombre == normalizar_nombre(nombre)).first()
         if emp:
             emp.tipo = tipo
             emp.sueldo_base = sueldo_base
@@ -669,7 +680,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
         else:
             pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
             emp = Empleado(
-                nombre=nombre.upper(),
+                nombre=normalizar_nombre(nombre),
                 tipo=tipo,
                 sueldo_base=sueldo_base,
                 activo=True,
@@ -800,7 +811,7 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
     o crear — solo se regresa el id ya conocido. Esto es lo que más
     acelera la carga de archivos grandes, ya que antes cada fila volvía
     a golpear la base de datos aunque fuera el mismo empleado."""
-    nombre_norm = nombre.upper()
+    nombre_norm = normalizar_nombre(nombre)
     if cache is not None and nombre_norm in cache:
         return cache[nombre_norm], False
 
@@ -881,7 +892,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
         cache_empleados = {}
         nuevas_filas = []
         for _, row in df_completo.iterrows():
-            nombre_mesero = str(row.get("nombre_v", row.get("nombre_p", "MESERO"))).strip().upper()
+            nombre_mesero = normalizar_nombre(row.get("nombre_v", row.get("nombre_p", "MESERO")))
             emp_id, _ = obtener_o_crear_empleado(
                 nombre_mesero, tipo_por_defecto, 300.0, fecha_date=f_filtro_date,
                 existing_session=session, cache=cache_empleados
@@ -890,7 +901,7 @@ def guardar_corte_ventas(df_v: pd.DataFrame, df_propinas: pd.DataFrame, archivo_
             nuevas_filas.append(CorteVenta(
                 fecha=f_filtro_date,
                 idmesero=emp_id,
-                importe=row.get("importe_x", row.get("importe", 0)),
+                importe=row.get("importe_v", row.get("importe", 0)),
                 efectivo=row.get("efectivo", 0),
                 propina_efectivo=row.get("propinaefectivo", 0),
                 tarjeta=row.get("tarjeta", 0),
@@ -930,7 +941,7 @@ def guardar_corte_chicas(filas_chicas: pd.DataFrame, calcular_comision_fn, archi
             desc = str(row["DESCRIPCION"])
             if ">" in desc:
                 prod_parte, chica_parte = desc.split(">", 1)
-                nombre_persona = chica_parte.strip().upper()
+                nombre_persona = normalizar_nombre(chica_parte)
             else:
                 nombre_persona = "GENERAL"
                 prod_parte = desc
