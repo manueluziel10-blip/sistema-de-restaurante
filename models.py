@@ -511,14 +511,13 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
 def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
     """Da de alta o actualiza un empleado SOLO en el catálogo (tabla
     empleados) — NO crea ni toca ningún registro de nomina_diaria.
+    Devuelve el id del empleado (nuevo o existente).
 
     Se usa en la importación masiva por Excel ("Alta Masiva"): subir esa
     plantilla es dar de alta/actualizar el catálogo de personal, no
-    significa que todos esos empleados trabajaron el día activo. Antes,
-    usar agregar_empleado() aquí creaba nómina del día para cada uno, y
-    encima se llamaba a registrar_asistencias_automaticas_dia() después,
-    lo que marcaba a TODOS los empleados activos (no solo los del Excel)
-    como presentes ese día — inflando el corte con gente que no trabajó.
+    significa por sí solo que trabajaron el día activo. Para marcar
+    asistencia de justo estos empleados, ver
+    registrar_asistencia_lista_empleados().
     """
     session = get_session()
     try:
@@ -531,6 +530,8 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
             emp.activo = True
             if pin:
                 emp.pin_hash = _hash_valor(str(pin).strip())
+            session.commit()
+            return emp.id
         else:
             pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
             emp = Empleado(
@@ -541,10 +542,54 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
                 pin_hash=_hash_valor(pin_final)
             )
             session.add(emp)
-        session.commit()
+            session.commit()
+            session.refresh(emp)
+            return emp.id
     except Exception as e:
         session.rollback()
         raise e
+    finally:
+        session.close()
+
+
+def registrar_asistencia_lista_empleados(empleado_ids: list, fecha_str: str,
+                                          comentario: str = "Automático por alta masiva"):
+    """Marca 'Presente' y crea la nómina diaria SOLO para los
+    empleado_id indicados, en la fecha dada.
+
+    A diferencia de registrar_asistencias_automaticas_dia() —que marca a
+    TODOS los empleados activos del sistema, hayan o no venido en el
+    archivo que se subió— esta función es selectiva: solo toca a los
+    empleados que realmente vinieron en el Excel procesado."""
+    if not empleado_ids:
+        return
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        empleados = session.query(Empleado.id, Empleado.nombre, Empleado.sueldo_base).filter(
+            Empleado.id.in_(empleado_ids), Empleado.activo == True
+        ).all()
+        for emp_id, nombre_emp, sueldo_emp in empleados:
+            session.execute(
+                db_text("""
+                    INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios)
+                    VALUES (:emp_id, :nombre_emp, :fecha, 'Presente', :comentario)
+                    ON CONFLICT (empleado_id, fecha) DO NOTHING
+                """),
+                {"emp_id": emp_id, "nombre_emp": nombre_emp, "fecha": f_date, "comentario": comentario}
+            )
+            session.execute(
+                db_text("""
+                    INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
+                    VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                    ON CONFLICT (empleado_id, fecha) DO NOTHING
+                """),
+                {"fecha": f_date, "emp_id": emp_id, "sueldo": float(sueldo_emp) if sueldo_emp is not None else 300.0}
+            )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error al registrar asistencia por lista de empleados: {e}")
     finally:
         session.close()
 

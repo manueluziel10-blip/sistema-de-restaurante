@@ -24,7 +24,7 @@ from models import (
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
     obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
-    agregar_empleado_catalogo
+    agregar_empleado_catalogo, registrar_asistencia_lista_empleados
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -766,6 +766,7 @@ elif opcion == "2. Gestión de Empleados":
                     st.error("El archivo Excel debe contener las columnas: Nombre, Puesto y Sueldo Base.")
                 else:
                     registrados = 0
+                    ids_procesados = []
                     for _, row in df_subido.iterrows():
                         nombre_emp = str(row['Nombre']).strip()
                         puesto_emp = str(row['Puesto']).strip()
@@ -777,17 +778,18 @@ elif opcion == "2. Gestión de Empleados":
                         if puesto_emp not in PUESTOS_CATALOGO:
                             puesto_emp = "Mesero (Comisiones)"
 
-                        # Solo se actualiza el catálogo de personal — NO se les
-                        # marca como presentes ni se les crea nómina del día
-                        # activo. Su asistencia se registra aparte (kiosko/PIN
-                        # o al procesar el corte del día que sí trabajaron).
-                        agregar_empleado_catalogo(nombre_emp, puesto_emp, sueldo_emp, pin=pin_emp)
+                        # Se actualiza el catálogo de personal...
+                        emp_id_procesado = agregar_empleado_catalogo(nombre_emp, puesto_emp, sueldo_emp, pin=pin_emp)
+                        ids_procesados.append(emp_id_procesado)
                         registrados += 1
 
+                    # ...y se marca asistencia SOLO para los empleados de este
+                    # archivo (no para todos los activos del sistema).
+                    registrar_asistencia_lista_empleados(ids_procesados, fecha_activa)
+
                     st.success(
-                        f"¡Catálogo actualizado! Empleados procesados: {registrados}. "
-                        f"No se les marcó asistencia — solo aparecerán en un corte el día que "
-                        f"realmente registren su llegada o tengan ventas/comisiones."
+                        f"¡Importación completada! Empleados procesados: {registrados}, "
+                        f"marcados como presentes el {fecha_activa}."
                     )
                     st.rerun()
 
