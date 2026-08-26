@@ -84,6 +84,31 @@ def calcular_bono_dj_animador(cantidad_chicas_con_descuento: int) -> float:
     return cantidad_chicas_con_descuento * 40.0
 
 
+def calcular_propina_ventas_propias(df_ventas: pd.DataFrame, empleado_id, porcentaje: float = 50.0) -> float:
+    """Propina de las ventas que un empleado atendió personalmente
+    (idmesero = su propio id), pagada al mismo % que un mesero normal
+    (50% por defecto — ya con el 16% de comisión bancaria descontado en
+    tarjeta, igual que a cualquier mesero).
+
+    Pensado para Gerente/Capitán de Mesero/Cajero: normalmente cobran un
+    % fijo del total de propinas del restaurante por su rol (8%), pero a
+    veces también atienden mesas directamente (su nombre aparece como
+    "idmesero" en el Excel de Soft Restaurant). Esta función calcula esa
+    propina personal (al 50%, como cualquier mesero) para sumarla aparte
+    a su comisión de rol, en un solo pago."""
+    if df_ventas is None or df_ventas.empty or 'idmesero' not in df_ventas.columns:
+        return 0.0
+    filas_propias = df_ventas[df_ventas['idmesero'] == empleado_id]
+    if filas_propias.empty:
+        return 0.0
+    p_tarj = (filas_propias['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_propias.columns else 0.0
+    p_efec = filas_propias['propina_efectivo'].sum() if 'propina_efectivo' in filas_propias.columns else 0.0
+    p_vale = filas_propias['propina_vales'].sum() if 'propina_vales' in filas_propias.columns else 0.0
+    p_cred = filas_propias['propinacredito'].sum() if 'propinacredito' in filas_propias.columns else 0.0
+    total_propina_bruta = p_tarj + p_efec + p_vale + p_cred
+    return float(total_propina_bruta * (porcentaje / 100.0))
+
+
 def calcular_comisiones_detalle(df_productos_empleado: pd.DataFrame, penalizada: bool = False,
                                  fechas_penalizadas: set = None) -> dict:
     """

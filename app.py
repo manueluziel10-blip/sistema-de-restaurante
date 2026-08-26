@@ -27,7 +27,7 @@ from models import (
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
-    calcular_bono_dj_animador, CATEGORIAS_CHICAS
+    calcular_bono_dj_animador, calcular_propina_ventas_propias, CATEGORIAS_CHICAS
 )
 
 st.set_page_config(layout="wide")
@@ -1059,6 +1059,7 @@ elif opcion == "3. Corte y Nómina Final":
                 porcentaje_propina = 50.0
 
             propinas = 0.0
+            propina_propia_rol = 0.0
             if not ventas_totales.empty and porcentaje_propina > 0.0:
                 if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                     p_tarj_tot = (ventas_totales['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_totales.columns else 0.0
@@ -1067,6 +1068,13 @@ elif opcion == "3. Corte y Nómina Final":
                     p_cred_tot = ventas_totales['propinacredito'].sum() if 'propinacredito' in ventas_totales.columns else 0.0
                     total_propinas_restaurante = p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot
                     propinas = total_propinas_restaurante * (porcentaje_propina / 100.0)
+
+                    # Gerente/Capitán/Cajero a veces atienden mesas directamente
+                    # (aparecen como "idmesero" en el Excel). Se les suma su
+                    # propina personal completa para pagarles todo de una vez.
+                    if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                        propina_propia_rol = calcular_propina_ventas_propias(ventas_totales, emp_id)
+                        propinas += propina_propia_rol
                 else:
                     filas_mesero = ventas_totales[ventas_totales['idmesero'] == emp_id]
                     if not filas_mesero.empty:
@@ -1087,11 +1095,16 @@ elif opcion == "3. Corte y Nómina Final":
             total_bruto = sueldo_base + propinas + comisiones_prod
             total_pagar = total_bruto - vales_emp - transf_emp
 
+            if propina_propia_rol > 0:
+                etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
+            else:
+                etiqueta_propina = f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})"
+
             res_general.append({
                 "ID": emp_id, "Nombre": nombre, "Puesto": tipo,
                 "Total a Pagar": total_pagar, "Sueldo Base": sueldo_base,
                 "Vales": vales_emp, "Transferencia": transf_emp,
-                "Propina (%)": f"↑ {porcentaje_propina:.1f}% (${propinas:,.2f})",
+                "Propina (%)": etiqueta_propina,
                 "Comisiones": comisiones_prod, "_propinas_num": propinas
             })
 
@@ -1272,6 +1285,11 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                     p_vale_tot = ventas_acumuladas['propina_vales'].sum() if 'propina_vales' in ventas_acumuladas.columns else 0.0
                     p_cred_tot = ventas_acumuladas['propinacredito'].sum() if 'propinacredito' in ventas_acumuladas.columns else 0.0
                     propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
+
+                    # Gerente/Capitán/Cajero a veces atienden mesas directamente:
+                    # se les suma su propina personal completa (ver comisiones.py).
+                    if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                        propinas += calcular_propina_ventas_propias(ventas_acumuladas, emp_id)
                 else:
                     filas_emp = ventas_acumuladas[ventas_acumuladas['idmesero'] == emp_id]
                     if not filas_emp.empty:
@@ -1615,21 +1633,47 @@ elif opcion == "5. Reportes":
                     # Mismo criterio que el corte diario: solo cuentan las chicas
                     # que tuvieron descuento_nomina acumulado > 0 en el periodo.
                     chicas_con_desc_count = len(df_bailarinas_rango[df_bailarinas_rango['descuento_nomina'] > 0.0]) if not df_bailarinas_rango.empty else 0
+
+                    # Total de propinas del restaurante en TODO el periodo (para el
+                    # 8% de rol de Gerente/Capitán/Cajero) — se calcula una sola vez.
+                    total_propinas_pool_rango = 0.0
+                    if not ventas_rango.empty:
+                        p_tarj_pool = (ventas_rango['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_rango.columns else 0.0
+                        p_efec_pool = ventas_rango['propina_efectivo'].sum() if 'propina_efectivo' in ventas_rango.columns else 0.0
+                        p_vale_pool = ventas_rango['propina_vales'].sum() if 'propina_vales' in ventas_rango.columns else 0.0
+                        p_cred_pool = ventas_rango['propinacredito'].sum() if 'propinacredito' in ventas_rango.columns else 0.0
+                        total_propinas_pool_rango = p_tarj_pool + p_efec_pool + p_vale_pool + p_cred_pool
+
                     for _, emp in df_gen_rango.iterrows():
                         emp_id = emp['id']
                         tipo = emp['tipo'].upper()
                         sueldo_base_acumulado = float(emp['sueldo_base'])
-                        propinas_o_comis = 0.0
+                        propina_pool_rol = 0.0
+                        propina_propia = 0.0
+                        comision_producto = 0.0
+
                         if any(p in tipo for p in ["DJ", "ANIMADOR"]):
-                            propinas_o_comis = calcular_bono_dj_animador(chicas_con_desc_count)
+                            comision_producto = calcular_bono_dj_animador(chicas_con_desc_count)
                         elif any(p in tipo for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                            # 8% de rol sobre el total de propinas del periodo
+                            propina_pool_rol = total_propinas_pool_rango * 0.08
+                            # + 50% de sus propias propinas, si atendió mesas
+                            # directamente (mismo % que un mesero normal)
+                            propina_propia = calcular_propina_ventas_propias(ventas_rango, emp_id)
+                            # + comisión por productos de gerencia/caja (Moët, etc.)
                             if not chicas_rango.empty:
                                 for _, f_prod in chicas_rango.iterrows():
                                     cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                                    propinas_o_comis += cant * calcular_comision_gerencia_caja(str(f_prod['descripcion']))
+                                    comision_producto += cant * calcular_comision_gerencia_caja(str(f_prod['descripcion']))
+
+                        propinas_o_comis = propina_pool_rol + propina_propia + comision_producto
                         resumen_gen.append({
                             "ID": emp_id, "Nombre": emp['nombre'], "Puesto": emp['tipo'],
-                            "Asistencias (Días)": mapa_asistencias.get(emp_id, 0), "Sueldo Base Acumulado": sueldo_base_acumulado,
+                            "Asistencias (Días)": mapa_asistencias.get(emp_id, 0),
+                            "Sueldo Base Acumulado": sueldo_base_acumulado,
+                            "Propina Pool (8%)": propina_pool_rol,
+                            "Propina Propia (50%)": propina_propia,
+                            "Comisión Productos": comision_producto,
                             "Comisiones Acumuladas": propinas_o_comis,
                             "Total a Pagar": sueldo_base_acumulado + propinas_o_comis
                         })
