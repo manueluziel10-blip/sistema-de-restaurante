@@ -23,7 +23,8 @@ from models import (
     get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
     obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
-    verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio
+    verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
+    agregar_empleado_catalogo
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -776,11 +777,18 @@ elif opcion == "2. Gestión de Empleados":
                         if puesto_emp not in PUESTOS_CATALOGO:
                             puesto_emp = "Mesero (Comisiones)"
 
-                        agregar_empleado(nombre_emp, puesto_emp, sueldo_emp, fecha_str=fecha_activa, pin=pin_emp)
+                        # Solo se actualiza el catálogo de personal — NO se les
+                        # marca como presentes ni se les crea nómina del día
+                        # activo. Su asistencia se registra aparte (kiosko/PIN
+                        # o al procesar el corte del día que sí trabajaron).
+                        agregar_empleado_catalogo(nombre_emp, puesto_emp, sueldo_emp, pin=pin_emp)
                         registrados += 1
 
-                    registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Importación completada! Empleados procesados: {registrados}")
+                    st.success(
+                        f"¡Catálogo actualizado! Empleados procesados: {registrados}. "
+                        f"No se les marcó asistencia — solo aparecerán en un corte el día que "
+                        f"realmente registren su llegada o tengan ventas/comisiones."
+                    )
                     st.rerun()
 
     st.markdown("---")

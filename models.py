@@ -508,6 +508,47 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     return df
 
 
+def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
+    """Da de alta o actualiza un empleado SOLO en el catálogo (tabla
+    empleados) — NO crea ni toca ningún registro de nomina_diaria.
+
+    Se usa en la importación masiva por Excel ("Alta Masiva"): subir esa
+    plantilla es dar de alta/actualizar el catálogo de personal, no
+    significa que todos esos empleados trabajaron el día activo. Antes,
+    usar agregar_empleado() aquí creaba nómina del día para cada uno, y
+    encima se llamaba a registrar_asistencias_automaticas_dia() después,
+    lo que marcaba a TODOS los empleados activos (no solo los del Excel)
+    como presentes ese día — inflando el corte con gente que no trabajó.
+    """
+    session = get_session()
+    try:
+        asegurar_columnas_empleado(session)
+        asegurar_puesto_existe(session, tipo)
+        emp = session.query(Empleado).filter(Empleado.nombre == nombre.upper()).first()
+        if emp:
+            emp.tipo = tipo
+            emp.sueldo_base = sueldo_base
+            emp.activo = True
+            if pin:
+                emp.pin_hash = _hash_valor(str(pin).strip())
+        else:
+            pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
+            emp = Empleado(
+                nombre=nombre.upper(),
+                tipo=tipo,
+                sueldo_base=sueldo_base,
+                activo=True,
+                pin_hash=_hash_valor(pin_final)
+            )
+            session.add(emp)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwargs):
     session = get_session()
     try:
