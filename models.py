@@ -79,6 +79,10 @@ class NominaDiaria(Base):
     transferencia_nomina = Column(Numeric(10, 2), default=0.0)
     penalizada = Column(Boolean, default=False)
 
+    __table_args__ = (
+        UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha_nomina'),
+    )
+
 
 class Asistencia(Base):
     __tablename__ = "asistencias"
@@ -325,6 +329,36 @@ def asegurar_puesto_existe(session, nombre_puesto: str, sueldo_base: float = 300
         session.commit()
 
 
+def _deduplicar_nomina_diaria(session) -> int:
+    """Fusiona (elimina) filas duplicadas de nomina_diaria para el mismo
+    (empleado_id, fecha), quedándose con la más reciente (mayor id).
+    Es un paso previo necesario para poder crear la restricción única
+    que faltaba (ver asegurar_nomina_dia). Devuelve cuántas filas se
+    eliminaron."""
+    try:
+        duplicados = session.execute(db_text("""
+            SELECT empleado_id, fecha FROM nomina_diaria
+            GROUP BY empleado_id, fecha HAVING COUNT(*) > 1
+        """)).fetchall()
+
+        total_borradas = 0
+        for empleado_id, fecha in duplicados:
+            ids = session.execute(db_text("""
+                SELECT id FROM nomina_diaria
+                WHERE empleado_id = :emp_id AND fecha = :fecha
+                ORDER BY id DESC
+            """), {"emp_id": empleado_id, "fecha": fecha}).fetchall()
+            for row in ids[1:]:  # conserva la primera (más reciente), borra el resto
+                session.execute(db_text("DELETE FROM nomina_diaria WHERE id = :id"), {"id": row[0]})
+                total_borradas += 1
+        session.commit()
+        return total_borradas
+    except Exception as e:
+        session.rollback()
+        print(f"[models.py] Error al deduplicar nomina_diaria: {e}")
+        return 0
+
+
 def asegurar_nomina_dia(session, fecha_date):
     try:
         inspector = inspect(session.bind)
@@ -341,6 +375,38 @@ def asegurar_nomina_dia(session, fecha_date):
             if 'penalizada' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
             session.commit()
+
+            # IMPORTANTE: el resto del código (registro de asistencia, sincronización
+            # automática, reparación de nómina) usa "ON CONFLICT (empleado_id, fecha)
+            # DO NOTHING", lo cual requiere que exista una restricción única sobre
+            # esas dos columnas. Esa restricción nunca se creó en la tabla real, así
+            # que todos esos INSERT fallaban en silencio (el error quedaba atrapado
+            # por un try/except y solo se imprimía en los logs). Aquí se crea si falta.
+            constraints = inspector.get_unique_constraints('nomina_diaria')
+            tiene_restriccion = any(
+                set(c.get('column_names', [])) == {'empleado_id', 'fecha'} for c in constraints
+            )
+            if not tiene_restriccion:
+                try:
+                    session.execute(db_text(
+                        "ALTER TABLE nomina_diaria ADD CONSTRAINT unique_empleado_fecha_nomina UNIQUE (empleado_id, fecha)"
+                    ))
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    # Probablemente hay filas duplicadas (empleado_id, fecha) de
+                    # antes de esta corrección. Se fusionan y se reintenta una vez.
+                    borradas = _deduplicar_nomina_diaria(session)
+                    if borradas:
+                        print(f"[models.py] Se fusionaron {borradas} fila(s) duplicadas en nomina_diaria.")
+                    try:
+                        session.execute(db_text(
+                            "ALTER TABLE nomina_diaria ADD CONSTRAINT unique_empleado_fecha_nomina UNIQUE (empleado_id, fecha)"
+                        ))
+                        session.commit()
+                    except Exception as e_final:
+                        session.rollback()
+                        print(f"[models.py] No se pudo crear la restricción única en nomina_diaria: {e_final}")
     except Exception:
         session.rollback()
 
@@ -994,6 +1060,11 @@ def reiniciar_base_de_datos():
 try:
     _session_auto = get_session()
     Base.metadata.create_all(_session_auto.bind)
+    # Migración de la restricción única de nomina_diaria (ver asegurar_nomina_dia):
+    # se corre aquí, al arrancar el módulo, para que quede lista ANTES de que
+    # cualquier registro de asistencia (incluido el modo kiosko público, que no
+    # pasa por cargar_empleados_df) intente un INSERT ... ON CONFLICT.
+    asegurar_nomina_dia(_session_auto, None)
     _session_auto.close()
 except Exception as _err_inicial:
     # No se traga el error: se deja constancia visible en consola/logs.
