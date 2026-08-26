@@ -90,11 +90,32 @@ class NominaDiaria(Base):
     descuento_nomina = Column(Numeric(10, 2), default=100.0)
     transferencia_nomina = Column(Numeric(10, 2), default=0.0)
     consumo_cocina = Column(Numeric(10, 2), default=0.0)
+    vales_excel = Column(Numeric(10, 2), default=0.0)
+    consumo_comedor_excel = Column(Numeric(10, 2), default=0.0)
+    comision_excel = Column(Numeric(10, 2), default=0.0)
+    origen_importacion = Column(String)
     penalizada = Column(Boolean, default=False)
 
     __table_args__ = (
         UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha_nomina'),
     )
+
+
+class ValeDiario(Base):
+    __tablename__ = "vales_diarios"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    folio = Column(String, unique=True, nullable=False)
+    fecha = Column(Date, nullable=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    empleado_nombre = Column(String, nullable=False)
+    importe = Column(Numeric(10, 2), nullable=False, default=0.0)
+    importe_bruto = Column(Numeric(10, 2), nullable=False, default=0.0)
+    abono_boutique = Column(Numeric(10, 2), nullable=False, default=0.0)
+    estado = Column(String(20), nullable=False, default="PENDIENTE")
+    forma_pago = Column(String(30))
+    fecha_pago = Column(Date)
+    archivo_origen = Column(String)
+    creado_en = Column(DateTime, server_default=func.now())
 
 
 class Asistencia(Base):
@@ -387,6 +408,14 @@ def asegurar_nomina_dia(session, fecha_date):
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
             if 'consumo_cocina' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN consumo_cocina NUMERIC(10,2) DEFAULT 0.0"))
+            if 'vales_excel' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN vales_excel NUMERIC(10,2) DEFAULT 0.0"))
+            if 'consumo_comedor_excel' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN consumo_comedor_excel NUMERIC(10,2) DEFAULT 0.0"))
+            if 'comision_excel' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN comision_excel NUMERIC(10,2) DEFAULT 0.0"))
+            if 'origen_importacion' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN origen_importacion VARCHAR"))
             if 'penalizada' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
             session.commit()
@@ -523,6 +552,121 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         df['consumo_cocina'] = df['consumo_cocina'].astype(float) if 'consumo_cocina' in df.columns else 0.0
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
     return df
+
+
+def importar_vales_excel(archivo, archivo_origen: str = ""):
+    """Importa la hoja Registro de Pagos y conserva cada vale por folio."""
+    import openpyxl
+
+    session = get_session()
+    resultado = {"importados": 0, "actualizados": 0, "no_encontrados": []}
+    try:
+        empleados = {normalizar_nombre(e.nombre): e for e in session.query(Empleado).filter(Empleado.activo == True)}
+        archivo.seek(0)
+        libro = openpyxl.load_workbook(archivo, read_only=True, data_only=True, keep_vba=True)
+        hoja = libro["Registro de Pagos"]
+
+        def numero(valor):
+            try:
+                return float(valor or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        def convertir_fecha(valor):
+            if hasattr(valor, "date"):
+                return valor.date()
+            return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
+
+        for fila in list(hoja.iter_rows(values_only=True))[4:]:
+            folio, fecha, nombre = fila[1], fila[2], fila[4]
+            if not folio or not fecha or not nombre:
+                continue
+            empleado = empleados.get(normalizar_nombre(nombre))
+            if not empleado:
+                resultado["no_encontrados"].append(str(nombre).strip())
+                continue
+            vale = session.query(ValeDiario).filter(ValeDiario.folio == str(folio).strip()).first()
+            forma_pago = str(fila[9]).strip().upper() if len(fila) > 9 and fila[9] else None
+            fecha_pago = convertir_fecha(fila[10]) if len(fila) > 10 and fila[10] else None
+            datos = {
+                "fecha": convertir_fecha(fecha), "empleado_id": empleado.id,
+                "empleado_nombre": empleado.nombre, "importe": numero(fila[7]),
+                "importe_bruto": numero(fila[5]), "abono_boutique": numero(fila[6]),
+                "estado": (
+                    "PAGADO" if str(fila[8] or "").strip().upper() == "PAGADO"
+                    else "YA NO PAGAR" if "NO PAGAR" in str(fila[8] or "").strip().upper()
+                    else "PENDIENTE"
+                ),
+                "forma_pago": forma_pago, "fecha_pago": fecha_pago,
+                "archivo_origen": archivo_origen
+            }
+            if vale:
+                for clave, valor in datos.items():
+                    setattr(vale, clave, valor)
+                resultado["actualizados"] += 1
+            else:
+                session.add(ValeDiario(folio=str(folio).strip(), **datos))
+                resultado["importados"] += 1
+        session.commit()
+        resultado["no_encontrados"] = sorted(set(resultado["no_encontrados"]))
+        return resultado
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def cargar_vales_df(fecha_str: str = None) -> pd.DataFrame:
+    session = get_session()
+    query = session.query(ValeDiario).order_by(ValeDiario.fecha, ValeDiario.id)
+    if fecha_str:
+        query = query.filter(ValeDiario.fecha == datetime.strptime(fecha_str, "%Y-%m-%d").date())
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    return df
+
+
+def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
+    estados = {"PAGADO", "PENDIENTE", "YA NO PAGAR"}
+    if estado not in estados:
+        raise ValueError("Estado de vale no válido")
+    session = get_session()
+    try:
+        vale = session.query(ValeDiario).filter(ValeDiario.id == vale_id).first()
+        if not vale:
+            return False
+        vale.estado = estado
+        vale.forma_pago = forma_pago or vale.forma_pago
+        vale.fecha_pago = datetime.now().date() if estado == "PAGADO" else None
+        session.commit()
+        return True
+    finally:
+        session.close()
+
+
+def sincronizar_vales_nomina(fecha_str: str):
+    """Refleja en nómina los vales vigentes del día, excluyendo YA NO PAGAR."""
+    fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    session = get_session()
+    try:
+        nominas = session.query(NominaDiaria).filter(NominaDiaria.fecha == fecha).all()
+        for nomina in nominas:
+            nomina.vales_nomina = 0
+            nomina.vales_excel = 0
+        filas = session.query(ValeDiario.empleado_id, func.sum(ValeDiario.importe)).filter(
+            ValeDiario.fecha == fecha, ValeDiario.estado == "PAGADO"
+        ).group_by(ValeDiario.empleado_id).all()
+        for empleado_id, importe in filas:
+            nomina = session.query(NominaDiaria).filter(
+                NominaDiaria.empleado_id == empleado_id, NominaDiaria.fecha == fecha
+            ).first()
+            if nomina:
+                nomina.vales_nomina = importe or 0
+                nomina.vales_excel = importe or 0
+        session.commit()
+    finally:
+        session.close()
 
 
 def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
@@ -1465,6 +1609,7 @@ try:
     # pasa por cargar_empleados_df) intente un INSERT ... ON CONFLICT.
     asegurar_nomina_dia(_session_auto, None)
     _session_auto.close()
+    inicializar_usuarios_por_defecto()
 except Exception as _err_inicial:
     # No se traga el error: se deja constancia visible en consola/logs.
     # Si la BD no está disponible al arrancar, es mejor saberlo de inmediato

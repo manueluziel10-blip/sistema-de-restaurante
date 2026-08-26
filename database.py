@@ -14,10 +14,18 @@ en la raíz de tu proyecto con esa misma línea.
 import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from pathlib import Path
 
 @st.cache_resource
 def get_engine():
-    url = st.secrets["database_url"].replace("postgresql://", "postgresql+psycopg2://", 1)
+    try:
+        url = st.secrets["database_url"]
+    except (KeyError, FileNotFoundError):
+        # Permite ejecutar la aplicación localmente sin exponer credenciales.
+        url = f"sqlite:///{Path(__file__).with_name('restaurante_local.db')}"
+
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return create_engine(url, pool_pre_ping=True)
 
 def get_session():
