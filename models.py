@@ -89,6 +89,7 @@ class NominaDiaria(Base):
     vales_nomina = Column(Numeric(10, 2), default=0.0)
     descuento_nomina = Column(Numeric(10, 2), default=100.0)
     transferencia_nomina = Column(Numeric(10, 2), default=0.0)
+    consumo_cocina = Column(Numeric(10, 2), default=0.0)
     penalizada = Column(Boolean, default=False)
 
     __table_args__ = (
@@ -384,6 +385,8 @@ def asegurar_nomina_dia(session, fecha_date):
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN descuento_nomina NUMERIC(10,2) DEFAULT 100.0"))
             if 'transferencia_nomina' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN transferencia_nomina NUMERIC(10,2) DEFAULT 0.0"))
+            if 'consumo_cocina' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN consumo_cocina NUMERIC(10,2) DEFAULT 0.0"))
             if 'penalizada' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
             session.commit()
@@ -480,8 +483,8 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     try:
         session.execute(
             db_text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-                SELECT :fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, FALSE
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+                SELECT :fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE
                 FROM asistencias a
                 JOIN empleados e ON e.id = a.empleado_id
                 WHERE a.fecha = :fecha AND e.activo = TRUE
@@ -502,6 +505,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         NominaDiaria.vales_nomina,
         NominaDiaria.descuento_nomina,
         NominaDiaria.transferencia_nomina,
+        NominaDiaria.consumo_cocina,
         NominaDiaria.penalizada
     ).join(NominaDiaria, Empleado.id == NominaDiaria.empleado_id).filter(
         NominaDiaria.fecha == f_date,
@@ -516,6 +520,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         df['vales_nomina'] = df['vales_nomina'].astype(float) if 'vales_nomina' in df.columns else 0.0
         df['descuento_nomina'] = df['descuento_nomina'].astype(float) if 'descuento_nomina' in df.columns else 100.0
         df['transferencia_nomina'] = df['transferencia_nomina'].astype(float) if 'transferencia_nomina' in df.columns else 0.0
+        df['consumo_cocina'] = df['consumo_cocina'].astype(float) if 'consumo_cocina' in df.columns else 0.0
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
     return df
 
@@ -651,8 +656,8 @@ def registrar_asistencia_lista_empleados(empleado_ids: list, fecha_str: str,
             )
             session.execute(
                 db_text("""
-                    INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-                    VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, FALSE)
+                    INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+                    VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
                     ON CONFLICT (empleado_id, fecha) DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": emp_id, "sueldo": float(sueldo_emp) if sueldo_emp is not None else 300.0}
@@ -723,6 +728,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
                 vales_nomina=0.0,
                 descuento_nomina=100.0,
                 transferencia_nomina=0.0,
+                consumo_cocina=0.0,
                 penalizada=False
             ))
         else:
@@ -736,7 +742,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
         session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, fecha_str=None, **kwargs):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     
@@ -765,6 +771,8 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         nom.descuento_nomina = nuevo_descuento
     if nueva_transferencia is not None:
         nom.transferencia_nomina = nueva_transferencia
+    if nuevo_consumo_cocina is not None:
+        nom.consumo_cocina = nuevo_consumo_cocina
 
     session.commit()
     session.close()
@@ -872,6 +880,7 @@ def obtener_o_crear_empleado(nombre: str, tipo: str = "Chicas / Bailarinas (Comi
                 vales_nomina=0.0,
                 descuento_nomina=100.0,
                 transferencia_nomina=0.0,
+                consumo_cocina=0.0,
                 penalizada=False
             ))
             session.flush()
@@ -1107,6 +1116,24 @@ def cargar_gastos_hoy(fecha_str: str = None):
     return hoy
 
 
+def sumar_consumo_cocina_dia(fecha_str: str = None) -> float:
+    """Suma el consumo de cocina/comedor de TODOS los empleados (columna
+    'consumo_cocina' de nomina_diaria) para una fecha dada. Es la fuente
+    única de verdad de ese total: la usan tanto el Dashboard (Sección 4,
+    campo 'Gastos - Cocina') como la sección de Pagos y Comedor, para que
+    nunca queden desincronizados entre sí."""
+    session = get_session()
+    try:
+        f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+        f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+        total = session.query(func.sum(NominaDiaria.consumo_cocina)).filter(
+            NominaDiaria.fecha == f_date
+        ).scalar()
+        return float(total) if total is not None else 0.0
+    finally:
+        session.close()
+
+
 def obtener_penalizaciones_rango(fecha_inicio: str, fecha_fin: str) -> dict:
     """Devuelve {empleado_id: set(fechas)} con los días marcados como
     'penalizada' dentro del rango, para aplicar la mitad de comisión
@@ -1193,8 +1220,8 @@ def reparar_nomina_faltante_rango(fecha_inicio: str, fecha_fin: str) -> int:
 
         resultado = session.execute(
             db_text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, penalizada)
-                SELECT DISTINCT a.fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, FALSE
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
+                SELECT DISTINCT a.fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE
                 FROM asistencias a
                 JOIN empleados e ON e.id = a.empleado_id
                 WHERE a.fecha BETWEEN :f_ini AND :f_fin
