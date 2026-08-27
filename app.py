@@ -1184,12 +1184,14 @@ elif opcion == "3. Corte y Nómina Final":
             emp_id = emp['id']
             nombre = emp['nombre']
             tipo = emp['tipo']
+            puesto_dia_actual = emp.get('puesto_dia', "") or ""
+            tipo_efectivo = emp.get('tipo_efectivo', tipo) or tipo
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             cocina_emp = float(emp.get('consumo_cocina', 0.0))
 
-            puesto_upper_check = tipo.upper()
+            puesto_upper_check = str(tipo_efectivo).upper()
             comisiones_prod = 0.0
             if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
@@ -1249,6 +1251,7 @@ elif opcion == "3. Corte y Nómina Final":
 
             res_general.append({
                 "ID": emp_id, "Nombre": nombre, "Puesto": tipo,
+                "Puesto del día": puesto_dia_actual if puesto_dia_actual else "(mismo puesto)",
                 "Total a Pagar": total_pagar, "Sueldo Base": sueldo_base,
                 "Vales": vales_emp, "Transferencia": transf_emp, "Cocina": cocina_emp,
                 "Propina (%)": etiqueta_propina,
@@ -1256,7 +1259,8 @@ elif opcion == "3. Corte y Nómina Final":
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Propina (%)", "Comisiones"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Puesto del día", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Propina (%)", "Comisiones"]
+        opciones_puesto_dia = ["(mismo puesto)"] + [p for p in PUESTOS_CATALOGO.keys() if p != "Chicas / Bailarinas (Comisiones)"]
         editor_key_gen_base = f"editor_sueldos_gen_{key_sufijo}"
         version_key_gen = f"{editor_key_gen_base}_version"
         if version_key_gen not in st.session_state:
@@ -1293,6 +1297,10 @@ elif opcion == "3. Corte y Nómina Final":
                     "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
                     "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
+                    "Puesto del día": st.column_config.SelectboxColumn(
+                        "Puesto del día", options=opciones_puesto_dia, required=True,
+                        help="Si cubrió otro puesto hoy (ej. Barra), elígelo aquí: su propina/comisión de HOY se calcula con las reglas de ese puesto, sin cambiar su puesto permanente."
+                    ),
                 },
                 disabled=cols_disabled_gen,
                 use_container_width=True,
@@ -1316,11 +1324,13 @@ elif opcion == "3. Corte y Nómina Final":
                     nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
                     nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
                     nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
+                    nuevo_puesto_dia_sel = str(edits["Puesto del día"]) if "Puesto del día" in edits else str(fila_mod_gen['Puesto del día'])
+                    nuevo_puesto_dia = "" if nuevo_puesto_dia_sel == "(mismo puesto)" else nuevo_puesto_dia_sel
                     puesto_emp = fila_mod_gen['Puesto']
                     penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                     descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
 
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_puesto_dia=nuevo_puesto_dia)
                     actualizado_gen_flag = True
 
         if actualizado_gen_flag:

@@ -95,6 +95,7 @@ class NominaDiaria(Base):
     comision_excel = Column(Numeric(10, 2), default=0.0)
     origen_importacion = Column(String)
     penalizada = Column(Boolean, default=False)
+    puesto_dia = Column(String)
 
     __table_args__ = (
         UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha_nomina'),
@@ -418,6 +419,8 @@ def asegurar_nomina_dia(session, fecha_date):
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN origen_importacion VARCHAR"))
             if 'penalizada' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN penalizada BOOLEAN DEFAULT 0"))
+            if 'puesto_dia' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN puesto_dia VARCHAR"))
             session.commit()
 
             # IMPORTANTE: el resto del código (registro de asistencia, sincronización
@@ -535,7 +538,8 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         NominaDiaria.descuento_nomina,
         NominaDiaria.transferencia_nomina,
         NominaDiaria.consumo_cocina,
-        NominaDiaria.penalizada
+        NominaDiaria.penalizada,
+        NominaDiaria.puesto_dia
     ).join(NominaDiaria, Empleado.id == NominaDiaria.empleado_id).filter(
         NominaDiaria.fecha == f_date,
         Empleado.activo == True
@@ -551,6 +555,8 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         df['transferencia_nomina'] = df['transferencia_nomina'].astype(float) if 'transferencia_nomina' in df.columns else 0.0
         df['consumo_cocina'] = df['consumo_cocina'].astype(float) if 'consumo_cocina' in df.columns else 0.0
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
+        df['puesto_dia'] = df['puesto_dia'].fillna("") if 'puesto_dia' in df.columns else ""
+        df['tipo_efectivo'] = df['puesto_dia'].where(df['puesto_dia'] != "", df['tipo'])
     return df
 
 
@@ -838,7 +844,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
         session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, **kwargs):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, nuevo_puesto_dia=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
     
@@ -869,6 +875,8 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         nom.transferencia_nomina = nueva_transferencia
     if nuevo_consumo_cocina is not None:
         nom.consumo_cocina = nuevo_consumo_cocina
+    if nuevo_puesto_dia is not None:
+        nom.puesto_dia = nuevo_puesto_dia
 
     session.commit()
     session.close()
