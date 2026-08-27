@@ -159,40 +159,101 @@ if "rol_actual" not in st.session_state:
     st.session_state["rol_actual"] = ""
 
 if not st.session_state["autenticado"]:
-    st.sidebar.title("Control de Acceso")
-    st.sidebar.subheader("Iniciar Sesión")
-    
-    with st.sidebar.form("form_login"):
-        usuario_input = st.text_input("Usuario")
-        pass_input = st.text_input("Contraseña", type="password")
-        btn_login = st.form_submit_button("Entrar")
-        
-        if btn_login:
-            user_data = validar_login(usuario_input, pass_input)
-            if user_data:
-                st.session_state["autenticado"] = True
-                if isinstance(user_data, dict):
-                    st.session_state["usuario_actual"] = user_data.get("username", "admin")
-                    st.session_state["rol_actual"] = user_data.get("rol", "admin")
+    _, col_login, _ = st.columns([1, 1.2, 1])
+    with col_login:
+        st.title("Control de Acceso")
+        st.subheader("Iniciar Sesión")
+
+        with st.form("form_login"):
+            usuario_input = st.text_input("Usuario")
+            pass_input = st.text_input("Contraseña", type="password")
+            btn_login = st.form_submit_button("Entrar")
+
+            if btn_login:
+                user_data = validar_login(usuario_input, pass_input)
+                if user_data:
+                    st.session_state["autenticado"] = True
+                    if isinstance(user_data, dict):
+                        st.session_state["usuario_actual"] = user_data.get("username", "admin")
+                        st.session_state["rol_actual"] = user_data.get("rol", "admin")
+                    else:
+                        st.session_state["usuario_actual"] = getattr(user_data, "username", "admin")
+                        st.session_state["rol_actual"] = getattr(user_data, "rol", "admin")
+
+                    st.success("¡Bienvenido!")
+                    st.rerun()
                 else:
-                    st.session_state["usuario_actual"] = getattr(user_data, "username", "admin")
-                    st.session_state["rol_actual"] = getattr(user_data, "rol", "admin")
-                
-                st.success("¡Bienvenido!")
-                st.rerun()
-            else:
-                st.error("Usuario o contraseña incorrectos")
-    
+                    st.error("Usuario o contraseña incorrectos")
+
     st.stop()
 
-st.sidebar.markdown(f"Sesión activa: **{st.session_state['usuario_actual']} ({st.session_state['rol_actual'].upper()})**")
-if st.sidebar.button("Cerrar Sesión"):
-    st.session_state["autenticado"] = False
-    st.session_state["usuario_actual"] = ""
-    st.session_state["rol_actual"] = ""
-    st.rerun()
+col_titulo, col_sesion = st.columns([3, 1])
+with col_titulo:
+    st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
+with col_sesion:
+    st.markdown(
+        f"<div style='text-align:right; margin-top:1.5rem;'>Sesión activa: "
+        f"<b>{st.session_state['usuario_actual']} ({st.session_state['rol_actual'].upper()})</b></div>",
+        unsafe_allow_html=True,
+    )
+    if st.button("Cerrar Sesión", use_container_width=True):
+        st.session_state["autenticado"] = False
+        st.session_state["usuario_actual"] = ""
+        st.session_state["rol_actual"] = ""
+        st.rerun()
 
-st.title("Sistema Integral: Nómina, Ventas y Cierre de Caja - Restaurante")
+# --- NAVEGACIÓN DE SECCIONES (BARRA LATERAL) ---
+rol_actual_lower = st.session_state["rol_actual"].lower()
+es_gerente = rol_actual_lower == "gerente"
+
+if "seccion_activa" not in st.session_state:
+    st.session_state["seccion_activa"] = "1. Subir Cortes Diarios (Excel)"
+
+nombres_secciones = [
+    "1. Subir Cortes Diarios (Excel)",
+    "2. Gestión de Empleados",
+    "Nómina del día",
+    "4. Cierre de Caja (Dashboard)",
+    "Registro de Vales",
+    "Boutique / Tienda",
+    "5. Reportes",
+    "Registro de Asistencia"
+]
+if rol_actual_lower == "admin":
+    nombres_secciones.append("6. Usuarios y Accesos")
+if es_gerente:
+    nombres_secciones = [
+        "2. Gestión de Empleados", "Nómina del día", "4. Cierre de Caja (Dashboard)",
+        "Registro de Vales", "Boutique / Tienda", "5. Reportes"
+    ]
+if st.session_state["seccion_activa"] not in nombres_secciones:
+    st.session_state["seccion_activa"] = nombres_secciones[0]
+
+iconos_secciones = {
+    "1. Subir Cortes Diarios (Excel)": ":material/upload_file:",
+    "2. Gestión de Empleados": ":material/group:",
+    "Nómina del día": ":material/payments:",
+    "Registro de Vales": ":material/receipt_long:",
+    "Boutique / Tienda": ":material/storefront:",
+    "4. Cierre de Caja (Dashboard)": ":material/dashboard:",
+    "5. Reportes": ":material/analytics:",
+    "Registro de Asistencia": ":material/assignment_turned_in:",
+    "6. Usuarios y Accesos": ":material/admin_panel_settings:",
+}
+
+st.sidebar.markdown("---")
+st.sidebar.header("Secciones")
+for idx, sec in enumerate(nombres_secciones):
+    activo = (st.session_state["seccion_activa"] == sec)
+    if st.sidebar.button(
+        sec, use_container_width=True, key=f"toolbar_btn_{idx}",
+        icon=iconos_secciones.get(sec), type="primary" if activo else "secondary"
+    ):
+        st.session_state["seccion_activa"] = sec
+        st.rerun()
+st.sidebar.markdown("---")
+
+opcion = st.session_state["seccion_activa"]
 
 def es_chica_o_bailarina(tipo_str):
     t = str(tipo_str).upper()
@@ -715,8 +776,6 @@ def generar_pdf_tickets(lista_flowables_por_ticket, alto_pagina_mm=160):
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
-rol_actual_lower = st.session_state["rol_actual"].lower()
-es_gerente = rol_actual_lower == "gerente"
 hoy_str = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
 
 if rol_actual_lower in ["admin", "cajero", "gerente"]:
@@ -884,54 +943,6 @@ if not es_gerente:
                 st.session_state["mostrar_form_reinicio"] = False
                 st.rerun()
 
-# --- BARRA DE HERRAMIENTAS SUPERIOR ---
-if "seccion_activa" not in st.session_state:
-    st.session_state["seccion_activa"] = "1. Subir Cortes Diarios (Excel)"
-
-nombres_secciones = [
-    "1. Subir Cortes Diarios (Excel)",
-    "2. Gestión de Empleados",
-    "Nómina del día",
-    "Registro de Vales",
-    "Boutique / Tienda",
-    "4. Cierre de Caja (Dashboard)",
-    "5. Reportes",
-    "Registro de Asistencia"
-]
-if rol_actual_lower == "admin":
-    nombres_secciones.append("6. Usuarios y Accesos")
-if es_gerente:
-    nombres_secciones = [
-        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "Boutique / Tienda",
-        "4. Cierre de Caja (Dashboard)", "5. Reportes"
-    ]
-if st.session_state["seccion_activa"] not in nombres_secciones:
-    st.session_state["seccion_activa"] = nombres_secciones[0]
-
-iconos_secciones = {
-    "1. Subir Cortes Diarios (Excel)": ":material/upload_file:",
-    "2. Gestión de Empleados": ":material/group:",
-    "Nómina del día": ":material/payments:",
-    "Registro de Vales": ":material/receipt_long:",
-    "Boutique / Tienda": ":material/storefront:",
-    "4. Cierre de Caja (Dashboard)": ":material/dashboard:",
-    "5. Reportes": ":material/analytics:",
-    "Registro de Asistencia": ":material/assignment_turned_in:",
-    "6. Usuarios y Accesos": ":material/admin_panel_settings:",
-}
-
-cols_toolbar = st.columns(len(nombres_secciones))
-for idx, sec in enumerate(nombres_secciones):
-    with cols_toolbar[idx]:
-        activo = (st.session_state["seccion_activa"] == sec)
-        if st.button(
-            sec, use_container_width=True, key=f"toolbar_btn_{idx}",
-            icon=iconos_secciones.get(sec), type="primary" if activo else "secondary"
-        ):
-            st.session_state["seccion_activa"] = sec
-            st.rerun()
-
-opcion = st.session_state["seccion_activa"]
 st.markdown("---")
 
 # --- SECCIÓN 1: SUBIR ARCHIVOS DIARIOS ---
