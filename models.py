@@ -583,7 +583,7 @@ def generar_vales_desde_nomina(fecha_str: str):
             session.add(ValeDiario(
                 folio=folio, fecha=fecha, empleado_id=empleado.id, empleado_nombre=empleado.nombre,
                 importe=float(nomina.vales_nomina), importe_bruto=float(nomina.vales_nomina),
-                abono_boutique=0.0, estado="PAGADO", fecha_pago=fecha,
+                abono_boutique=0.0, estado="PENDIENTE", fecha_pago=None,
             ))
         session.commit()
     except Exception:
