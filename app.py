@@ -28,7 +28,9 @@ from models import (
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
     cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados, actualizar_estatus_empleado,
-    generar_vales_desde_nomina
+    generar_vales_desde_nomina,
+    agregar_producto_boutique, actualizar_producto_boutique, cargar_productos_boutique_df,
+    registrar_venta_boutique, actualizar_pago_venta_boutique, cargar_ventas_boutique_df
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -886,6 +888,7 @@ nombres_secciones = [
     "2. Gestión de Empleados",
     "Nómina del día",
     "Registro de Vales",
+    "Boutique / Tienda",
     "4. Cierre de Caja (Dashboard)",
     "5. Reportes",
     "Registro de Asistencia"
@@ -894,7 +897,7 @@ if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
 if es_gerente:
     nombres_secciones = [
-        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "5. Reportes"
+        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "Boutique / Tienda", "5. Reportes"
     ]
 if st.session_state["seccion_activa"] not in nombres_secciones:
     st.session_state["seccion_activa"] = nombres_secciones[0]
@@ -904,6 +907,7 @@ iconos_secciones = {
     "2. Gestión de Empleados": ":material/group:",
     "Nómina del día": ":material/payments:",
     "Registro de Vales": ":material/receipt_long:",
+    "Boutique / Tienda": ":material/storefront:",
     "4. Cierre de Caja (Dashboard)": ":material/dashboard:",
     "5. Reportes": ":material/analytics:",
     "Registro de Asistencia": ":material/assignment_turned_in:",
@@ -1858,6 +1862,177 @@ elif opcion == "Registro de Vales":
 
         st.markdown("---")
         st.metric("Total del historial completo de vales", f"${float(vales_df['importe'].sum()):,.2f}")
+
+# --- SECCIÓN: BOUTIQUE / TIENDA (independiente de nómina) ---
+elif opcion == "Boutique / Tienda":
+    st.subheader(":material/storefront: Boutique / tienda interna")
+    st.caption("Módulo independiente: inventario y ventas al personal. No afecta nómina ni cortes.")
+
+    CATEGORIAS_BOUTIQUE = ["Zapatillas", "Ropa", "Accesorios"]
+    METODOS_PAGO_BOUTIQUE = ["Efectivo", "Transferencia"]
+
+    tab_inventario, tab_venta, tab_cobros = st.tabs([
+        "Inventario de productos", "Registrar venta", "Cuentas por cobrar y pagos"
+    ])
+
+    with tab_inventario:
+        productos_df = cargar_productos_boutique_df()
+        if productos_df.empty:
+            st.info("No hay productos registrados todavía.")
+        else:
+            vista_prod = productos_df[["id", "codigo", "nombre", "categoria", "talla", "precio_venta", "stock", "activo"]].copy()
+            vista_prod.columns = ["ID", "Código", "Nombre", "Categoría", "Talla", "Precio venta", "Stock", "Activo"]
+
+            if es_gerente:
+                st.dataframe(vista_prod.drop(columns=["ID"]), hide_index=True, use_container_width=True)
+            else:
+                version_key_prod = "editor_boutique_prod_version"
+                if version_key_prod not in st.session_state:
+                    st.session_state[version_key_prod] = 0
+                editor_key_prod = f"editor_boutique_prod_v{st.session_state[version_key_prod]}"
+
+                if st.session_state.get(editor_key_prod, {}).get("edited_rows", {}):
+                    st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
+
+                with st.form("form_boutique_productos"):
+                    editado_prod = st.data_editor(
+                        vista_prod,
+                        hide_index=True,
+                        use_container_width=True,
+                        disabled=["ID"],
+                        column_config={
+                            "Categoría": st.column_config.SelectboxColumn("Categoría", options=CATEGORIAS_BOUTIQUE, required=True),
+                            "Precio venta": st.column_config.NumberColumn("Precio venta ($)", format="$%.2f", required=True, min_value=0.0),
+                            "Stock": st.column_config.NumberColumn("Stock", required=True, min_value=0, step=1),
+                            "Activo": st.column_config.CheckboxColumn("Activo"),
+                        },
+                        key=editor_key_prod
+                    )
+                    col_g_prod, col_d_prod = st.columns(2)
+                    with col_g_prod:
+                        guardar_prod = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    with col_d_prod:
+                        descartar_prod = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
+                if guardar_prod:
+                    with st.spinner("Guardando cambios..."):
+                        for _, fila in editado_prod.iterrows():
+                            original = vista_prod[vista_prod["ID"] == fila["ID"]].iloc[0]
+                            if list(fila) != list(original):
+                                actualizar_producto_boutique(
+                                    int(fila["ID"]), fila["Nombre"], fila["Categoría"], fila["Talla"],
+                                    float(fila["Precio venta"]), int(fila["Stock"]), bool(fila["Activo"]),
+                                    codigo=fila["Código"]
+                                )
+                    st.session_state[version_key_prod] += 1
+                    st.success("Cambios guardados.")
+                    st.rerun()
+                elif descartar_prod:
+                    st.session_state[version_key_prod] += 1
+                    st.rerun()
+
+        if not es_gerente:
+            st.subheader(":material/add_box: Agregar producto nuevo")
+            with st.form("form_boutique_nuevo_producto", clear_on_submit=True):
+                nuevo_prod_nombre = st.text_input("Nombre")
+                nuevo_prod_categoria = st.selectbox("Categoría", CATEGORIAS_BOUTIQUE, key="boutique_nueva_categoria")
+                nuevo_prod_talla = st.text_input("Talla (opcional)")
+                nuevo_prod_codigo = st.text_input("Código (opcional)")
+                nuevo_prod_precio = st.number_input("Precio de venta ($)", min_value=0.0, format="%.2f", key="boutique_nuevo_precio")
+                nuevo_prod_stock = st.number_input("Stock inicial", min_value=0, step=1, key="boutique_nuevo_stock")
+                if st.form_submit_button("Guardar producto"):
+                    if nuevo_prod_nombre.strip():
+                        agregar_producto_boutique(
+                            nuevo_prod_nombre.strip(), nuevo_prod_categoria, nuevo_prod_talla.strip() or None,
+                            nuevo_prod_precio, int(nuevo_prod_stock), codigo=nuevo_prod_codigo.strip() or None
+                        )
+                        st.success(f"¡Producto '{nuevo_prod_nombre.strip()}' agregado al inventario!")
+                        st.rerun()
+                    else:
+                        st.error("El nombre del producto no puede estar vacío.")
+
+    with tab_venta:
+        if es_gerente:
+            st.info("Solo lectura para tu rol — no puedes registrar ventas en la Boutique.")
+        else:
+            empleados_boutique_df = cargar_catalogo_empleados()
+            if not empleados_boutique_df.empty:
+                empleados_boutique_df = empleados_boutique_df[empleados_boutique_df["activo"]]
+            productos_disponibles_df = cargar_productos_boutique_df(solo_con_stock=True)
+
+            if empleados_boutique_df.empty:
+                st.warning("No hay empleados activos en el catálogo.")
+            elif productos_disponibles_df.empty:
+                st.warning("No hay productos con stock disponible.")
+            else:
+                nombres_emp_venta = empleados_boutique_df.sort_values("nombre")["nombre"].tolist()
+                emp_venta_sel = st.selectbox("Empleado", nombres_emp_venta, key="boutique_venta_empleado")
+                emp_venta_fila = empleados_boutique_df[empleados_boutique_df["nombre"] == emp_venta_sel].iloc[0]
+
+                etiquetas_prod = {
+                    f"{row['nombre']} (stock: {int(row['stock'])})": row['id']
+                    for _, row in productos_disponibles_df.iterrows()
+                }
+                prod_venta_sel_label = st.selectbox("Producto", list(etiquetas_prod.keys()), key="boutique_venta_producto")
+                prod_venta_fila = productos_disponibles_df[productos_disponibles_df["id"] == etiquetas_prod[prod_venta_sel_label]].iloc[0]
+
+                cantidad_venta = st.number_input(
+                    "Cantidad", min_value=1, max_value=int(prod_venta_fila["stock"]), step=1, key="boutique_venta_cantidad"
+                )
+                total_venta_preview = float(prod_venta_fila["precio_venta"]) * cantidad_venta
+                st.metric("Total", f"${total_venta_preview:,.2f}", border=True)
+
+                if st.button("Registrar venta", icon=":material/point_of_sale:", key="btn_boutique_registrar_venta"):
+                    try:
+                        folio_venta = registrar_venta_boutique(int(emp_venta_fila["id"]), int(prod_venta_fila["id"]), int(cantidad_venta))
+                        st.success(f"¡Venta registrada con folio {folio_venta}! Pendiente de cobro.")
+                        st.rerun()
+                    except ValueError as error:
+                        st.error(str(error))
+
+    with tab_cobros:
+        pendientes_boutique_df = cargar_ventas_boutique_df(estatus_pago="Pendiente")
+
+        st.markdown("#### 🟡 Cuentas por cobrar")
+        if pendientes_boutique_df.empty:
+            st.info("No hay ventas pendientes de cobro.")
+        else:
+            filtro_emp_opciones = ["Todos"] + sorted(pendientes_boutique_df["empleado_nombre"].unique().tolist())
+            filtro_emp_sel = st.selectbox("Filtrar por empleado", filtro_emp_opciones, key="boutique_filtro_pendientes")
+            vista_pendientes_boutique = pendientes_boutique_df if filtro_emp_sel == "Todos" else pendientes_boutique_df[pendientes_boutique_df["empleado_nombre"] == filtro_emp_sel]
+            vista_pendientes_mostrar = vista_pendientes_boutique[["folio", "empleado_nombre", "producto_nombre", "cantidad", "total", "fecha_venta"]].copy()
+            vista_pendientes_mostrar.columns = ["Folio", "Empleado", "Producto", "Cantidad", "Total", "Fecha de venta"]
+            st.dataframe(vista_pendientes_mostrar, hide_index=True, use_container_width=True)
+
+            if not es_gerente:
+                st.markdown("#### 💳 Registrar pago")
+                with st.form("form_boutique_pago"):
+                    folios_pendientes = pendientes_boutique_df["folio"].tolist()
+                    folio_pago_sel = st.selectbox("Folio de la venta", folios_pendientes, key="boutique_folio_pago")
+                    metodo_pago_sel = st.selectbox("Método de pago", METODOS_PAGO_BOUTIQUE, key="boutique_metodo_pago")
+                    fecha_pago_sel = st.date_input("Fecha de pago", datetime.now(ZoneInfo("America/Mazatlan")), key="boutique_fecha_pago")
+                    if st.form_submit_button("Marcar como pagado"):
+                        venta_pago_id = int(pendientes_boutique_df[pendientes_boutique_df["folio"] == folio_pago_sel]["id"].iloc[0])
+                        try:
+                            actualizar_pago_venta_boutique(venta_pago_id, metodo_pago_sel, fecha_pago_sel.strftime('%Y-%m-%d'))
+                            st.success(f"¡Venta {folio_pago_sel} marcada como pagada!")
+                            st.rerun()
+                        except ValueError as error:
+                            st.error(str(error))
+
+        st.markdown("#### 📋 Historial completo de ventas")
+        historial_boutique_df = cargar_ventas_boutique_df()
+        if historial_boutique_df.empty:
+            st.info("No hay ventas registradas todavía.")
+        else:
+            vista_historial_boutique = historial_boutique_df[[
+                "folio", "empleado_nombre", "producto_nombre", "cantidad", "total",
+                "estatus_pago", "metodo_pago", "fecha_venta", "fecha_pago"
+            ]].copy()
+            vista_historial_boutique.columns = [
+                "Folio", "Empleado", "Producto", "Cantidad", "Total",
+                "Estatus", "Método de pago", "Fecha de venta", "Fecha de pago"
+            ]
+            st.dataframe(vista_historial_boutique, hide_index=True, use_container_width=True)
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":

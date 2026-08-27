@@ -120,6 +120,34 @@ class ValeDiario(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
+class ProductoBoutique(Base):
+    __tablename__ = "productos_boutique"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    codigo = Column(String)
+    nombre = Column(String, nullable=False)
+    categoria = Column(String, nullable=False)
+    talla = Column(String)
+    precio_venta = Column(Numeric(10, 2), nullable=False, default=0.0)
+    stock = Column(Integer, nullable=False, default=0)
+    activo = Column(Boolean, default=True)
+    creado_en = Column(DateTime, server_default=func.now())
+
+
+class VentaBoutique(Base):
+    __tablename__ = "ventas_boutique"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    folio = Column(String, unique=True, nullable=False)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    producto_id = Column(Integer, ForeignKey("productos_boutique.id"), nullable=False)
+    cantidad = Column(Integer, nullable=False, default=1)
+    total = Column(Numeric(10, 2), nullable=False, default=0.0)
+    fecha_venta = Column(Date, nullable=False)
+    estatus_pago = Column(String(20), nullable=False, default="Pendiente")
+    metodo_pago = Column(String(30))
+    fecha_pago = Column(Date)
+    creado_en = Column(DateTime, server_default=func.now())
+
+
 class Asistencia(Base):
     __tablename__ = "asistencias"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -665,6 +693,149 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
         return True
     finally:
         session.close()
+
+
+def agregar_producto_boutique(nombre, categoria, talla, precio_venta, stock, codigo=None):
+    """Da de alta un producto nuevo en el inventario de la Boutique."""
+    session = get_session()
+    try:
+        session.add(ProductoBoutique(
+            codigo=codigo, nombre=nombre, categoria=categoria, talla=talla,
+            precio_venta=precio_venta, stock=stock, activo=True,
+        ))
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def actualizar_producto_boutique(producto_id, nombre, categoria, talla, precio_venta, stock, activo, codigo=None):
+    """Edita los datos de un producto de la Boutique (incluido el stock —
+    para incrementarlo basta con capturar el nuevo total aquí)."""
+    session = get_session()
+    try:
+        producto = session.query(ProductoBoutique).filter(ProductoBoutique.id == producto_id).first()
+        if not producto:
+            return False
+        producto.codigo = codigo
+        producto.nombre = nombre
+        producto.categoria = categoria
+        producto.talla = talla
+        producto.precio_venta = precio_venta
+        producto.stock = stock
+        producto.activo = activo
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def cargar_productos_boutique_df(solo_con_stock: bool = False) -> pd.DataFrame:
+    """Catálogo de productos de la Boutique. Con solo_con_stock=True filtra
+    a los que tienen stock > 0 (para el selector de 'Registrar venta')."""
+    session = get_session()
+    query = session.query(ProductoBoutique)
+    if solo_con_stock:
+        query = query.filter(ProductoBoutique.stock > 0, ProductoBoutique.activo == True)
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    if not df.empty:
+        df['precio_venta'] = df['precio_venta'].astype(float)
+    return df
+
+
+def registrar_venta_boutique(empleado_id: int, producto_id: int, cantidad: int, fecha_venta: str = None) -> str:
+    """Registra una venta de la Boutique a un empleado: valida stock
+    suficiente, descuenta el inventario, calcula el total y genera un folio
+    autogenerado B-0001, B-0002, ... — 100% independiente de nómina/vales."""
+    if cantidad <= 0:
+        raise ValueError("La cantidad debe ser mayor a cero.")
+    fecha = datetime.strptime(fecha_venta, "%Y-%m-%d").date() if fecha_venta else datetime.now().date()
+    session = get_session()
+    try:
+        producto = session.query(ProductoBoutique).filter(ProductoBoutique.id == producto_id).first()
+        if not producto:
+            raise ValueError("Producto no encontrado.")
+        if producto.stock < cantidad:
+            raise ValueError(f"Stock insuficiente de '{producto.nombre}' (disponible: {producto.stock}).")
+        empleado = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if not empleado:
+            raise ValueError("Empleado no encontrado.")
+
+        ultimo_folio = session.query(VentaBoutique.folio).filter(
+            VentaBoutique.folio.like("B-%")
+        ).order_by(VentaBoutique.id.desc()).first()
+        siguiente = 1
+        if ultimo_folio:
+            try:
+                siguiente = int(ultimo_folio[0].split("-")[1]) + 1
+            except (IndexError, ValueError):
+                siguiente = session.query(VentaBoutique).count() + 1
+        folio = f"B-{siguiente:04d}"
+
+        total = float(producto.precio_venta) * cantidad
+        producto.stock -= cantidad
+        session.add(VentaBoutique(
+            folio=folio, empleado_id=empleado.id, producto_id=producto.id,
+            cantidad=cantidad, total=total, fecha_venta=fecha, estatus_pago="Pendiente",
+        ))
+        session.commit()
+        return folio
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def actualizar_pago_venta_boutique(venta_id: int, metodo_pago: str, fecha_pago: str = None):
+    """Marca una venta de la Boutique como Pagada. Exige método de pago."""
+    metodos = {"Efectivo", "Transferencia"}
+    if metodo_pago not in metodos:
+        raise ValueError("Debes indicar un método de pago (Efectivo o Transferencia) antes de marcar como Pagado.")
+    fecha = datetime.strptime(fecha_pago, "%Y-%m-%d").date() if fecha_pago else datetime.now().date()
+    session = get_session()
+    try:
+        venta = session.query(VentaBoutique).filter(VentaBoutique.id == venta_id).first()
+        if not venta:
+            return False
+        venta.estatus_pago = "Pagado"
+        venta.metodo_pago = metodo_pago
+        venta.fecha_pago = fecha
+        session.commit()
+        return True
+    finally:
+        session.close()
+
+
+def cargar_ventas_boutique_df(empleado_id: int = None, estatus_pago: str = None) -> pd.DataFrame:
+    """Historial de ventas de la Boutique, con nombre de empleado y producto
+    ya resueltos. Filtros opcionales por empleado y estatus de pago."""
+    session = get_session()
+    query = session.query(
+        VentaBoutique.id, VentaBoutique.folio, VentaBoutique.empleado_id,
+        Empleado.nombre.label("empleado_nombre"),
+        VentaBoutique.producto_id, ProductoBoutique.nombre.label("producto_nombre"),
+        VentaBoutique.cantidad, VentaBoutique.total, VentaBoutique.fecha_venta,
+        VentaBoutique.estatus_pago, VentaBoutique.metodo_pago, VentaBoutique.fecha_pago,
+    ).join(Empleado, Empleado.id == VentaBoutique.empleado_id).join(
+        ProductoBoutique, ProductoBoutique.id == VentaBoutique.producto_id
+    )
+    if empleado_id is not None:
+        query = query.filter(VentaBoutique.empleado_id == empleado_id)
+    if estatus_pago is not None:
+        query = query.filter(VentaBoutique.estatus_pago == estatus_pago)
+    query = query.order_by(VentaBoutique.fecha_venta.desc(), VentaBoutique.id.desc())
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    if not df.empty:
+        df['total'] = df['total'].astype(float)
+    return df
 
 
 def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
