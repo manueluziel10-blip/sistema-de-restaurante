@@ -792,7 +792,11 @@ if rol_actual_lower in ["admin", "cajero", "gerente"]:
     elif es_gerente:
         fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
     else:
-        fecha_activa_obj = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now(ZoneInfo("America/Mazatlan")))
+        if "fecha_corte_actual_input" not in st.session_state:
+            st.session_state["fecha_corte_actual_input"] = datetime.now(ZoneInfo("America/Mazatlan")).date()
+        fecha_activa_obj = st.sidebar.date_input(
+            "Fecha para el Corte Actual", key="fecha_corte_actual_input"
+        )
 else:
     fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
