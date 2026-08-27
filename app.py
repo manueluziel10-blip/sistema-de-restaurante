@@ -676,8 +676,7 @@ nombres_secciones = [
     "1. Subir Cortes Diarios (Excel)",
     "2. Gestión de Empleados",
     "3. Corte y Nómina Final",
-    "💳 Vales Diarios",
-    "💰 Pagos y Comedor",
+    "💳 Registro de Vales",
     "4. Cierre de Caja (Dashboard)",
     "5. Reportes",
     "✍️ Registro de Asistencia"
@@ -1403,8 +1402,8 @@ elif opcion == "3. Corte y Nómina Final":
         procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
 # --- SECCIÓN: VALES DIARIOS ---
-elif opcion == "💳 Vales Diarios":
-    st.subheader("💳 Vales diarios - Todos los cortes")
+elif opcion == "💳 Registro de Vales":
+    st.subheader("💳 Registro de Vales - Todos los cortes")
     st.info("Este historial junta los vales de TODOS los cortes (no solo la fecha activa). Se generan al 'Cerrar Corte Actual' (barra lateral): cada empleado con un monto en la columna 'Vales ($)' de Nómina recibe un folio nuevo aquí.")
 
     vales_df = cargar_vales_df()
@@ -1511,123 +1510,6 @@ elif opcion == "💳 Vales Diarios":
 
         st.markdown("---")
         st.metric("Total del historial completo de vales", f"${float(vales_df['importe'].sum()):,.2f}")
-
-# --- SECCIÓN: PAGOS Y COMEDOR ---
-elif opcion == "💰 Pagos y Comedor":
-    st.subheader(f"💰 Pagos y Comedor - Fecha: {fecha_activa}")
-    st.info("Consolida, para todos los empleados de la fecha activa, cuánto se les debe de nómina (ya descontada la Cocina) y cuánto se les descontó de comedor.")
-
-    empleados_pagos_df = cargar_empleados_df(fecha_activa)
-    ventas_pagos = cargar_ventas_df(fecha_activa)
-    chicas_pagos = cargar_chicas_df(fecha_activa)
-
-    filas_pagos = []
-
-    if not empleados_pagos_df.empty:
-        df_chicas_pagos_todas = empleados_pagos_df[empleados_pagos_df['tipo'].apply(es_chica_o_bailarina)]
-        if 'descuento_nomina' in df_chicas_pagos_todas.columns:
-            chicas_con_descuento_pagos = len(df_chicas_pagos_todas[df_chicas_pagos_todas['descuento_nomina'] > 0.0])
-        else:
-            chicas_con_descuento_pagos = len(df_chicas_pagos_todas)
-
-        for _, emp in empleados_pagos_df.iterrows():
-            emp_id = emp['id']
-            nombre = emp['nombre']
-            tipo = emp['tipo']
-            sueldo_base = float(emp['sueldo_base'])
-            vales_emp = float(emp.get('vales_nomina', 0.0))
-            transf_emp = float(emp.get('transferencia_nomina', 0.0))
-            descuento_emp = float(emp.get('descuento_nomina', 100.0))
-            cocina_emp = float(emp.get('consumo_cocina', 0.0))
-            penalizada_emp = bool(emp.get('penalizada', False))
-
-            if es_chica_o_bailarina(tipo):
-                sus_filas = pd.DataFrame()
-                if not chicas_pagos.empty and 'empleado_id' in chicas_pagos.columns:
-                    sus_filas = chicas_pagos[chicas_pagos['empleado_id'] == emp_id]
-                detalle = calcular_comisiones_detalle(sus_filas, penalizada=penalizada_emp)
-                total_bruto = sueldo_base + detalle["total"]
-                total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp
-            else:
-                puesto_upper_check = tipo.upper()
-                comisiones_prod = 0.0
-                if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
-                    porcentaje_propina = 0.0
-                    comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_pagos)
-                elif "SEGURIDAD" in puesto_upper_check:
-                    porcentaje_propina = 0.0
-                elif "BARMAN" in puesto_upper_check:
-                    porcentaje_propina = 10.0
-                elif "AYUDANTE" in puesto_upper_check:
-                    porcentaje_propina = 5.0
-                elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    porcentaje_propina = 8.0
-                else:
-                    porcentaje_propina = 50.0
-
-                propinas = 0.0
-                if not ventas_pagos.empty and porcentaje_propina > 0.0:
-                    if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                        p_tarj_tot = (ventas_pagos['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_pagos.columns else 0.0
-                        p_efec_tot = ventas_pagos['propina_efectivo'].sum() if 'propina_efectivo' in ventas_pagos.columns else 0.0
-                        p_vale_tot = ventas_pagos['propina_vales'].sum() if 'propina_vales' in ventas_pagos.columns else 0.0
-                        p_cred_tot = ventas_pagos['propinacredito'].sum() if 'propinacredito' in ventas_pagos.columns else 0.0
-                        propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
-                        if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                            propinas += calcular_propina_ventas_propias(ventas_pagos, emp_id)
-                    else:
-                        filas_emp = ventas_pagos[ventas_pagos['idmesero'] == emp_id]
-                        if not filas_emp.empty:
-                            p_tarj = (filas_emp['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_emp.columns else 0.0
-                            p_efec = filas_emp['propina_efectivo'].sum() if 'propina_efectivo' in filas_emp.columns else 0.0
-                            p_vale = filas_emp['propina_vales'].sum() if 'propina_vales' in filas_emp.columns else 0.0
-                            p_cred = filas_emp['propinacredito'].sum() if 'propinacredito' in filas_emp.columns else 0.0
-                            propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
-
-                if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-                    if not chicas_pagos.empty:
-                        for _, f_prod in chicas_pagos.iterrows():
-                            desc = str(f_prod['descripcion'])
-                            cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
-                            comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
-
-                total_bruto = sueldo_base + propinas + comisiones_prod
-                total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp
-
-            filas_pagos.append({
-                "Nombre": nombre,
-                "Puesto": tipo,
-                "Total a Pagar ($)": total_pagar,
-                "Cocina ($)": cocina_emp,
-            })
-
-    df_pagos = pd.DataFrame(filas_pagos)
-    total_a_pagar_personal = float(df_pagos["Total a Pagar ($)"].sum()) if not df_pagos.empty else 0.0
-    total_cocina_personal = sumar_consumo_cocina_dia(fecha_activa)
-
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #00E676;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">TOTAL A PAGAR AL PERSONAL</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${total_a_pagar_personal:,.2f}</div></div>""", unsafe_allow_html=True)
-    with col_p2:
-        st.markdown(f"""<div style="background-color: #1A2634; padding: 18px; border-radius: 12px; border-left: 5px solid #FF7043;"><div style="color: #90A4AE; font-size: 11px; font-weight: bold;">TOTAL QUE DEBE EL PERSONAL DE COCINA</div><div style="color: #FFFFFF; font-size: 26px; font-weight: bold; margin-top: 5px;">${total_cocina_personal:,.2f}</div></div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown(f"#### Detalle por Empleado ({fecha_activa})")
-    if df_pagos.empty:
-        st.info(f"No hay empleados con nómina registrada para la fecha {fecha_activa}.")
-    else:
-        def pintar_negativos_pagos(val):
-            if isinstance(val, (int, float)) and val < 0:
-                return 'color: #FF5252; font-weight: bold;'
-            return ''
-
-        st.dataframe(
-            df_pagos.style.map(pintar_negativos_pagos, subset=["Total a Pagar ($)"]).format(
-                {"Total a Pagar ($)": "${:,.2f}", "Cocina ($)": "${:,.2f}"}
-            ),
-            use_container_width=True,
-            hide_index=True
-        )
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
