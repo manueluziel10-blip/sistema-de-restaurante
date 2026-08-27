@@ -1059,6 +1059,10 @@ elif opcion == "3. Corte y Nómina Final":
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
 
+        cambios_sin_guardar = st.session_state.get(editor_key, {}).get("edited_rows", {})
+        if cambios_sin_guardar:
+            st.warning("⚠️ Hay cambios sin guardar en esta tabla. Se pierden si cambias de pestaña sin presionar 'Guardar cambios'; usa 'Descartar cambios' para regresar a los valores guardados.")
+
         with st.form(f"form_nomina_{key_sufijo}"):
             df_editado = st.data_editor(
                 df_estilizado,
@@ -1077,7 +1081,11 @@ elif opcion == "3. Corte y Nómina Final":
                 use_container_width=True,
                 key=editor_key
             )
-            guardar_nomina = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar)
+            col_guardar, col_descartar = st.columns(2)
+            with col_guardar:
+                guardar_nomina = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar, use_container_width=True)
+            with col_descartar:
+                descartar_nomina = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
 
         actualizado_flag = False
         if guardar_nomina and puede_modificar and (editor_key in st.session_state):
@@ -1100,6 +1108,9 @@ elif opcion == "3. Corte y Nómina Final":
 
         if actualizado_flag:
             st.success("Cambios guardados.")
+            st.rerun()
+        elif descartar_nomina:
+            st.session_state.pop(editor_key, None)
             st.rerun()
 
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
@@ -1256,6 +1267,10 @@ elif opcion == "3. Corte y Nómina Final":
         if not puede_modificar:
             cols_disabled_gen = cols_mostrar_gen
 
+        cambios_gen_sin_guardar = st.session_state.get(editor_key_gen, {}).get("edited_rows", {})
+        if cambios_gen_sin_guardar:
+            st.warning("⚠️ Hay cambios sin guardar en esta tabla. Se pierden si cambias de pestaña sin presionar 'Guardar cambios'; usa 'Descartar cambios' para regresar a los valores guardados.")
+
         with st.form(f"form_nomina_gen_{key_sufijo}"):
             df_editado_gen = st.data_editor(
                 df_estilizado_gen,
@@ -1274,7 +1289,11 @@ elif opcion == "3. Corte y Nómina Final":
                 use_container_width=True,
                 key=editor_key_gen
             )
-            guardar_nomina_gen = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar)
+            col_guardar_gen, col_descartar_gen = st.columns(2)
+            with col_guardar_gen:
+                guardar_nomina_gen = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar, use_container_width=True)
+            with col_descartar_gen:
+                descartar_nomina_gen = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
 
         actualizado_gen_flag = False
         if guardar_nomina_gen and puede_modificar and (editor_key_gen in st.session_state):
@@ -1297,6 +1316,9 @@ elif opcion == "3. Corte y Nómina Final":
 
         if actualizado_gen_flag:
             st.success("Cambios guardados.")
+            st.rerun()
+        elif descartar_nomina_gen:
+            st.session_state.pop(editor_key_gen, None)
             st.rerun()
 
         st.markdown("---")
