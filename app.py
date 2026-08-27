@@ -1992,26 +1992,34 @@ elif opcion == "Boutique / Tienda":
         st.caption("Los abonos se aplican al saldo general del empleado (todas sus compras), no a un folio en particular.")
         saldos_boutique_df = cargar_saldos_boutique_df()
 
-        st.markdown("#### 🟡 Saldo por empleado")
-        if saldos_boutique_df.empty:
-            st.info("No hay compras registradas todavía.")
-        else:
-            vista_saldos = saldos_boutique_df[["empleado_nombre", "total_comprado", "total_abonado", "saldo_pendiente"]].copy()
-            vista_saldos.columns = ["Empleado", "Total comprado", "Total abonado", "Saldo pendiente"]
+        subtab_saldos, subtab_abono, subtab_compras, subtab_abonos = st.tabs([
+            "Saldo por empleado", "Registrar abono", "Historial de compras", "Historial de abonos"
+        ])
 
-            def _pintar_saldo(val):
-                return 'color: #00E676; font-weight: bold;' if isinstance(val, (int, float)) and val <= 0 else ''
+        with subtab_saldos:
+            if saldos_boutique_df.empty:
+                st.info("No hay compras registradas todavía.")
+            else:
+                vista_saldos = saldos_boutique_df[["empleado_nombre", "total_comprado", "total_abonado", "saldo_pendiente"]].copy()
+                vista_saldos.columns = ["Empleado", "Total comprado", "Total abonado", "Saldo pendiente"]
 
-            st.dataframe(
-                vista_saldos.style.format({
-                    "Total comprado": "${:,.2f}", "Total abonado": "${:,.2f}", "Saldo pendiente": "${:,.2f}"
-                }).map(_pintar_saldo, subset=["Saldo pendiente"]),
-                hide_index=True, use_container_width=True
-            )
+                def _pintar_saldo(val):
+                    return 'color: #00E676; font-weight: bold;' if isinstance(val, (int, float)) and val <= 0 else ''
 
-            if not es_gerente:
+                st.dataframe(
+                    vista_saldos.style.format({
+                        "Total comprado": "${:,.2f}", "Total abonado": "${:,.2f}", "Saldo pendiente": "${:,.2f}"
+                    }).map(_pintar_saldo, subset=["Saldo pendiente"]),
+                    hide_index=True, use_container_width=True
+                )
+
+        with subtab_abono:
+            if es_gerente:
+                st.info("Solo lectura para este rol.")
+            elif saldos_boutique_df.empty:
+                st.info("No hay compras registradas todavía.")
+            else:
                 deudores_df = saldos_boutique_df[saldos_boutique_df["saldo_pendiente"] > 0]
-                st.markdown("#### 💳 Registrar abono")
                 if deudores_df.empty:
                     st.info("Nadie tiene saldo pendiente en este momento.")
                 else:
@@ -2035,25 +2043,25 @@ elif opcion == "Boutique / Tienda":
                             except ValueError as error:
                                 st.error(str(error))
 
-        st.markdown("#### 📋 Historial de compras")
-        historial_boutique_df = cargar_ventas_boutique_df()
-        if historial_boutique_df.empty:
-            st.info("No hay ventas registradas todavía.")
-        else:
-            vista_historial_boutique = historial_boutique_df[[
-                "folio", "empleado_nombre", "producto_nombre", "cantidad", "total", "fecha_venta"
-            ]].copy()
-            vista_historial_boutique.columns = ["Folio", "Empleado", "Producto", "Cantidad", "Total", "Fecha de venta"]
-            st.dataframe(vista_historial_boutique, hide_index=True, use_container_width=True)
+        with subtab_compras:
+            historial_boutique_df = cargar_ventas_boutique_df()
+            if historial_boutique_df.empty:
+                st.info("No hay ventas registradas todavía.")
+            else:
+                vista_historial_boutique = historial_boutique_df[[
+                    "folio", "empleado_nombre", "producto_nombre", "cantidad", "total", "fecha_venta"
+                ]].copy()
+                vista_historial_boutique.columns = ["Folio", "Empleado", "Producto", "Cantidad", "Total", "Fecha de venta"]
+                st.dataframe(vista_historial_boutique, hide_index=True, use_container_width=True)
 
-        st.markdown("#### 💰 Historial de abonos")
-        abonos_boutique_df = cargar_abonos_boutique_df()
-        if abonos_boutique_df.empty:
-            st.info("No hay abonos registrados todavía.")
-        else:
-            vista_abonos_boutique = abonos_boutique_df[["empleado_nombre", "monto", "metodo_pago", "fecha_pago"]].copy()
-            vista_abonos_boutique.columns = ["Empleado", "Monto", "Método de pago", "Fecha de pago"]
-            st.dataframe(vista_abonos_boutique, hide_index=True, use_container_width=True)
+        with subtab_abonos:
+            abonos_boutique_df = cargar_abonos_boutique_df()
+            if abonos_boutique_df.empty:
+                st.info("No hay abonos registrados todavía.")
+            else:
+                vista_abonos_boutique = abonos_boutique_df[["empleado_nombre", "monto", "metodo_pago", "fecha_pago"]].copy()
+                vista_abonos_boutique.columns = ["Empleado", "Monto", "Método de pago", "Fecha de pago"]
+                st.dataframe(vista_abonos_boutique, hide_index=True, use_container_width=True)
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
