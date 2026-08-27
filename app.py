@@ -1260,6 +1260,8 @@ elif opcion == "Nómina del día":
             descuento_emp = float(emp.get('descuento_nomina', 100.0))
             cocina_emp = float(emp.get('consumo_cocina', 0.0))
             multa_emp = float(emp.get('retencion_nomina', 0.0))
+            peinado_emp = float(emp.get('peinado_maquillaje', 0.0))
+            dulceria_emp = float(emp.get('dulceria', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
             penalizada_cambiada = st.checkbox(
@@ -1281,7 +1283,7 @@ elif opcion == "Nómina del día":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp - multa_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp - multa_emp - peinado_emp - dulceria_emp
 
             fila_resultado = {
                 "ID": emp_id,
@@ -1294,6 +1296,8 @@ elif opcion == "Nómina del día":
                 "Descuento": descuento_emp,
                 "Cocina": cocina_emp,
                 "Multa": multa_emp,
+                "Peinado y maquillaje": peinado_emp,
+                "Dulcería": dulceria_emp,
                 "Comisiones": extras,
             }
             for cat in CATEGORIAS_CHICAS:
@@ -1324,7 +1328,7 @@ elif opcion == "Nómina del día":
             st.session_state[version_key] = 0
         editor_key = f"{editor_key_base}_v{st.session_state[version_key]}"
 
-        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento", "Cocina", "Multa"]]
+        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento", "Cocina", "Multa", "Peinado y maquillaje", "Dulcería"]]
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
 
@@ -1345,6 +1349,8 @@ elif opcion == "Nómina del día":
                     "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
                     "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
                     "Multa": st.column_config.NumberColumn("Multa ($)", format="$%.2f", required=True),
+                    "Peinado y maquillaje": st.column_config.NumberColumn("Peinado y maquillaje ($)", format="$%.2f", required=True),
+                    "Dulcería": st.column_config.NumberColumn("Dulcería ($)", format="$%.2f", required=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                 },
                 disabled=columnas_deshabilitadas,
@@ -1371,10 +1377,16 @@ elif opcion == "Nómina del día":
                     nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
                     nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_modificada['Cocina'])
                     nueva_multa = float(edits["Multa"]) if "Multa" in edits else float(fila_modificada['Multa'])
+                    nuevo_peinado = float(edits["Peinado y maquillaje"]) if "Peinado y maquillaje" in edits else float(fila_modificada['Peinado y maquillaje'])
+                    nueva_dulceria = float(edits["Dulcería"]) if "Dulcería" in edits else float(fila_modificada['Dulcería'])
                     puesto_emp = fila_modificada['Puesto']
                     penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
 
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_retencion=nueva_multa)
+                    actualizar_empleado(
+                        e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina,
+                        fecha_str=fecha_activa, nuevo_retencion=nueva_multa,
+                        nuevo_peinado_maquillaje=nuevo_peinado, nuevo_dulceria=nueva_dulceria
+                    )
                     actualizado_flag = True
 
         if actualizado_flag:
@@ -1405,6 +1417,8 @@ elif opcion == "Nómina del día":
         total_sueldos_grupo = float(df_res['Sueldo Base'].sum())
         total_comisiones_grupo = float(df_res['Comisiones'].sum())
         total_multa_grupo = float(df_res['Multa'].sum())
+        total_peinado_grupo = float(df_res['Peinado y maquillaje'].sum())
+        total_dulceria_grupo = float(df_res['Dulcería'].sum())
 
         with st.container(horizontal=True):
             st.metric("Subtotal nómina", f"${subtotal:,.2f}", border=True)
@@ -1417,6 +1431,10 @@ elif opcion == "Nómina del día":
             st.metric("Total comisiones", f"${total_comisiones_grupo:,.2f}", border=True)
             st.metric("Total cocina", f"${total_cocina_grupo:,.2f}", border=True)
             st.metric("Total multas", f"${total_multa_grupo:,.2f}", border=True)
+
+        with st.container(horizontal=True):
+            st.metric("Total peinado y maquillaje", f"${total_peinado_grupo:,.2f}", border=True)
+            st.metric("Total dulcería", f"${total_dulceria_grupo:,.2f}", border=True)
 
         st.subheader(":material/print: Imprimir tickets (80mm)")
         vales_dia_df = cargar_vales_df(fecha_activa)
@@ -2210,6 +2228,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     nomina_chicas_calc = 0.0
     vales_chicas_total = 0.0
     transferencia_chicas_total = 0.0
+    cocina_chicas_total = 0.0
+    multa_chicas_total = 0.0
+    peinado_chicas_total = 0.0
+    dulceria_chicas_total = 0.0
     conteo_penalizadas = 0
     conteo_con_sueldo = 0
     conteo_sin_sueldo = 0
@@ -2221,8 +2243,16 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             descuento_emp = float(emp.get('descuento_nomina', 100.0))
+            cocina_emp = float(emp.get('consumo_cocina', 0.0))
+            multa_emp = float(emp.get('retencion_nomina', 0.0))
+            peinado_emp = float(emp.get('peinado_maquillaje', 0.0))
+            dulceria_emp = float(emp.get('dulceria', 0.0))
             vales_chicas_total += vales_emp
             transferencia_chicas_total += transf_emp
+            cocina_chicas_total += cocina_emp
+            multa_chicas_total += multa_emp
+            peinado_chicas_total += peinado_emp
+            dulceria_chicas_total += dulceria_emp
             
             penalizada_chica = bool(emp.get('penalizada', False))
             if penalizada_chica:
@@ -2282,7 +2312,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
-    nomina_chicas_efectivo = nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
+    nomina_chicas_efectivo = (
+        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
+        - cocina_chicas_total - multa_chicas_total - peinado_chicas_total - dulceria_chicas_total
+    )
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
     
