@@ -148,6 +148,19 @@ class VentaBoutique(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
+class AbonoBoutique(Base):
+    """Pago (abono) de un empleado hacia su saldo general de la Boutique —
+    no se liga a una venta/folio en particular, se aplica contra el total
+    pendiente de todas sus compras."""
+    __tablename__ = "abonos_boutique"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    monto = Column(Numeric(10, 2), nullable=False)
+    metodo_pago = Column(String(30), nullable=False)
+    fecha_pago = Column(Date, nullable=False)
+    creado_en = Column(DateTime, server_default=func.now())
+
+
 class Asistencia(Base):
     __tablename__ = "asistencias"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -695,15 +708,35 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
         session.close()
 
 
-def agregar_producto_boutique(nombre, categoria, talla, precio_venta, stock, codigo=None):
-    """Da de alta un producto nuevo en el inventario de la Boutique."""
+PREFIJOS_CODIGO_BOUTIQUE = {"Zapatillas": "ZAP", "Ropa": "ROP", "Accesorios": "ACC"}
+
+
+def _generar_codigo_producto_boutique(session, categoria):
+    prefijo = PREFIJOS_CODIGO_BOUTIQUE.get(categoria, "PRD")
+    ultimo_codigo = session.query(ProductoBoutique.codigo).filter(
+        ProductoBoutique.codigo.like(f"{prefijo}-%")
+    ).order_by(ProductoBoutique.id.desc()).first()
+    siguiente = 1
+    if ultimo_codigo and ultimo_codigo[0]:
+        try:
+            siguiente = int(ultimo_codigo[0].split("-")[1]) + 1
+        except (IndexError, ValueError):
+            siguiente = session.query(ProductoBoutique).filter(ProductoBoutique.categoria == categoria).count() + 1
+    return f"{prefijo}-{siguiente:04d}"
+
+
+def agregar_producto_boutique(nombre, categoria, talla, precio_venta, stock):
+    """Da de alta un producto nuevo en el inventario de la Boutique. El
+    código se genera solo por categoría (ZAP-0001, ROP-0001, ACC-0001)."""
     session = get_session()
     try:
+        codigo = _generar_codigo_producto_boutique(session, categoria)
         session.add(ProductoBoutique(
             codigo=codigo, nombre=nombre, categoria=categoria, talla=talla,
             precio_venta=precio_venta, stock=stock, activo=True,
         ))
         session.commit()
+        return codigo
     except Exception:
         session.rollback()
         raise
@@ -711,15 +744,15 @@ def agregar_producto_boutique(nombre, categoria, talla, precio_venta, stock, cod
         session.close()
 
 
-def actualizar_producto_boutique(producto_id, nombre, categoria, talla, precio_venta, stock, activo, codigo=None):
+def actualizar_producto_boutique(producto_id, nombre, categoria, talla, precio_venta, stock, activo):
     """Edita los datos de un producto de la Boutique (incluido el stock —
-    para incrementarlo basta con capturar el nuevo total aquí)."""
+    para incrementarlo basta con capturar el nuevo total aquí). El código
+    no se toca: es autogenerado y fijo desde el alta."""
     session = get_session()
     try:
         producto = session.query(ProductoBoutique).filter(ProductoBoutique.id == producto_id).first()
         if not producto:
             return False
-        producto.codigo = codigo
         producto.nombre = nombre
         producto.categoria = categoria
         producto.talla = talla
@@ -793,48 +826,99 @@ def registrar_venta_boutique(empleado_id: int, producto_id: int, cantidad: int, 
         session.close()
 
 
-def actualizar_pago_venta_boutique(venta_id: int, metodo_pago: str, fecha_pago: str = None):
-    """Marca una venta de la Boutique como Pagada. Exige método de pago."""
-    metodos = {"Efectivo", "Transferencia"}
-    if metodo_pago not in metodos:
-        raise ValueError("Debes indicar un método de pago (Efectivo o Transferencia) antes de marcar como Pagado.")
-    fecha = datetime.strptime(fecha_pago, "%Y-%m-%d").date() if fecha_pago else datetime.now().date()
-    session = get_session()
-    try:
-        venta = session.query(VentaBoutique).filter(VentaBoutique.id == venta_id).first()
-        if not venta:
-            return False
-        venta.estatus_pago = "Pagado"
-        venta.metodo_pago = metodo_pago
-        venta.fecha_pago = fecha
-        session.commit()
-        return True
-    finally:
-        session.close()
-
-
-def cargar_ventas_boutique_df(empleado_id: int = None, estatus_pago: str = None) -> pd.DataFrame:
-    """Historial de ventas de la Boutique, con nombre de empleado y producto
-    ya resueltos. Filtros opcionales por empleado y estatus de pago."""
+def cargar_ventas_boutique_df(empleado_id: int = None) -> pd.DataFrame:
+    """Historial de compras de la Boutique (puede haber varias por
+    empleado), con nombre de empleado y producto ya resueltos."""
     session = get_session()
     query = session.query(
         VentaBoutique.id, VentaBoutique.folio, VentaBoutique.empleado_id,
         Empleado.nombre.label("empleado_nombre"),
         VentaBoutique.producto_id, ProductoBoutique.nombre.label("producto_nombre"),
         VentaBoutique.cantidad, VentaBoutique.total, VentaBoutique.fecha_venta,
-        VentaBoutique.estatus_pago, VentaBoutique.metodo_pago, VentaBoutique.fecha_pago,
     ).join(Empleado, Empleado.id == VentaBoutique.empleado_id).join(
         ProductoBoutique, ProductoBoutique.id == VentaBoutique.producto_id
     )
     if empleado_id is not None:
         query = query.filter(VentaBoutique.empleado_id == empleado_id)
-    if estatus_pago is not None:
-        query = query.filter(VentaBoutique.estatus_pago == estatus_pago)
     query = query.order_by(VentaBoutique.fecha_venta.desc(), VentaBoutique.id.desc())
     df = pd.read_sql(query.statement, session.bind)
     session.close()
     if not df.empty:
         df['total'] = df['total'].astype(float)
+    return df
+
+
+def cargar_saldos_boutique_df() -> pd.DataFrame:
+    """Saldo general de Boutique por empleado: total comprado (todas sus
+    ventas), total abonado (todos sus abonos) y saldo pendiente — sin ligar
+    el pago a una venta/folio en particular. Solo incluye empleados con al
+    menos una compra."""
+    session = get_session()
+    comprado = dict(
+        session.query(VentaBoutique.empleado_id, func.sum(VentaBoutique.total))
+        .group_by(VentaBoutique.empleado_id).all()
+    )
+    abonado = dict(
+        session.query(AbonoBoutique.empleado_id, func.sum(AbonoBoutique.monto))
+        .group_by(AbonoBoutique.empleado_id).all()
+    )
+    empleados = session.query(Empleado.id, Empleado.nombre).filter(Empleado.id.in_(comprado.keys())).all()
+    session.close()
+
+    filas = []
+    for emp_id, nombre in empleados:
+        total_comprado = float(comprado.get(emp_id, 0) or 0)
+        total_abonado = float(abonado.get(emp_id, 0) or 0)
+        filas.append({
+            "empleado_id": emp_id, "empleado_nombre": nombre,
+            "total_comprado": total_comprado, "total_abonado": total_abonado,
+            "saldo_pendiente": total_comprado - total_abonado,
+        })
+    df = pd.DataFrame(filas, columns=["empleado_id", "empleado_nombre", "total_comprado", "total_abonado", "saldo_pendiente"])
+    if not df.empty:
+        df = df.sort_values("empleado_nombre").reset_index(drop=True)
+    return df
+
+
+def registrar_abono_boutique(empleado_id: int, monto: float, metodo_pago: str):
+    """Registra un abono de un empleado hacia su saldo general de Boutique.
+    La fecha de pago se fija sola (hoy), no se captura a mano."""
+    metodos = {"Efectivo", "Transferencia"}
+    if metodo_pago not in metodos:
+        raise ValueError("Debes indicar un método de pago (Efectivo o Transferencia).")
+    if monto is None or monto <= 0:
+        raise ValueError("El monto del abono debe ser mayor a cero.")
+    session = get_session()
+    try:
+        empleado = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if not empleado:
+            raise ValueError("Empleado no encontrado.")
+        session.add(AbonoBoutique(
+            empleado_id=empleado_id, monto=monto, metodo_pago=metodo_pago,
+            fecha_pago=datetime.now().date(),
+        ))
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def cargar_abonos_boutique_df(empleado_id: int = None) -> pd.DataFrame:
+    """Historial de abonos de Boutique, con nombre de empleado resuelto."""
+    session = get_session()
+    query = session.query(
+        AbonoBoutique.id, AbonoBoutique.empleado_id, Empleado.nombre.label("empleado_nombre"),
+        AbonoBoutique.monto, AbonoBoutique.metodo_pago, AbonoBoutique.fecha_pago,
+    ).join(Empleado, Empleado.id == AbonoBoutique.empleado_id)
+    if empleado_id is not None:
+        query = query.filter(AbonoBoutique.empleado_id == empleado_id)
+    query = query.order_by(AbonoBoutique.fecha_pago.desc(), AbonoBoutique.id.desc())
+    df = pd.read_sql(query.statement, session.bind)
+    session.close()
+    if not df.empty:
+        df['monto'] = df['monto'].astype(float)
     return df
 
 
