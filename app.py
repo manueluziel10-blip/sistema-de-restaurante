@@ -493,33 +493,37 @@ def _estilos_ticket():
         "monto": ParagraphStyle('TicketMonto', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=2),
         "monto_b": ParagraphStyle('TicketMontoBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2),
         "monto_d": ParagraphStyle('TicketMontoDestacado', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13, alignment=2),
+        "cant": ParagraphStyle('TicketCantidad', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=1),
+        "cant_header": ParagraphStyle('TicketCantidadHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7, leading=9, alignment=1),
     }
 
 
 def _tabla_ticket(filas, estilos):
-    """filas: lista de (etiqueta, monto_str, estilo) -> Table de 2 columnas
-    angosta para 80mm, con una línea separadora bajo cada concepto.
+    """filas: lista de (etiqueta, cantidad_str, monto_str, estilo) -> Table
+    de 3 columnas angosta para 80mm (concepto | cant. | monto), con una fila
+    de encabezado "CANT." arriba y una línea separadora bajo cada concepto.
     estilo: "normal" | "negrita" (TOTAL/VALE) | "destacado" (EFECTIVO, con
     fondo y recuadro para que resalte más)."""
-    data = []
+    data = [[Paragraph("", estilos["etiqueta_b"]), Paragraph("CANT.", estilos["cant_header"]), Paragraph("MONTO", estilos["monto_b"])]]
     filas_destacadas = []
-    for idx, (etiqueta, monto_str, estilo) in enumerate(filas):
+    for idx, (etiqueta, cant_str, monto_str, estilo) in enumerate(filas):
         if estilo == "destacado":
             est_e, est_m = estilos["etiqueta_d"], estilos["monto_d"]
-            filas_destacadas.append(idx)
+            filas_destacadas.append(idx + 1)
         elif estilo == "negrita":
             est_e, est_m = estilos["etiqueta_b"], estilos["monto_b"]
         else:
             est_e, est_m = estilos["etiqueta"], estilos["monto"]
-        data.append([Paragraph(etiqueta, est_e), Paragraph(monto_str, est_m)])
+        data.append([Paragraph(etiqueta, est_e), Paragraph(cant_str, estilos["cant"]), Paragraph(monto_str, est_m)])
 
-    tabla = Table(data, colWidths=[46 * mm, 26 * mm])
+    tabla = Table(data, colWidths=[36 * mm, 10 * mm, 26 * mm])
     estilo_tabla = [
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ('LINEBELOW', (0, 0), (-1, -1), 0.4, colors.HexColor("#AAAAAA")),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.8, colors.black),
     ]
     for idx in filas_destacadas:
         estilo_tabla += [
@@ -542,7 +546,7 @@ def _encabezado_ticket(subtitulo, fecha_str, estilos):
     ]
 
 
-def _flowables_ticket_chica(fila, fecha_str, estilos):
+def _flowables_ticket_chica(fila, fecha_str, estilos, folios_vale=""):
     """Ticket de Bailarinas y Chicas: sueldo + una línea por categoría de
     producto + descuento/multa (restados ANTES del total) + vale/transferencia
     (restados del total para dar el efectivo) + cocina informativa."""
@@ -560,24 +564,25 @@ def _flowables_ticket_chica(fila, fecha_str, estilos):
         cant = fila.get(f"_{cat}_cant", 0.0)
         monto = fila.get(f"_{cat}_m", 0.0)
         bruto += monto
-        filas_prod.append((f"{cat.upper()}  {int(cant)}", f"${monto:,.2f}", "normal"))
+        filas_prod.append((cat.upper(), str(int(cant)), f"${monto:,.2f}", "normal"))
 
     total = bruto - descuento - multa
     efectivo = total - vale - transferencia
+    etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
-    filas = [("SUELDO", f"${sueldo:,.2f}", "normal")] + filas_prod + [
-        ("DESCUENTO", f"-${descuento:,.2f}", "normal"),
-        ("MULTA", f"-${multa:,.2f}", "normal"),
-        ("TOTAL", f"${total:,.2f}", "negrita"),
-        ("VALE", f"-${vale:,.2f}", "negrita"),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
-        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
-        ("COCINA", f"-${cocina:,.2f}", "normal"),
+    filas = [("SUELDO", "", f"${sueldo:,.2f}", "normal")] + filas_prod + [
+        ("DESCUENTO", "", f"-${descuento:,.2f}", "normal"),
+        ("MULTA", "", f"-${multa:,.2f}", "normal"),
+        ("TOTAL", "", f"${total:,.2f}", "negrita"),
+        (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
+        ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", "", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(nombre, fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
 
-def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, comision_monto):
+def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, comision_monto, folios_vale=""):
     """Ticket de Mesero, Ayudante de Mesero, Seguridad, DJ y Animador: sin
     desglose de producto, solo sueldo + propina/comisión + deducciones."""
     nombre = fila["Nombre"]
@@ -590,17 +595,18 @@ def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, c
 
     total = sueldo + propina + comision_monto
     efectivo = total - transferencia - vale - retencion
+    etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
     filas = [
-        ("SUELDO", f"${sueldo:,.2f}", "normal"),
-        ("PROPINA", f"${propina:,.2f}", "normal"),
-        (f"COMISIÓN  {int(comision_cant)}", f"${comision_monto:,.2f}", "normal"),
-        ("TOTAL", f"${total:,.2f}", "negrita"),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
-        ("VALE", f"-${vale:,.2f}", "negrita"),
-        ("RETENCIÓN", f"-${retencion:,.2f}", "normal"),
-        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
-        ("COCINA", f"-${cocina:,.2f}", "normal"),
+        ("SUELDO", "", f"${sueldo:,.2f}", "normal"),
+        ("PROPINA", "", f"${propina:,.2f}", "normal"),
+        ("COMISIÓN", str(int(comision_cant)), f"${comision_monto:,.2f}", "normal"),
+        ("TOTAL", "", f"${total:,.2f}", "negrita"),
+        ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
+        (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
+        ("RETENCIÓN", "", f"-${retencion:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", "", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
@@ -624,7 +630,7 @@ def _desglose_productos_gerencia(chicas_totales_dia):
     return resultado
 
 
-def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia):
+def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia, folios_vale=""):
     """Ticket de Capitán de Mesero, Gerente y Cajero: sueldo + las 7 líneas
     fijas de producto + propina."""
     nombre = fila["Nombre"]
@@ -641,32 +647,45 @@ def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia)
         cant = productos_dia[etiqueta]["cant"]
         monto = productos_dia[etiqueta]["monto"]
         suma_prod += monto
-        filas_prod.append((f"{etiqueta}  {int(cant)}", f"${monto:,.2f}", "normal"))
+        filas_prod.append((etiqueta, str(int(cant)), f"${monto:,.2f}", "normal"))
 
     total = sueldo + suma_prod + propina
     efectivo = total - transferencia - vale - retencion
+    etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
-    filas = [("SUELDO", f"${sueldo:,.2f}", "normal")] + filas_prod + [
-        ("PROPINA", f"${propina:,.2f}", "normal"),
-        ("TOTAL", f"${total:,.2f}", "negrita"),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
-        ("VALE", f"-${vale:,.2f}", "negrita"),
-        ("RETENCIÓN", f"-${retencion:,.2f}", "normal"),
-        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
-        ("COCINA", f"-${cocina:,.2f}", "normal"),
+    filas = [("SUELDO", "", f"${sueldo:,.2f}", "normal")] + filas_prod + [
+        ("PROPINA", "", f"${propina:,.2f}", "normal"),
+        ("TOTAL", "", f"${total:,.2f}", "negrita"),
+        ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
+        (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
+        ("RETENCIÓN", "", f"-${retencion:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", "", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
 
-def _flowables_ticket_general_dispatch(fila, fecha_str, estilos, productos_dia_gerencia):
+def _folios_vale_dia(vales_dia_df, empleado_id):
+    """Folios del historial de Registro de Vales de un empleado para la
+    fecha ya cargada en vales_dia_df, unidos con coma (vacío si no hay
+    ninguno todavía, ej. si el corte no se ha cerrado)."""
+    if vales_dia_df is None or vales_dia_df.empty or "empleado_id" not in vales_dia_df.columns:
+        return ""
+    filas = vales_dia_df[vales_dia_df["empleado_id"] == empleado_id]
+    if filas.empty:
+        return ""
+    return ", ".join(sorted(filas["folio"].tolist()))
+
+
+def _flowables_ticket_general_dispatch(fila, fecha_str, estilos, productos_dia_gerencia, folios_vale=""):
     """Elige el formato de ticket (simple o de gerencia) según el puesto de
     la fila — para grupos como 'Personal General y Fijo' que mezclan roles."""
     tipo_up = str(fila["Puesto"]).upper()
     propina = float(fila.get("_propinas_num", 0.0))
     comision_monto = float(fila.get("Comisiones", 0.0))
     if any(p in tipo_up for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
-        return _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia_gerencia)
-    return _flowables_ticket_simple(fila, fecha_str, estilos, propina, 0, comision_monto)
+        return _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia_gerencia, folios_vale)
+    return _flowables_ticket_simple(fila, fecha_str, estilos, propina, 0, comision_monto, folios_vale)
 
 
 def generar_pdf_tickets(lista_flowables_por_ticket, alto_pagina_mm=160):
@@ -1364,12 +1383,14 @@ elif opcion == "Nómina del día":
             st.metric("Total multas", f"${total_multa_grupo:,.2f}", border=True)
 
         st.subheader(":material/print: Imprimir tickets (80mm)")
+        vales_dia_df = cargar_vales_df(fecha_activa)
         col_ticket_ind, col_ticket_masivo = st.columns(2)
         with col_ticket_ind:
             nombre_ticket_sel = st.selectbox("Empleado", df_res["Nombre"].tolist(), key=f"sel_ticket_{key_sufijo}")
             fila_ticket = df_res[df_res["Nombre"] == nombre_ticket_sel].iloc[0]
+            folios_ticket = _folios_vale_dia(vales_dia_df, int(fila_ticket["ID"]))
             pdf_ticket_individual = generar_pdf_tickets(
-                [_flowables_ticket_chica(fila_ticket, fecha_activa, _estilos_ticket())], alto_pagina_mm=180
+                [_flowables_ticket_chica(fila_ticket, fecha_activa, _estilos_ticket(), folios_ticket)], alto_pagina_mm=180
             )
             st.download_button(
                 "Descargar ticket individual", data=pdf_ticket_individual,
@@ -1379,7 +1400,8 @@ elif opcion == "Nómina del día":
         with col_ticket_masivo:
             st.write("")
             pdf_tickets_masivo = generar_pdf_tickets(
-                [_flowables_ticket_chica(fila_r, fecha_activa, _estilos_ticket()) for _, fila_r in df_res.iterrows()],
+                [_flowables_ticket_chica(fila_r, fecha_activa, _estilos_ticket(), _folios_vale_dia(vales_dia_df, int(fila_r["ID"])))
+                 for _, fila_r in df_res.iterrows()],
                 alto_pagina_mm=180
             )
             st.download_button(
@@ -1593,12 +1615,14 @@ elif opcion == "Nómina del día":
 
         st.subheader(":material/print: Imprimir tickets (80mm)")
         productos_dia_gerencia = _desglose_productos_gerencia(chicas_totales)
+        vales_dia_gen_df = cargar_vales_df(fecha_activa)
         col_ticket_ind_gen, col_ticket_masivo_gen = st.columns(2)
         with col_ticket_ind_gen:
             nombre_ticket_gen_sel = st.selectbox("Empleado", df_res_general["Nombre"].tolist(), key=f"sel_ticket_gen_{key_sufijo}")
             fila_ticket_gen = df_res_general[df_res_general["Nombre"] == nombre_ticket_gen_sel].iloc[0]
+            folios_ticket_gen = _folios_vale_dia(vales_dia_gen_df, int(fila_ticket_gen["ID"]))
             pdf_ticket_gen_individual = generar_pdf_tickets(
-                [_flowables_ticket_general_dispatch(fila_ticket_gen, fecha_activa, _estilos_ticket(), productos_dia_gerencia)],
+                [_flowables_ticket_general_dispatch(fila_ticket_gen, fecha_activa, _estilos_ticket(), productos_dia_gerencia, folios_ticket_gen)],
                 alto_pagina_mm=140
             )
             st.download_button(
@@ -1609,8 +1633,10 @@ elif opcion == "Nómina del día":
         with col_ticket_masivo_gen:
             st.write("")
             pdf_tickets_gen_masivo = generar_pdf_tickets(
-                [_flowables_ticket_general_dispatch(fila_r, fecha_activa, _estilos_ticket(), productos_dia_gerencia)
-                 for _, fila_r in df_res_general.iterrows()],
+                [_flowables_ticket_general_dispatch(
+                    fila_r, fecha_activa, _estilos_ticket(), productos_dia_gerencia,
+                    _folios_vale_dia(vales_dia_gen_df, int(fila_r["ID"]))
+                 ) for _, fila_r in df_res_general.iterrows()],
                 alto_pagina_mm=140
             )
             st.download_button(
