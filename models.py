@@ -503,6 +503,16 @@ def verificar_pin_empleado(empleado_id: int, pin_ingresado: str) -> bool:
         session.close()
 
 
+def cargar_catalogo_empleados() -> pd.DataFrame:
+    """Catálogo completo de empleados (id, nombre, tipo), sin filtrar por
+    fecha ni por activo — para clasificar registros que abarcan varias
+    fechas (ej. el historial completo de vales) por tipo de puesto."""
+    session = get_session()
+    df = pd.read_sql(session.query(Empleado.id, Empleado.nombre, Empleado.tipo).statement, session.bind)
+    session.close()
+    return df
+
+
 def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     session = get_session()
     f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')

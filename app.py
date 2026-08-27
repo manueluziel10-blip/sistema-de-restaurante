@@ -26,7 +26,7 @@ from models import (
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
-    cargar_vales_df, actualizar_estado_vale,
+    cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados,
     generar_vales_desde_nomina
 )
 from comisiones import (
@@ -1404,16 +1404,16 @@ elif opcion == "3. Corte y Nómina Final":
 
 # --- SECCIÓN: VALES DIARIOS ---
 elif opcion == "💳 Vales Diarios":
-    st.subheader(f"💳 Vales diarios - Fecha: {fecha_activa}")
-    st.info("Este historial se genera solo: al 'Cerrar Corte Actual' (barra lateral), cada empleado con un monto en la columna 'Vales ($)' de Nómina recibe un folio nuevo aquí.")
+    st.subheader("💳 Vales diarios - Todos los cortes")
+    st.info("Este historial junta los vales de TODOS los cortes (no solo la fecha activa). Se generan al 'Cerrar Corte Actual' (barra lateral): cada empleado con un monto en la columna 'Vales ($)' de Nómina recibe un folio nuevo aquí.")
 
-    vales_df = cargar_vales_df(fecha_activa)
+    vales_df = cargar_vales_df()
     if vales_df.empty:
-        st.info(f"No hay vales registrados para {fecha_activa}. Se generan al cerrar el corte del día.")
+        st.info("No hay vales registrados todavía. Se generan al cerrar el corte del día.")
     else:
-        empleados_vale_df = cargar_empleados_df(fecha_activa)
+        catalogo_empleados_df = cargar_catalogo_empleados()
         vales_df = vales_df.merge(
-            empleados_vale_df[["id", "tipo"]].rename(columns={"id": "empleado_id"}),
+            catalogo_empleados_df[["id", "tipo"]].rename(columns={"id": "empleado_id"}),
             on="empleado_id", how="left"
         )
         vales_df["es_chica"] = vales_df["tipo"].apply(
@@ -1423,103 +1423,83 @@ elif opcion == "💳 Vales Diarios":
         formas_pago = ["EFECTIVO", "TRANSFERENCIA", "EFECTIVO Y TRANSFERENCIA"]
         estados = ["PENDIENTE", "PAGADO", "YA NO PAGAR"]
 
+        def tabla_vales_editable(df_subset, sufijo_key, texto_boton_guardar="💾 Guardar cambios"):
+            vista = df_subset[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+            vista.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+
+            version_key = f"editor_vales_{sufijo_key}_version"
+            if version_key not in st.session_state:
+                st.session_state[version_key] = 0
+            editor_key = f"editor_vales_{sufijo_key}_v{st.session_state[version_key]}"
+
+            if st.session_state.get(editor_key, {}).get("edited_rows", {}):
+                st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
+
+            with st.form(f"form_vales_{sufijo_key}"):
+                editado = st.data_editor(
+                    vista,
+                    hide_index=True,
+                    use_container_width=True,
+                    disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
+                    column_config={
+                        "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
+                        "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
+                        "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
+                    },
+                    key=editor_key
+                )
+                col_g, col_d = st.columns(2)
+                with col_g:
+                    guardar = st.form_submit_button(texto_boton_guardar, use_container_width=True)
+                with col_d:
+                    descartar = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
+            if guardar:
+                with st.spinner("Guardando cambios..."):
+                    for _, fila in editado.iterrows():
+                        original = vista[vista["ID"] == fila["ID"]].iloc[0]
+                        if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
+                            actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
+                st.session_state[version_key] += 1
+                st.success("Cambios guardados.")
+                st.rerun()
+            elif descartar:
+                st.session_state[version_key] += 1
+                st.rerun()
+
+        def tabla_vales_solo_lectura(df_subset):
+            vista = df_subset[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+            vista.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+            st.dataframe(vista, hide_index=True, use_container_width=True)
+
         def renderizar_vales_grupo(df_grupo, sufijo_key):
             pendientes_df = df_grupo[df_grupo["estado"] == "PENDIENTE"]
-            if pendientes_df.empty:
-                st.info("No hay vales pendientes.")
-            else:
-                st.markdown("#### 🟡 Pendientes de pago")
-                vista_pendientes = pendientes_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-                vista_pendientes.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+            pagados_df = df_grupo[df_grupo["estado"] == "PAGADO"]
+            ya_no_pagar_df = df_grupo[df_grupo["estado"] == "YA NO PAGAR"]
 
-                version_key_p = f"editor_vales_pendientes_{sufijo_key}_version"
-                if version_key_p not in st.session_state:
-                    st.session_state[version_key_p] = 0
-                editor_key_p = f"editor_vales_pendientes_{sufijo_key}_v{st.session_state[version_key_p]}"
-
-                if st.session_state.get(editor_key_p, {}).get("edited_rows", {}):
-                    st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
-
-                with st.form(f"form_vales_pendientes_{sufijo_key}"):
-                    editado = st.data_editor(
-                        vista_pendientes,
-                        hide_index=True,
-                        use_container_width=True,
-                        disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
-                        column_config={
-                            "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
-                            "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
-                            "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
-                        },
-                        key=editor_key_p
-                    )
-                    col_guardar_p, col_descartar_p = st.columns(2)
-                    with col_guardar_p:
-                        guardar_pendientes = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
-                    with col_descartar_p:
-                        descartar_pendientes = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
-                if guardar_pendientes:
-                    with st.spinner("Guardando cambios..."):
-                        for _, fila in editado.iterrows():
-                            original = vista_pendientes[vista_pendientes["ID"] == fila["ID"]].iloc[0]
-                            if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
-                                actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
-                    st.session_state[version_key_p] += 1
-                    st.success("Estados guardados. Los vales marcados como PAGADO o YA NO PAGAR pasan al historial y ya no se pueden editar.")
-                    st.rerun()
-                elif descartar_pendientes:
-                    st.session_state[version_key_p] += 1
-                    st.rerun()
-
-            resueltos_df = df_grupo[df_grupo["estado"] != "PENDIENTE"]
-            if not resueltos_df.empty:
-                st.markdown("#### 🔒 Historial (pagados / ya no pagar)")
-                if rol_actual_lower == "admin":
-                    vista_resueltos = resueltos_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-                    vista_resueltos.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
-
-                    version_key_h = f"editor_vales_historial_{sufijo_key}_version"
-                    if version_key_h not in st.session_state:
-                        st.session_state[version_key_h] = 0
-                    editor_key_h = f"editor_vales_historial_{sufijo_key}_v{st.session_state[version_key_h]}"
-
-                    if st.session_state.get(editor_key_h, {}).get("edited_rows", {}):
-                        st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
-
-                    with st.form(f"form_vales_historial_{sufijo_key}"):
-                        editado_hist = st.data_editor(
-                            vista_resueltos,
-                            hide_index=True,
-                            use_container_width=True,
-                            disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
-                            column_config={
-                                "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
-                                "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
-                                "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
-                            },
-                            key=editor_key_h
-                        )
-                        col_guardar_h, col_descartar_h = st.columns(2)
-                        with col_guardar_h:
-                            guardar_historial = st.form_submit_button("💾 Guardar cambios del historial", use_container_width=True)
-                        with col_descartar_h:
-                            descartar_historial = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
-                    if guardar_historial:
-                        with st.spinner("Guardando cambios..."):
-                            for _, fila in editado_hist.iterrows():
-                                original = vista_resueltos[vista_resueltos["ID"] == fila["ID"]].iloc[0]
-                                if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
-                                    actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
-                        st.session_state[version_key_h] += 1
-                        st.success("Historial actualizado.")
-                        st.rerun()
-                    elif descartar_historial:
-                        st.session_state[version_key_h] += 1
-                        st.rerun()
+            tab_pend, tab_pag, tab_np = st.tabs([
+                f"🟡 Pendientes ({len(pendientes_df)})",
+                f"✅ Pagados ({len(pagados_df)})",
+                f"🚫 Ya no pagar ({len(ya_no_pagar_df)})",
+            ])
+            with tab_pend:
+                if pendientes_df.empty:
+                    st.info("No hay vales pendientes.")
                 else:
-                    vista_resueltos = resueltos_df[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-                    vista_resueltos.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
-                    st.dataframe(vista_resueltos, hide_index=True, use_container_width=True)
+                    tabla_vales_editable(pendientes_df, f"{sufijo_key}_pendientes")
+            with tab_pag:
+                if pagados_df.empty:
+                    st.info("No hay vales pagados.")
+                elif rol_actual_lower == "admin":
+                    tabla_vales_editable(pagados_df, f"{sufijo_key}_pagados", texto_boton_guardar="💾 Guardar cambios (Pagados)")
+                else:
+                    tabla_vales_solo_lectura(pagados_df)
+            with tab_np:
+                if ya_no_pagar_df.empty:
+                    st.info("No hay vales en 'Ya no pagar'.")
+                elif rol_actual_lower == "admin":
+                    tabla_vales_editable(ya_no_pagar_df, f"{sufijo_key}_yanopagar", texto_boton_guardar="💾 Guardar cambios (Ya no pagar)")
+                else:
+                    tabla_vales_solo_lectura(ya_no_pagar_df)
 
             st.metric("Total del grupo", f"${float(df_grupo['importe'].sum()):,.2f}")
 
@@ -1530,7 +1510,7 @@ elif opcion == "💳 Vales Diarios":
             renderizar_vales_grupo(vales_df[~vales_df["es_chica"]], "trabajadores")
 
         st.markdown("---")
-        st.metric("Total del historial de vales del día", f"${float(vales_df['importe'].sum()):,.2f}")
+        st.metric("Total del historial completo de vales", f"${float(vales_df['importe'].sum()):,.2f}")
 
 # --- SECCIÓN: PAGOS Y COMEDOR ---
 elif opcion == "💰 Pagos y Comedor":
