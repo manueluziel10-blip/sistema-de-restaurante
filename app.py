@@ -1059,43 +1059,47 @@ elif opcion == "3. Corte y Nómina Final":
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
 
-        df_editado = st.data_editor(
-            df_estilizado,
-            height=altura_tabla,
-            column_config={
-                "ID": st.column_config.NumberColumn("ID", disabled=True),
-                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
-                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
-                "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
-                "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
-                "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
-                "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
-            },
-            disabled=columnas_deshabilitadas,
-            use_container_width=True,
-            key=editor_key
-        )
+        with st.form(f"form_nomina_{key_sufijo}"):
+            df_editado = st.data_editor(
+                df_estilizado,
+                height=altura_tabla,
+                column_config={
+                    "ID": st.column_config.NumberColumn("ID", disabled=True),
+                    "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                    "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
+                    "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
+                    "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
+                    "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
+                    "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
+                    "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
+                },
+                disabled=columnas_deshabilitadas,
+                use_container_width=True,
+                key=editor_key
+            )
+            guardar_nomina = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar)
 
         actualizado_flag = False
-        if puede_modificar and (editor_key in st.session_state):
-            cambios = st.session_state[editor_key].get("edited_rows", {})
-            for row_idx, edits in cambios.items():
-                fila_modificada = df_res.iloc[int(row_idx)]
-                e_id = int(fila_modificada['ID'])
-                
-                nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
-                nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
-                nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_modificada['Transferencia'])
-                nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
-                nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_modificada['Cocina'])
-                puesto_emp = fila_modificada['Puesto']
-                penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
+        if guardar_nomina and puede_modificar and (editor_key in st.session_state):
+            with st.spinner("Guardando cambios..."):
+                cambios = st.session_state[editor_key].get("edited_rows", {})
+                for row_idx, edits in cambios.items():
+                    fila_modificada = df_res.iloc[int(row_idx)]
+                    e_id = int(fila_modificada['ID'])
 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
-                actualizado_flag = True
+                    nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_modificada['Sueldo Base'])
+                    nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_modificada['Vales'])
+                    nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_modificada['Transferencia'])
+                    nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
+                    nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_modificada['Cocina'])
+                    puesto_emp = fila_modificada['Puesto']
+                    penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
+
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
+                    actualizado_flag = True
 
         if actualizado_flag:
+            st.success("Cambios guardados.")
             st.rerun()
 
         st.markdown("#### 📦 Resumen General de Productos Vendidos")
@@ -1252,43 +1256,47 @@ elif opcion == "3. Corte y Nómina Final":
         if not puede_modificar:
             cols_disabled_gen = cols_mostrar_gen
 
-        df_editado_gen = st.data_editor(
-            df_estilizado_gen,
-            height=min(max(len(df_res_general) * 45 + 40, 150), 900),
-            column_config={
-                "ID": st.column_config.NumberColumn("ID", disabled=True),
-                "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
-                "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
-                "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
-                "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
-                "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
-                "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
-                "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
-            },
-            disabled=cols_disabled_gen,
-            use_container_width=True,
-            key=editor_key_gen
-        )
+        with st.form(f"form_nomina_gen_{key_sufijo}"):
+            df_editado_gen = st.data_editor(
+                df_estilizado_gen,
+                height=min(max(len(df_res_general) * 45 + 40, 150), 900),
+                column_config={
+                    "ID": st.column_config.NumberColumn("ID", disabled=True),
+                    "Total a Pagar": st.column_config.NumberColumn("Total a Pagar ($)", format="$%.2f", disabled=True),
+                    "Sueldo Base": st.column_config.NumberColumn("Sueldo Base ($)", format="$%.2f", required=True),
+                    "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
+                    "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
+                    "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
+                    "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
+                    "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
+                },
+                disabled=cols_disabled_gen,
+                use_container_width=True,
+                key=editor_key_gen
+            )
+            guardar_nomina_gen = st.form_submit_button("💾 Guardar cambios", disabled=not puede_modificar)
 
         actualizado_gen_flag = False
-        if puede_modificar and (editor_key_gen in st.session_state):
-            cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
-            for row_idx, edits in cambios_gen.items():
-                fila_mod_gen = df_res_general.iloc[int(row_idx)]
-                e_id = int(fila_mod_gen['ID'])
-                
-                nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_mod_gen['Sueldo Base'])
-                nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
-                nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
-                nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
-                puesto_emp = fila_mod_gen['Puesto']
-                penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
-                descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
+        if guardar_nomina_gen and puede_modificar and (editor_key_gen in st.session_state):
+            with st.spinner("Guardando cambios..."):
+                cambios_gen = st.session_state[editor_key_gen].get("edited_rows", {})
+                for row_idx, edits in cambios_gen.items():
+                    fila_mod_gen = df_res_general.iloc[int(row_idx)]
+                    e_id = int(fila_mod_gen['ID'])
 
-                actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
-                actualizado_gen_flag = True
+                    nuevo_sb = float(edits["Sueldo Base"]) if "Sueldo Base" in edits else float(fila_mod_gen['Sueldo Base'])
+                    nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
+                    nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
+                    nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
+                    puesto_emp = fila_mod_gen['Puesto']
+                    penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
+                    descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
+
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
+                    actualizado_gen_flag = True
 
         if actualizado_gen_flag:
+            st.success("Cambios guardados.")
             st.rerun()
 
         st.markdown("---")
@@ -1361,43 +1369,91 @@ elif opcion == "💳 Vales Diarios":
     if vales_df.empty:
         st.info(f"No hay vales registrados para {fecha_activa}. Se generan al cerrar el corte del día.")
     else:
+        empleados_vale_df = cargar_empleados_df(fecha_activa)
+        vales_df = vales_df.merge(
+            empleados_vale_df[["id", "tipo"]].rename(columns={"id": "empleado_id"}),
+            on="empleado_id", how="left"
+        )
+        vales_df["es_chica"] = vales_df["tipo"].apply(
+            lambda t: es_chica_o_bailarina(t) if pd.notna(t) else False
+        )
+
         formas_pago = ["EFECTIVO", "TRANSFERENCIA", "EFECTIVO Y TRANSFERENCIA"]
         estados = ["PENDIENTE", "PAGADO", "YA NO PAGAR"]
 
-        pendientes_df = vales_df[vales_df["estado"] == "PENDIENTE"]
-        if pendientes_df.empty:
-            st.info("No hay vales pendientes.")
-        else:
-            st.markdown("#### 🟡 Pendientes de pago")
-            vista_pendientes = pendientes_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-            vista_pendientes.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
-            editado = st.data_editor(
-                vista_pendientes,
-                hide_index=True,
-                use_container_width=True,
-                disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
-                column_config={
-                    "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
-                    "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
-                    "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
-                },
-                key="editor_vales_diarios"
-            )
-            if st.button("Guardar estados de vales", key="btn_guardar_estados_vales"):
-                for _, fila in editado.iterrows():
-                    original = vista_pendientes[vista_pendientes["ID"] == fila["ID"]].iloc[0]
-                    if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
-                        actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
-                st.success("Estados guardados. Los vales marcados como PAGADO o YA NO PAGAR pasan al historial y ya no se pueden editar.")
-                st.rerun()
+        def renderizar_vales_grupo(df_grupo, sufijo_key):
+            pendientes_df = df_grupo[df_grupo["estado"] == "PENDIENTE"]
+            if pendientes_df.empty:
+                st.info("No hay vales pendientes.")
+            else:
+                st.markdown("#### 🟡 Pendientes de pago")
+                vista_pendientes = pendientes_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+                vista_pendientes.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+                with st.form(f"form_vales_pendientes_{sufijo_key}"):
+                    editado = st.data_editor(
+                        vista_pendientes,
+                        hide_index=True,
+                        use_container_width=True,
+                        disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
+                        column_config={
+                            "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
+                            "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
+                            "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
+                        },
+                        key=f"editor_vales_pendientes_{sufijo_key}"
+                    )
+                    guardar_pendientes = st.form_submit_button("💾 Guardar cambios")
+                if guardar_pendientes:
+                    with st.spinner("Guardando cambios..."):
+                        for _, fila in editado.iterrows():
+                            original = vista_pendientes[vista_pendientes["ID"] == fila["ID"]].iloc[0]
+                            if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
+                                actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
+                    st.success("Estados guardados. Los vales marcados como PAGADO o YA NO PAGAR pasan al historial y ya no se pueden editar.")
+                    st.rerun()
 
-        resueltos_df = vales_df[vales_df["estado"] != "PENDIENTE"]
-        if not resueltos_df.empty:
-            st.markdown("#### 🔒 Historial (pagados / ya no pagar)")
-            vista_resueltos = resueltos_df[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-            vista_resueltos.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
-            st.dataframe(vista_resueltos, hide_index=True, use_container_width=True)
+            resueltos_df = df_grupo[df_grupo["estado"] != "PENDIENTE"]
+            if not resueltos_df.empty:
+                st.markdown("#### 🔒 Historial (pagados / ya no pagar)")
+                if rol_actual_lower == "admin":
+                    vista_resueltos = resueltos_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+                    vista_resueltos.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+                    with st.form(f"form_vales_historial_{sufijo_key}"):
+                        editado_hist = st.data_editor(
+                            vista_resueltos,
+                            hide_index=True,
+                            use_container_width=True,
+                            disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
+                            column_config={
+                                "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
+                                "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
+                                "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
+                            },
+                            key=f"editor_vales_historial_{sufijo_key}"
+                        )
+                        guardar_historial = st.form_submit_button("💾 Guardar cambios del historial")
+                    if guardar_historial:
+                        with st.spinner("Guardando cambios..."):
+                            for _, fila in editado_hist.iterrows():
+                                original = vista_resueltos[vista_resueltos["ID"] == fila["ID"]].iloc[0]
+                                if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
+                                    actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
+                        st.success("Historial actualizado.")
+                        st.rerun()
+                else:
+                    vista_resueltos = resueltos_df[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+                    vista_resueltos.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+                    st.dataframe(vista_resueltos, hide_index=True, use_container_width=True)
 
+            st.metric("Total del grupo", f"${float(df_grupo['importe'].sum()):,.2f}")
+
+        tab_bailarinas, tab_trabajadores = st.tabs(["🎀 Bailarinas y Chicas", "👥 Trabajadores"])
+        with tab_bailarinas:
+            renderizar_vales_grupo(vales_df[vales_df["es_chica"]], "bailarinas")
+        with tab_trabajadores:
+            renderizar_vales_grupo(vales_df[~vales_df["es_chica"]], "trabajadores")
+
+        st.markdown("---")
         st.metric("Total del historial de vales del día", f"${float(vales_df['importe'].sum()):,.2f}")
 
 # --- SECCIÓN: PAGOS Y COMEDOR ---
