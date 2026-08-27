@@ -1818,6 +1818,20 @@ def importar_base_datos_excel(archivo) -> dict:
         session.close()
 
 
+def eliminar_datos_boutique():
+    session = get_session()
+    try:
+        session.query(AbonoBoutique).delete()
+        session.query(VentaBoutique).delete()
+        session.query(ProductoBoutique).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 def reiniciar_base_de_datos():
     session = get_session()
     try:

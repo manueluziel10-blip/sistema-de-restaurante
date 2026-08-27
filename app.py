@@ -31,7 +31,8 @@ from models import (
     generar_vales_desde_nomina,
     agregar_producto_boutique, actualizar_producto_boutique, cargar_productos_boutique_df,
     registrar_venta_boutique, cargar_ventas_boutique_df,
-    cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df
+    cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df,
+    eliminar_datos_boutique
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -1872,8 +1873,9 @@ elif opcion == "Boutique / Tienda":
     CATEGORIAS_BOUTIQUE = ["Zapatillas", "Ropa", "Accesorios"]
     METODOS_PAGO_BOUTIQUE = ["Efectivo", "Transferencia"]
 
-    tab_inventario, tab_venta, tab_cobros = st.tabs([
-        "Inventario de productos", "Registrar venta", "Cuentas por cobrar y pagos"
+    tab_inventario, tab_venta, tab_cobros, tab_peligro_boutique = st.tabs([
+        "Inventario de productos", "Registrar venta", "Cuentas por cobrar y pagos",
+        "Zona de peligro"
     ])
 
     with tab_inventario:
@@ -2062,6 +2064,49 @@ elif opcion == "Boutique / Tienda":
                 vista_abonos_boutique = abonos_boutique_df[["empleado_nombre", "monto", "metodo_pago", "fecha_pago"]].copy()
                 vista_abonos_boutique.columns = ["Empleado", "Monto", "Método de pago", "Fecha de pago"]
                 st.dataframe(vista_abonos_boutique, hide_index=True, use_container_width=True)
+
+    with tab_peligro_boutique:
+        if es_gerente:
+            st.info("Solo lectura para este rol.")
+        else:
+            st.warning("⚠️ Esto borra TODO el inventario, ventas y abonos de Boutique. NO afecta nómina, empleados ni cortes. No se puede deshacer.")
+
+            if "mostrar_form_reinicio_boutique" not in st.session_state:
+                st.session_state["mostrar_form_reinicio_boutique"] = False
+
+            if not st.session_state["mostrar_form_reinicio_boutique"]:
+                if st.button("🗑️ Borrar datos de Boutique"):
+                    st.session_state["mostrar_form_reinicio_boutique"] = True
+                    st.rerun()
+            else:
+                with st.form("form_confirmar_reinicio_boutique"):
+                    pass_admin_boutique = st.text_input("Contraseña de Admin", type="password")
+                    texto_confirmacion_boutique = st.text_input('Escribe exactamente "BORRAR BOUTIQUE" para confirmar')
+                    confirmar_check_boutique = st.checkbox("Entiendo que esta acción es irreversible")
+
+                    col_fb1, col_fb2 = st.columns(2)
+                    btn_ejecutar_boutique = col_fb1.form_submit_button("Sí, Borrar")
+                    btn_cancelar_boutique = col_fb2.form_submit_button("Cancelar")
+
+                    if btn_ejecutar_boutique:
+                        if confirmar_check_boutique and texto_confirmacion_boutique.strip() == "BORRAR BOUTIQUE":
+                            usuario_actual_limpio_bt = st.session_state["usuario_actual"].strip().lower()
+                            user_val_bt = validar_login(usuario_actual_limpio_bt, pass_admin_boutique)
+                            if not user_val_bt and usuario_actual_limpio_bt == "admin":
+                                user_val_bt = validar_login("admin", pass_admin_boutique)
+
+                            if user_val_bt and user_val_bt.get("rol") == "admin":
+                                eliminar_datos_boutique()
+                                st.session_state["mostrar_form_reinicio_boutique"] = False
+                                st.success("¡Datos de Boutique borrados con éxito!")
+                                st.rerun()
+                            else:
+                                st.error("Contraseña incorrecta o el usuario no es admin.")
+                        else:
+                            st.error('Debes marcar la casilla y escribir exactamente "BORRAR BOUTIQUE".')
+                    if btn_cancelar_boutique:
+                        st.session_state["mostrar_form_reinicio_boutique"] = False
+                        st.rerun()
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
