@@ -902,7 +902,8 @@ if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
 if es_gerente:
     nombres_secciones = [
-        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "Boutique / Tienda", "5. Reportes"
+        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "Boutique / Tienda",
+        "4. Cierre de Caja (Dashboard)", "5. Reportes"
     ]
 if st.session_state["seccion_activa"] not in nombres_secciones:
     st.session_state["seccion_activa"] = nombres_secciones[0]
@@ -1935,63 +1936,59 @@ elif opcion == "Boutique / Tienda":
                     st.session_state[version_key_prod] += 1
                     st.rerun()
 
-        if not es_gerente:
-            st.subheader(":material/add_box: Agregar producto nuevo")
-            with st.form("form_boutique_nuevo_producto", clear_on_submit=True):
-                nuevo_prod_nombre = st.text_input("Nombre")
-                nuevo_prod_categoria = st.selectbox("Categoría", CATEGORIAS_BOUTIQUE, key="boutique_nueva_categoria")
-                nuevo_prod_talla = st.text_input("Talla (opcional)")
-                nuevo_prod_precio = st.number_input("Precio de venta ($)", min_value=0.0, format="%.2f", key="boutique_nuevo_precio")
-                nuevo_prod_stock = st.number_input("Stock inicial", min_value=0, step=1, key="boutique_nuevo_stock")
-                if st.form_submit_button("Guardar producto"):
-                    if nuevo_prod_nombre.strip():
-                        codigo_generado = agregar_producto_boutique(
-                            nuevo_prod_nombre.strip(), nuevo_prod_categoria, nuevo_prod_talla.strip() or None,
-                            nuevo_prod_precio, int(nuevo_prod_stock)
-                        )
-                        st.success(f"¡Producto '{nuevo_prod_nombre.strip()}' agregado al inventario con código {codigo_generado}!")
-                        st.rerun()
-                    else:
-                        st.error("El nombre del producto no puede estar vacío.")
+        st.subheader(":material/add_box: Agregar producto nuevo")
+        with st.form("form_boutique_nuevo_producto", clear_on_submit=True):
+            nuevo_prod_nombre = st.text_input("Nombre")
+            nuevo_prod_categoria = st.selectbox("Categoría", CATEGORIAS_BOUTIQUE, key="boutique_nueva_categoria")
+            nuevo_prod_talla = st.text_input("Talla (opcional)")
+            nuevo_prod_precio = st.number_input("Precio de venta ($)", min_value=0.0, format="%.2f", key="boutique_nuevo_precio")
+            nuevo_prod_stock = st.number_input("Stock inicial", min_value=0, step=1, key="boutique_nuevo_stock")
+            if st.form_submit_button("Guardar producto"):
+                if nuevo_prod_nombre.strip():
+                    codigo_generado = agregar_producto_boutique(
+                        nuevo_prod_nombre.strip(), nuevo_prod_categoria, nuevo_prod_talla.strip() or None,
+                        nuevo_prod_precio, int(nuevo_prod_stock)
+                    )
+                    st.success(f"¡Producto '{nuevo_prod_nombre.strip()}' agregado al inventario con código {codigo_generado}!")
+                    st.rerun()
+                else:
+                    st.error("El nombre del producto no puede estar vacío.")
 
     with tab_venta:
-        if es_gerente:
-            st.info("Solo lectura para tu rol — no puedes registrar ventas en la Boutique.")
+        empleados_boutique_df = cargar_catalogo_empleados()
+        if not empleados_boutique_df.empty:
+            empleados_boutique_df = empleados_boutique_df[empleados_boutique_df["activo"]]
+        productos_disponibles_df = cargar_productos_boutique_df(solo_con_stock=True)
+
+        if empleados_boutique_df.empty:
+            st.warning("No hay empleados activos en el catálogo.")
+        elif productos_disponibles_df.empty:
+            st.warning("No hay productos con stock disponible.")
         else:
-            empleados_boutique_df = cargar_catalogo_empleados()
-            if not empleados_boutique_df.empty:
-                empleados_boutique_df = empleados_boutique_df[empleados_boutique_df["activo"]]
-            productos_disponibles_df = cargar_productos_boutique_df(solo_con_stock=True)
+            nombres_emp_venta = empleados_boutique_df.sort_values("nombre")["nombre"].tolist()
+            emp_venta_sel = st.selectbox("Empleado", nombres_emp_venta, key="boutique_venta_empleado")
+            emp_venta_fila = empleados_boutique_df[empleados_boutique_df["nombre"] == emp_venta_sel].iloc[0]
 
-            if empleados_boutique_df.empty:
-                st.warning("No hay empleados activos en el catálogo.")
-            elif productos_disponibles_df.empty:
-                st.warning("No hay productos con stock disponible.")
-            else:
-                nombres_emp_venta = empleados_boutique_df.sort_values("nombre")["nombre"].tolist()
-                emp_venta_sel = st.selectbox("Empleado", nombres_emp_venta, key="boutique_venta_empleado")
-                emp_venta_fila = empleados_boutique_df[empleados_boutique_df["nombre"] == emp_venta_sel].iloc[0]
+            etiquetas_prod = {
+                f"{row['nombre']} (stock: {int(row['stock'])})": row['id']
+                for _, row in productos_disponibles_df.iterrows()
+            }
+            prod_venta_sel_label = st.selectbox("Producto", list(etiquetas_prod.keys()), key="boutique_venta_producto")
+            prod_venta_fila = productos_disponibles_df[productos_disponibles_df["id"] == etiquetas_prod[prod_venta_sel_label]].iloc[0]
 
-                etiquetas_prod = {
-                    f"{row['nombre']} (stock: {int(row['stock'])})": row['id']
-                    for _, row in productos_disponibles_df.iterrows()
-                }
-                prod_venta_sel_label = st.selectbox("Producto", list(etiquetas_prod.keys()), key="boutique_venta_producto")
-                prod_venta_fila = productos_disponibles_df[productos_disponibles_df["id"] == etiquetas_prod[prod_venta_sel_label]].iloc[0]
+            cantidad_venta = st.number_input(
+                "Cantidad", min_value=1, max_value=int(prod_venta_fila["stock"]), step=1, key="boutique_venta_cantidad"
+            )
+            total_venta_preview = float(prod_venta_fila["precio_venta"]) * cantidad_venta
+            st.metric("Total", f"${total_venta_preview:,.2f}", border=True)
 
-                cantidad_venta = st.number_input(
-                    "Cantidad", min_value=1, max_value=int(prod_venta_fila["stock"]), step=1, key="boutique_venta_cantidad"
-                )
-                total_venta_preview = float(prod_venta_fila["precio_venta"]) * cantidad_venta
-                st.metric("Total", f"${total_venta_preview:,.2f}", border=True)
-
-                if st.button("Registrar venta", icon=":material/point_of_sale:", key="btn_boutique_registrar_venta"):
-                    try:
-                        folio_venta = registrar_venta_boutique(int(emp_venta_fila["id"]), int(prod_venta_fila["id"]), int(cantidad_venta))
-                        st.success(f"¡Venta registrada con folio {folio_venta}! Pendiente de cobro.")
-                        st.rerun()
-                    except ValueError as error:
-                        st.error(str(error))
+            if st.button("Registrar venta", icon=":material/point_of_sale:", key="btn_boutique_registrar_venta"):
+                try:
+                    folio_venta = registrar_venta_boutique(int(emp_venta_fila["id"]), int(prod_venta_fila["id"]), int(cantidad_venta))
+                    st.success(f"¡Venta registrada con folio {folio_venta}! Pendiente de cobro.")
+                    st.rerun()
+                except ValueError as error:
+                    st.error(str(error))
 
     with tab_cobros:
         st.caption("Los abonos se aplican al saldo general del empleado (todas sus compras), no a un folio en particular.")
