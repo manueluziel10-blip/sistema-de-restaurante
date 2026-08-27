@@ -484,35 +484,58 @@ def _estilos_ticket():
     styles = getSampleStyleSheet()
     return {
         "titulo": ParagraphStyle('TicketTitulo', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13),
+        "nombre": ParagraphStyle('TicketNombre', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13),
         "subtitulo": ParagraphStyle('TicketSubtitulo', parent=styles['Normal'], fontName='Helvetica', fontSize=8, alignment=1, leading=10),
         "etiqueta": ParagraphStyle('TicketEtiqueta', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10),
         "etiqueta_b": ParagraphStyle('TicketEtiquetaBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10),
+        "etiqueta_d": ParagraphStyle('TicketEtiquetaDestacada', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13),
         "monto": ParagraphStyle('TicketMonto', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=2),
         "monto_b": ParagraphStyle('TicketMontoBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2),
+        "monto_d": ParagraphStyle('TicketMontoDestacado', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13, alignment=2),
     }
 
 
 def _tabla_ticket(filas, estilos):
-    """filas: lista de (etiqueta, monto_str, negrita) -> Table de 2 columnas angosta para 80mm."""
+    """filas: lista de (etiqueta, monto_str, estilo) -> Table de 2 columnas
+    angosta para 80mm, con una línea separadora bajo cada concepto.
+    estilo: "normal" | "negrita" (TOTAL/VALE) | "destacado" (EFECTIVO, con
+    fondo y recuadro para que resalte más)."""
     data = []
-    for etiqueta, monto_str, negrita in filas:
-        est_e = estilos["etiqueta_b"] if negrita else estilos["etiqueta"]
-        est_m = estilos["monto_b"] if negrita else estilos["monto"]
+    filas_destacadas = []
+    for idx, (etiqueta, monto_str, estilo) in enumerate(filas):
+        if estilo == "destacado":
+            est_e, est_m = estilos["etiqueta_d"], estilos["monto_d"]
+            filas_destacadas.append(idx)
+        elif estilo == "negrita":
+            est_e, est_m = estilos["etiqueta_b"], estilos["monto_b"]
+        else:
+            est_e, est_m = estilos["etiqueta"], estilos["monto"]
         data.append([Paragraph(etiqueta, est_e), Paragraph(monto_str, est_m)])
+
     tabla = Table(data, colWidths=[46 * mm, 26 * mm])
-    tabla.setStyle(TableStyle([
+    estilo_tabla = [
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-    ]))
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.4, colors.HexColor("#AAAAAA")),
+    ]
+    for idx in filas_destacadas:
+        estilo_tabla += [
+            ('BACKGROUND', (0, idx), (-1, idx), colors.HexColor("#EDEDED")),
+            ('LINEABOVE', (0, idx), (-1, idx), 1.0, colors.black),
+            ('LINEBELOW', (0, idx), (-1, idx), 1.0, colors.black),
+            ('TOPPADDING', (0, idx), (-1, idx), 4),
+            ('BOTTOMPADDING', (0, idx), (-1, idx), 4),
+        ]
+    tabla.setStyle(TableStyle(estilo_tabla))
     return tabla
 
 
 def _encabezado_ticket(subtitulo, fecha_str, estilos):
     return [
         Paragraph("ZULLY'S MEN'S CLUB", estilos["titulo"]),
-        Paragraph(subtitulo, estilos["subtitulo"]),
+        Paragraph(subtitulo, estilos["nombre"]),
         Paragraph(fecha_str, estilos["subtitulo"]),
         Spacer(1, 3 * mm),
     ]
@@ -536,19 +559,19 @@ def _flowables_ticket_chica(fila, fecha_str, estilos):
         cant = fila.get(f"_{cat}_cant", 0.0)
         monto = fila.get(f"_{cat}_m", 0.0)
         bruto += monto
-        filas_prod.append((f"{cat.upper()}  {int(cant)}", f"${monto:,.2f}", False))
+        filas_prod.append((f"{cat.upper()}  {int(cant)}", f"${monto:,.2f}", "normal"))
 
     total = bruto - descuento - multa
     efectivo = total - vale - transferencia
 
-    filas = [("SUELDO", f"${sueldo:,.2f}", False)] + filas_prod + [
-        ("DESCUENTO", f"-${descuento:,.2f}", False),
-        ("MULTA", f"-${multa:,.2f}", False),
-        ("TOTAL", f"${total:,.2f}", True),
-        ("VALE", f"-${vale:,.2f}", False),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
-        ("EFECTIVO", f"${efectivo:,.2f}", True),
-        ("COCINA", f"-${cocina:,.2f}", False),
+    filas = [("SUELDO", f"${sueldo:,.2f}", "normal")] + filas_prod + [
+        ("DESCUENTO", f"-${descuento:,.2f}", "normal"),
+        ("MULTA", f"-${multa:,.2f}", "normal"),
+        ("TOTAL", f"${total:,.2f}", "negrita"),
+        ("VALE", f"-${vale:,.2f}", "negrita"),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
+        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(nombre, fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
@@ -568,15 +591,15 @@ def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, c
     efectivo = total - transferencia - vale - retencion
 
     filas = [
-        ("SUELDO", f"${sueldo:,.2f}", False),
-        ("PROPINA", f"${propina:,.2f}", False),
-        (f"COMISIÓN  {int(comision_cant)}", f"${comision_monto:,.2f}", False),
-        ("TOTAL", f"${total:,.2f}", True),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
-        ("VALE", f"-${vale:,.2f}", False),
-        ("RETENCIÓN", f"-${retencion:,.2f}", False),
-        ("EFECTIVO", f"${efectivo:,.2f}", True),
-        ("COCINA", f"-${cocina:,.2f}", False),
+        ("SUELDO", f"${sueldo:,.2f}", "normal"),
+        ("PROPINA", f"${propina:,.2f}", "normal"),
+        (f"COMISIÓN  {int(comision_cant)}", f"${comision_monto:,.2f}", "normal"),
+        ("TOTAL", f"${total:,.2f}", "negrita"),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
+        ("VALE", f"-${vale:,.2f}", "negrita"),
+        ("RETENCIÓN", f"-${retencion:,.2f}", "normal"),
+        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
@@ -617,19 +640,19 @@ def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia)
         cant = productos_dia[etiqueta]["cant"]
         monto = productos_dia[etiqueta]["monto"]
         suma_prod += monto
-        filas_prod.append((f"{etiqueta}  {int(cant)}", f"${monto:,.2f}", False))
+        filas_prod.append((f"{etiqueta}  {int(cant)}", f"${monto:,.2f}", "normal"))
 
     total = sueldo + suma_prod + propina
     efectivo = total - transferencia - vale - retencion
 
-    filas = [("SUELDO", f"${sueldo:,.2f}", False)] + filas_prod + [
-        ("PROPINA", f"${propina:,.2f}", False),
-        ("TOTAL", f"${total:,.2f}", True),
-        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
-        ("VALE", f"-${vale:,.2f}", False),
-        ("RETENCIÓN", f"-${retencion:,.2f}", False),
-        ("EFECTIVO", f"${efectivo:,.2f}", True),
-        ("COCINA", f"-${cocina:,.2f}", False),
+    filas = [("SUELDO", f"${sueldo:,.2f}", "normal")] + filas_prod + [
+        ("PROPINA", f"${propina:,.2f}", "normal"),
+        ("TOTAL", f"${total:,.2f}", "negrita"),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", "normal"),
+        ("VALE", f"-${vale:,.2f}", "negrita"),
+        ("RETENCIÓN", f"-${retencion:,.2f}", "normal"),
+        ("EFECTIVO", f"${efectivo:,.2f}", "destacado"),
+        ("COCINA", f"-${cocina:,.2f}", "normal"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
