@@ -477,6 +477,7 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
 # --- TICKETS DE NÓMINA PARA IMPRESORA TÉRMICA (80mm) ---
 TICKET_ANCHO = 80 * mm
 TICKET_MARGEN = 3 * mm
+TICKET_MARGEN_SUPERIOR = 1 * mm
 PRODUCTOS_TICKET_GERENCIA = ["COPA", "MINI", "JARRA IMP", "BOONS", "ESPECIAL", "CHANDON", "MOET"]
 
 
@@ -675,7 +676,7 @@ def generar_pdf_tickets(lista_flowables_por_ticket, alto_pagina_mm=160):
     doc = SimpleDocTemplate(
         buffer, pagesize=(TICKET_ANCHO, alto_pagina_mm * mm),
         leftMargin=TICKET_MARGEN, rightMargin=TICKET_MARGEN,
-        topMargin=TICKET_MARGEN, bottomMargin=TICKET_MARGEN
+        topMargin=TICKET_MARGEN_SUPERIOR, bottomMargin=TICKET_MARGEN
     )
     story = []
     for idx, flowables_ticket in enumerate(lista_flowables_por_ticket):
