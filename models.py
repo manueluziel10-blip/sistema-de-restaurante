@@ -504,13 +504,35 @@ def verificar_pin_empleado(empleado_id: int, pin_ingresado: str) -> bool:
 
 
 def cargar_catalogo_empleados() -> pd.DataFrame:
-    """Catálogo completo de empleados (id, nombre, tipo), sin filtrar por
-    fecha ni por activo — para clasificar registros que abarcan varias
-    fechas (ej. el historial completo de vales) por tipo de puesto."""
+    """Catálogo completo de empleados (id, nombre, tipo, sueldo_base, activo),
+    sin filtrar por fecha ni por activo — para clasificar registros que
+    abarcan varias fechas (ej. el historial completo de vales) por tipo de
+    puesto, y para el directorio completo de personal (activos e inactivos)."""
     session = get_session()
-    df = pd.read_sql(session.query(Empleado.id, Empleado.nombre, Empleado.tipo).statement, session.bind)
+    df = pd.read_sql(
+        session.query(Empleado.id, Empleado.nombre, Empleado.tipo, Empleado.sueldo_base, Empleado.activo).statement,
+        session.bind
+    )
     session.close()
+    if not df.empty:
+        df['sueldo_base'] = df['sueldo_base'].astype(float)
+        df['activo'] = df['activo'].astype(bool)
     return df
+
+
+def actualizar_estatus_empleado(emp_id: int, activo: bool):
+    """Activa o desactiva a un empleado (baja/alta indefinida, reversible).
+    No toca su puesto, sueldo ni ningún registro de nomina_diaria."""
+    session = get_session()
+    try:
+        emp = session.query(Empleado).filter(Empleado.id == emp_id).first()
+        if not emp:
+            return False
+        emp.activo = activo
+        session.commit()
+        return True
+    finally:
+        session.close()
 
 
 def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
@@ -628,6 +650,9 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
         vale = session.query(ValeDiario).filter(ValeDiario.id == vale_id).first()
         if not vale:
             return False
+        forma_pago_efectiva = (forma_pago or vale.forma_pago or "").strip()
+        if estado == "PAGADO" and not forma_pago_efectiva:
+            raise ValueError(f"El vale {vale.folio} no tiene forma de pago; asígnale una antes de marcarlo como PAGADO.")
         vale.estado = estado
         vale.forma_pago = forma_pago or vale.forma_pago
         vale.fecha_pago = datetime.now().date() if estado == "PAGADO" else None

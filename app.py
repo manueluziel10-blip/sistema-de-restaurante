@@ -26,7 +26,7 @@ from models import (
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
-    cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados,
+    cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados, actualizar_estatus_empleado,
     generar_vales_desde_nomina
 )
 from comisiones import (
@@ -645,7 +645,7 @@ if "seccion_activa" not in st.session_state:
 nombres_secciones = [
     "1. Subir Cortes Diarios (Excel)",
     "2. Gestión de Empleados",
-    "3. Corte y Nómina Final",
+    "Nómina del día",
     "Registro de Vales",
     "4. Cierre de Caja (Dashboard)",
     "5. Reportes",
@@ -657,7 +657,7 @@ if rol_actual_lower == "admin":
 iconos_secciones = {
     "1. Subir Cortes Diarios (Excel)": ":material/upload_file:",
     "2. Gestión de Empleados": ":material/group:",
-    "3. Corte y Nómina Final": ":material/payments:",
+    "Nómina del día": ":material/payments:",
     "Registro de Vales": ":material/receipt_long:",
     "4. Cierre de Caja (Dashboard)": ":material/dashboard:",
     "5. Reportes": ":material/analytics:",
@@ -857,101 +857,111 @@ if opcion == "1. Subir Cortes Diarios (Excel)":
 
 # --- SECCIÓN 2: GESTIÓN Y EDICIÓN DE EMPLEADOS ---
 elif opcion == "2. Gestión de Empleados":
-    st.subheader(f"Gestión y Catálogo de Personal - Fecha Activa: {fecha_activa}")
-    
-    empleados_df = cargar_empleados_df(fecha_activa)
+    st.subheader(":material/group: Directorio de personal")
+    st.caption("Todos los empleados dados de alta, activos e inactivos. Desactiva a quien ya no trabaja aquí en vez de borrarlo.")
+
+    catalogo_df = cargar_catalogo_empleados()
+
+    def tabla_directorio_empleados(df_grupo, sufijo_key):
+        if df_grupo.empty:
+            st.info("No hay empleados en este grupo.")
+            return
+
+        vista = df_grupo[["id", "nombre", "tipo", "sueldo_base", "activo"]].copy()
+        vista.columns = ["ID", "Nombre", "Puesto", "Sueldo base", "Activo"]
+        vista = vista.sort_values("Nombre").reset_index(drop=True)
+
+        version_key = f"editor_directorio_{sufijo_key}_version"
+        if version_key not in st.session_state:
+            st.session_state[version_key] = 0
+        editor_key = f"editor_directorio_{sufijo_key}_v{st.session_state[version_key]}"
+
+        if st.session_state.get(editor_key, {}).get("edited_rows", {}):
+            st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
+
+        with st.form(f"form_directorio_{sufijo_key}"):
+            editado = st.data_editor(
+                vista,
+                hide_index=True,
+                use_container_width=True,
+                disabled=["ID", "Nombre", "Puesto", "Sueldo base"],
+                column_config={
+                    "Sueldo base": st.column_config.NumberColumn("Sueldo base ($)", format="$%.2f"),
+                    "Activo": st.column_config.CheckboxColumn("Activo"),
+                },
+                key=editor_key
+            )
+            col_g, col_d = st.columns(2)
+            with col_g:
+                guardar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+            with col_d:
+                descartar = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
+        if guardar:
+            with st.spinner("Guardando cambios..."):
+                for _, fila in editado.iterrows():
+                    original = vista[vista["ID"] == fila["ID"]].iloc[0]
+                    if bool(fila["Activo"]) != bool(original["Activo"]):
+                        actualizar_estatus_empleado(int(fila["ID"]), bool(fila["Activo"]))
+            st.session_state[version_key] += 1
+            st.success("Cambios guardados.")
+            st.rerun()
+        elif descartar:
+            st.session_state[version_key] += 1
+            st.rerun()
 
     tab_gest_chicas, tab_gest_general = st.tabs([
-        "💃 Bailarinas y Chicas de Salón",
-        "📋 Personal Operativo y General"
+        "Bailarinas y chicas de salón",
+        "Personal operativo y general"
     ])
-
     with tab_gest_chicas:
-        st.markdown(f"### Listado: Bailarinas y Chicas de Salón ({fecha_activa})")
-        if not empleados_df.empty:
-            df_chicas_gen = empleados_df[empleados_df['tipo'].apply(es_chica_o_bailarina)].copy()
-            st.dataframe(df_chicas_gen, use_container_width=True)
-        else:
-            st.info("No hay registros en esta fecha.")
-
+        df_chicas_dir = catalogo_df[catalogo_df['tipo'].apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
+        tabla_directorio_empleados(df_chicas_dir, "chicas")
     with tab_gest_general:
-        st.markdown(f"### Listado: Personal Operativo, Meseros y Fijos ({fecha_activa})")
-        if not empleados_df.empty:
-            df_general_gen = empleados_df[~empleados_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)].copy()
-            st.dataframe(df_general_gen, use_container_width=True)
-        else:
-            st.info("No hay registros en esta fecha.")
+        df_general_dir = catalogo_df[~catalogo_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
+        tabla_directorio_empleados(df_general_dir, "general")
 
-    st.info("📂 ¿Buscas la Alta Masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
+    st.info(":material/folder: ¿Buscas la alta masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
 
-    st.markdown("---")
-    col_izq, col_der = st.columns(2)
+    st.subheader(":material/key: Reasignar PIN de asistencia")
+    if not catalogo_df.empty:
+        nombres_emps_pin = catalogo_df.sort_values("nombre")["nombre"].tolist()
+        emp_pin_sel = st.selectbox("Selecciona empleado", nombres_emps_pin, key="sel_emp_pin")
+        emp_pin_actual = catalogo_df[catalogo_df["nombre"] == emp_pin_sel].iloc[0]
+        nuevo_pin_reset = st.text_input(
+            "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
+            max_chars=6, key="pin_reset_input"
+        )
+        if st.button("Guardar nuevo PIN", key="btn_pin_reset"):
+            if nuevo_pin_reset.strip():
+                establecer_pin_empleado(int(emp_pin_actual["id"]), nuevo_pin_reset.strip())
+                st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
+            else:
+                st.error("El PIN no puede estar vacío.")
+    else:
+        st.info("No hay empleados registrados todavía.")
 
-    with col_izq:
-        st.markdown("### Modificar o Eliminar Empleado")
-        if not empleados_df.empty:
-            nombres_emps = empleados_df['nombre'].tolist()
-            emp_a_editar = st.selectbox("Selecciona empleado a modificar o eliminar", nombres_emps, key="sel_emp_mod")
+    st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
+    with st.form("form_empleado"):
+        nuevo_nombre = st.text_input("Nombre completo")
+        nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
+        nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
+        nuevo_pin = st.text_input(
+            "Código PIN de asistencia (4 dígitos, único para este empleado)",
+            value=generar_pin_aleatorio(), max_chars=6
+        )
 
-            emp_actual = empleados_df[empleados_df['nombre'] == emp_a_editar].iloc[0]
-            nuevo_tipo_edit = st.selectbox(
-                "Nuevo Puesto", list(PUESTOS_CATALOGO.keys()),
-                index=list(PUESTOS_CATALOGO.keys()).index(emp_actual['tipo']) if emp_actual['tipo'] in PUESTOS_CATALOGO else 0,
-                key="sel_tipo_mod"
-            )
-            sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
-            nuevo_sueldo_edit = st.number_input("Sueldo Base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
-
-            col_btn_1, col_btn_2 = st.columns(2)
-            with col_btn_1:
-                if st.button("Actualizar Empleado"):
-                    actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
-                    st.success(f"¡Datos de {emp_a_editar} actualizados!")
-                    st.rerun()
-            with col_btn_2:
-                if st.button("🗑️ Eliminar Empleado", type="secondary"):
-                    exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
-                    if exito_del:
-                        st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
-                        st.rerun()
-                    else:
-                        st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
-
-            with st.expander(f"🔑 Reasignar PIN de asistencia de {emp_a_editar}"):
-                nuevo_pin_reset = st.text_input(
-                    "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
-                    max_chars=6, key="pin_reset_input"
-                )
-                if st.button("Guardar Nuevo PIN", key="btn_pin_reset"):
-                    if nuevo_pin_reset.strip():
-                        establecer_pin_empleado(int(emp_actual['id']), nuevo_pin_reset.strip())
-                        st.success(f"¡Nuevo PIN para {emp_a_editar}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
-                    else:
-                        st.error("El PIN no puede estar vacío.")
-
-    with col_der:
-        st.markdown(f"### Agregar Empleado Manual ({fecha_activa})")
-        with st.form("form_empleado"):
-            nuevo_nombre = st.text_input("Nombre Completo")
-            nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
-            nuevo_sueldo = st.number_input("Sueldo Base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
-            nuevo_pin = st.text_input(
-                "Código PIN de Asistencia (4 dígitos, único para este empleado)",
-                value=generar_pin_aleatorio(), max_chars=6
-            )
-
-            if st.form_submit_button("Guardar Empleado"):
-                if nuevo_nombre.strip():
-                    agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
-                    registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
-                    st.rerun()
-                else:
-                    st.error("El nombre no puede estar vacío.")
+        if st.form_submit_button("Guardar empleado"):
+            if nuevo_nombre.strip():
+                agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
+                registrar_asistencias_automaticas_dia(fecha_activa)
+                st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
+                st.rerun()
+            else:
+                st.error("El nombre no puede estar vacío.")
 
 # --- SECCIÓN 3: CORTE Y NÓMINA FINAL ---
-elif opcion == "3. Corte y Nómina Final":
-    st.subheader(f"Cálculo de Nómina Semanal por Categorías - Fecha: {fecha_activa}")
+elif opcion == "Nómina del día":
+    st.subheader(f"Cálculo de nómina semanal por categorías — fecha: {fecha_activa}")
 
     tab_bailarinas, tab_meseros, tab_seguridad, tab_general = st.tabs([
         "💃 Bailarinas y Chicas",
@@ -1365,6 +1375,37 @@ elif opcion == "3. Corte y Nómina Final":
             df_general_otros = pd.DataFrame()
         procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
+    st.subheader(":material/edit: Modificar o eliminar empleado")
+    if not empleados_df.empty:
+        nombres_emps = empleados_df['nombre'].tolist()
+        emp_a_editar = st.selectbox("Selecciona empleado a modificar o eliminar", nombres_emps, key="sel_emp_mod")
+
+        emp_actual = empleados_df[empleados_df['nombre'] == emp_a_editar].iloc[0]
+        nuevo_tipo_edit = st.selectbox(
+            "Nuevo puesto", list(PUESTOS_CATALOGO.keys()),
+            index=list(PUESTOS_CATALOGO.keys()).index(emp_actual['tipo']) if emp_actual['tipo'] in PUESTOS_CATALOGO else 0,
+            key="sel_tipo_mod"
+        )
+        sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
+        nuevo_sueldo_edit = st.number_input("Sueldo base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
+
+        col_btn_1, col_btn_2 = st.columns(2)
+        with col_btn_1:
+            if st.button("Actualizar empleado"):
+                actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
+                st.success(f"¡Datos de {emp_a_editar} actualizados!")
+                st.rerun()
+        with col_btn_2:
+            if st.button("Eliminar empleado", icon=":material/delete:", type="secondary"):
+                exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
+                if exito_del:
+                    st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
+                    st.rerun()
+                else:
+                    st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
+    else:
+        st.info("No hay empleados registrados en esta fecha.")
+
 # --- SECCIÓN: VALES DIARIOS ---
 elif opcion == "Registro de Vales":
     st.subheader(":material/receipt_long: Registro de vales — todos los cortes")
@@ -1387,8 +1428,8 @@ elif opcion == "Registro de Vales":
         estados = ["PENDIENTE", "PAGADO", "YA NO PAGAR"]
 
         def tabla_vales_editable(df_subset, sufijo_key, texto_boton_guardar="💾 Guardar cambios"):
-            vista = df_subset[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-            vista.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+            vista = df_subset[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago", "fecha_pago"]].copy()
+            vista.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago", "Fecha de pago"]
 
             version_key = f"editor_vales_{sufijo_key}_version"
             if version_key not in st.session_state:
@@ -1403,7 +1444,7 @@ elif opcion == "Registro de Vales":
                     vista,
                     hide_index=True,
                     use_container_width=True,
-                    disabled=["ID", "Folio", "Fecha", "Empleado", "Monto"],
+                    disabled=["ID", "Folio", "Fecha", "Empleado", "Monto", "Fecha de pago"],
                     column_config={
                         "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
                         "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
@@ -1417,21 +1458,39 @@ elif opcion == "Registro de Vales":
                 with col_d:
                     descartar = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
             if guardar:
-                with st.spinner("Guardando cambios..."):
-                    for _, fila in editado.iterrows():
-                        original = vista[vista["ID"] == fila["ID"]].iloc[0]
-                        if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
-                            actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
-                st.session_state[version_key] += 1
-                st.success("Cambios guardados.")
-                st.rerun()
+                folios_sin_forma_pago = [
+                    str(fila["Folio"]) for _, fila in editado.iterrows()
+                    if fila["Estado"] == "PAGADO" and not str(fila["Forma de pago"] or "").strip()
+                ]
+                if folios_sin_forma_pago:
+                    st.error(
+                        "Estos vales no tienen forma de pago; asígnales una antes de marcarlos como PAGADO: "
+                        + ", ".join(folios_sin_forma_pago)
+                    )
+                else:
+                    with st.spinner("Guardando cambios..."):
+                        error_guardado = None
+                        for _, fila in editado.iterrows():
+                            original = vista[vista["ID"] == fila["ID"]].iloc[0]
+                            if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
+                                try:
+                                    actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
+                                except ValueError as error:
+                                    error_guardado = str(error)
+                                    break
+                    if error_guardado:
+                        st.error(error_guardado)
+                    else:
+                        st.session_state[version_key] += 1
+                        st.success("Cambios guardados.")
+                        st.rerun()
             elif descartar:
                 st.session_state[version_key] += 1
                 st.rerun()
 
         def tabla_vales_solo_lectura(df_subset):
-            vista = df_subset[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
-            vista.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
+            vista = df_subset[["folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago", "fecha_pago"]].copy()
+            vista.columns = ["Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago", "Fecha de pago"]
             st.dataframe(vista, hide_index=True, use_container_width=True)
 
         def renderizar_vales_grupo(df_grupo, sufijo_key):
