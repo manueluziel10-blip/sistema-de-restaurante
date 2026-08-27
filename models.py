@@ -554,62 +554,38 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     return df
 
 
-def importar_vales_excel(archivo, archivo_origen: str = ""):
-    """Importa la hoja Registro de Pagos y conserva cada vale por folio."""
-    import openpyxl
-
+def generar_vales_desde_nomina(fecha_str: str):
+    """Al cerrar el corte del día, crea en el historial de vales (con folio
+    nuevo autogenerado V-0001, V-0002, ...) una fila por cada empleado cuya
+    columna 'Vales ($)' de Nómina sea mayor a cero, con el monto que haya
+    quedado capturado ahí."""
+    fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
     session = get_session()
-    resultado = {"importados": 0, "actualizados": 0, "no_encontrados": []}
     try:
-        empleados = {normalizar_nombre(e.nombre): e for e in session.query(Empleado).filter(Empleado.activo == True)}
-        archivo.seek(0)
-        libro = openpyxl.load_workbook(archivo, read_only=True, data_only=True, keep_vba=True)
-        hoja = libro["Registro de Pagos"]
-
-        def numero(valor):
-            try:
-                return float(valor or 0)
-            except (TypeError, ValueError):
-                return 0.0
-
-        def convertir_fecha(valor):
-            if hasattr(valor, "date"):
-                return valor.date()
-            return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
-
-        for fila in list(hoja.iter_rows(values_only=True))[4:]:
-            folio, fecha, nombre = fila[1], fila[2], fila[4]
-            if not folio or not fecha or not nombre:
-                continue
-            empleado = empleados.get(normalizar_nombre(nombre))
+        nominas = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == fecha, NominaDiaria.vales_nomina > 0
+        ).all()
+        for nomina in nominas:
+            empleado = session.query(Empleado).filter(Empleado.id == nomina.empleado_id).first()
             if not empleado:
-                resultado["no_encontrados"].append(str(nombre).strip())
                 continue
-            vale = session.query(ValeDiario).filter(ValeDiario.folio == str(folio).strip()).first()
-            forma_pago = str(fila[9]).strip().upper() if len(fila) > 9 and fila[9] else None
-            fecha_pago = convertir_fecha(fila[10]) if len(fila) > 10 and fila[10] else None
-            datos = {
-                "fecha": convertir_fecha(fecha), "empleado_id": empleado.id,
-                "empleado_nombre": empleado.nombre, "importe": numero(fila[7]),
-                "importe_bruto": numero(fila[5]), "abono_boutique": numero(fila[6]),
-                "estado": (
-                    "PAGADO" if str(fila[8] or "").strip().upper() == "PAGADO"
-                    else "YA NO PAGAR" if "NO PAGAR" in str(fila[8] or "").strip().upper()
-                    else "PENDIENTE"
-                ),
-                "forma_pago": forma_pago, "fecha_pago": fecha_pago,
-                "archivo_origen": archivo_origen
-            }
-            if vale:
-                for clave, valor in datos.items():
-                    setattr(vale, clave, valor)
-                resultado["actualizados"] += 1
-            else:
-                session.add(ValeDiario(folio=str(folio).strip(), **datos))
-                resultado["importados"] += 1
+            ultimo_folio = session.query(ValeDiario.folio).filter(
+                ValeDiario.folio.like("V-%")
+            ).order_by(ValeDiario.id.desc()).first()
+            siguiente = 1
+            if ultimo_folio:
+                try:
+                    siguiente = int(ultimo_folio[0].split("-")[1]) + 1
+                except (IndexError, ValueError):
+                    siguiente = session.query(ValeDiario).count() + 1
+            folio = f"V-{siguiente:04d}"
+
+            session.add(ValeDiario(
+                folio=folio, fecha=fecha, empleado_id=empleado.id, empleado_nombre=empleado.nombre,
+                importe=float(nomina.vales_nomina), importe_bruto=float(nomina.vales_nomina),
+                abono_boutique=0.0, estado="PAGADO", fecha_pago=fecha,
+            ))
         session.commit()
-        resultado["no_encontrados"] = sorted(set(resultado["no_encontrados"]))
-        return resultado
     except Exception:
         session.rollback()
         raise
@@ -641,30 +617,6 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
         vale.fecha_pago = datetime.now().date() if estado == "PAGADO" else None
         session.commit()
         return True
-    finally:
-        session.close()
-
-
-def sincronizar_vales_nomina(fecha_str: str):
-    """Refleja en nómina los vales vigentes del día, excluyendo YA NO PAGAR."""
-    fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-    session = get_session()
-    try:
-        nominas = session.query(NominaDiaria).filter(NominaDiaria.fecha == fecha).all()
-        for nomina in nominas:
-            nomina.vales_nomina = 0
-            nomina.vales_excel = 0
-        filas = session.query(ValeDiario.empleado_id, func.sum(ValeDiario.importe)).filter(
-            ValeDiario.fecha == fecha, ValeDiario.estado == "PAGADO"
-        ).group_by(ValeDiario.empleado_id).all()
-        for empleado_id, importe in filas:
-            nomina = session.query(NominaDiaria).filter(
-                NominaDiaria.empleado_id == empleado_id, NominaDiaria.fecha == fecha
-            ).first()
-            if nomina:
-                nomina.vales_nomina = importe or 0
-                nomina.vales_excel = importe or 0
-        session.commit()
     finally:
         session.close()
 

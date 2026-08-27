@@ -26,8 +26,8 @@ from models import (
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
-    importar_vales_excel, cargar_vales_df, actualizar_estado_vale,
-    sincronizar_vales_nomina
+    cargar_vales_df, actualizar_estado_vale,
+    generar_vales_desde_nomina
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -547,6 +547,7 @@ else:
     st.sidebar.success(f"El corte del {fecha_activa} está **ABIERTO**.")
     if rol_actual_lower in ["admin", "cajero"]:
         if st.sidebar.button("🔒 Cerrar Corte Actual", key="btn_cerrar_corte"):
+            generar_vales_desde_nomina(fecha_activa)
             bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
             st.sidebar.warning(f"¡Corte del {fecha_activa} cerrado y bloqueado!")
             st.rerun()
@@ -1354,38 +1355,24 @@ elif opcion == "3. Corte y Nómina Final":
 # --- SECCIÓN: VALES DIARIOS ---
 elif opcion == "💳 Vales Diarios":
     st.subheader(f"💳 Vales diarios - Fecha: {fecha_activa}")
-    st.info("Importa el Registro de Pagos del libro de vales y cambia el estado de cada folio.")
-
-    archivo_vales = st.file_uploader(
-        "Subir VALES CHICAS (.xlsm)", type=["xlsm", "xlsx"], key="subir_vales_diarios"
-    )
-    if archivo_vales is not None and st.button("Importar o actualizar vales", key="btn_importar_vales"):
-        try:
-            resultado_vales = importar_vales_excel(archivo_vales, archivo_vales.name)
-            sincronizar_vales_nomina(fecha_activa)
-            st.success(
-                f"Vales importados: {resultado_vales['importados']}; "
-                f"actualizados: {resultado_vales['actualizados']}."
-            )
-            if resultado_vales["no_encontrados"]:
-                st.warning("Empleados no encontrados: " + ", ".join(resultado_vales["no_encontrados"]))
-            st.rerun()
-        except Exception as error:
-            st.error(f"No se pudo importar el libro de vales: {error}")
+    st.info("Este historial se genera solo: al 'Cerrar Corte Actual' (barra lateral), cada empleado con un monto en la columna 'Vales ($)' de Nómina recibe un folio nuevo aquí.")
 
     vales_df = cargar_vales_df(fecha_activa)
     if vales_df.empty:
-        st.info(f"No hay vales registrados para {fecha_activa}.")
+        st.info(f"No hay vales registrados para {fecha_activa}. Se generan al cerrar el corte del día.")
     else:
-        vista_vales = vales_df[["id", "folio", "fecha", "empleado_nombre", "importe_bruto", "abono_boutique", "importe", "estado", "forma_pago"]].copy()
-        vista_vales.columns = ["ID", "Folio", "Fecha", "Empleado", "Bruto", "Abono boutique", "Neto del vale", "Estado", "Forma de pago"]
+        vista_vales = vales_df[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago"]].copy()
+        vista_vales.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago"]
         estados = ["PAGADO", "PENDIENTE", "YA NO PAGAR"]
         editado = st.data_editor(
             vista_vales,
             hide_index=True,
             use_container_width=True,
-            disabled=["ID", "Folio", "Fecha", "Empleado", "Bruto", "Abono boutique", "Neto del vale", "Forma de pago"],
-            column_config={"Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True)},
+            disabled=["ID", "Folio", "Fecha", "Empleado", "Monto", "Forma de pago"],
+            column_config={
+                "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
+                "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
+            },
             key="editor_vales_diarios"
         )
         if st.button("Guardar estados de vales", key="btn_guardar_estados_vales"):
@@ -1393,16 +1380,16 @@ elif opcion == "💳 Vales Diarios":
                 original = vista_vales[vista_vales["ID"] == fila["ID"]].iloc[0]
                 if fila["Estado"] != original["Estado"]:
                     actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
-            sincronizar_vales_nomina(fecha_activa)
-            st.success("Estados guardados y descuento de nómina actualizado.")
+            st.success("Estados guardados.")
             st.rerun()
+
+        st.metric("Total del historial de vales del día", f"${float(vales_df['importe'].sum()):,.2f}")
 
 # --- SECCIÓN: PAGOS Y COMEDOR ---
 elif opcion == "💰 Pagos y Comedor":
     st.subheader(f"💰 Pagos y Comedor - Fecha: {fecha_activa}")
     st.info("Consolida, para todos los empleados de la fecha activa, cuánto se les debe de nómina (ya descontada la Cocina) y cuánto se les descontó de comedor.")
 
-    sincronizar_vales_nomina(fecha_activa)
     empleados_pagos_df = cargar_empleados_df(fecha_activa)
     ventas_pagos = cargar_ventas_df(fecha_activa)
     chicas_pagos = cargar_chicas_df(fecha_activa)
