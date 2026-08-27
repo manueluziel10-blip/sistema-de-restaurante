@@ -8,9 +8,10 @@ import os
 from sqlalchemy import text
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.lib.units import mm
 
 from models import (
     cargar_empleados_df, agregar_empleado, actualizar_empleado, eliminar_empleado_por_id,
@@ -471,6 +472,197 @@ def generar_pdf_corte(fecha_str, ventas_t, efectivo_v, tarjeta_v, transferencia_
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+
+# --- TICKETS DE NÓMINA PARA IMPRESORA TÉRMICA (80mm) ---
+TICKET_ANCHO = 80 * mm
+TICKET_MARGEN = 3 * mm
+PRODUCTOS_TICKET_GERENCIA = ["COPA", "MINI", "JARRA IMP", "BOONS", "ESPECIAL", "CHANDON", "MOET"]
+
+
+def _estilos_ticket():
+    styles = getSampleStyleSheet()
+    return {
+        "titulo": ParagraphStyle('TicketTitulo', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13),
+        "subtitulo": ParagraphStyle('TicketSubtitulo', parent=styles['Normal'], fontName='Helvetica', fontSize=8, alignment=1, leading=10),
+        "etiqueta": ParagraphStyle('TicketEtiqueta', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10),
+        "etiqueta_b": ParagraphStyle('TicketEtiquetaBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10),
+        "monto": ParagraphStyle('TicketMonto', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=2),
+        "monto_b": ParagraphStyle('TicketMontoBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2),
+    }
+
+
+def _tabla_ticket(filas, estilos):
+    """filas: lista de (etiqueta, monto_str, negrita) -> Table de 2 columnas angosta para 80mm."""
+    data = []
+    for etiqueta, monto_str, negrita in filas:
+        est_e = estilos["etiqueta_b"] if negrita else estilos["etiqueta"]
+        est_m = estilos["monto_b"] if negrita else estilos["monto"]
+        data.append([Paragraph(etiqueta, est_e), Paragraph(monto_str, est_m)])
+    tabla = Table(data, colWidths=[46 * mm, 26 * mm])
+    tabla.setStyle(TableStyle([
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+    ]))
+    return tabla
+
+
+def _encabezado_ticket(subtitulo, fecha_str, estilos):
+    return [
+        Paragraph("ZULLY'S MEN'S CLUB", estilos["titulo"]),
+        Paragraph(subtitulo, estilos["subtitulo"]),
+        Paragraph(fecha_str, estilos["subtitulo"]),
+        Spacer(1, 3 * mm),
+    ]
+
+
+def _flowables_ticket_chica(fila, fecha_str, estilos):
+    """Ticket de Bailarinas y Chicas: sueldo + una línea por categoría de
+    producto + descuento/multa (restados ANTES del total) + vale/transferencia
+    (restados del total para dar el efectivo) + cocina informativa."""
+    nombre = fila["Nombre"]
+    sueldo = float(fila["Sueldo Base"])
+    descuento = float(fila["Descuento"])
+    multa = float(fila.get("Multa", 0.0))
+    vale = float(fila["Vales"])
+    transferencia = float(fila["Transferencia"])
+    cocina = float(fila["Cocina"])
+
+    filas_prod = []
+    bruto = sueldo
+    for cat in CATEGORIAS_CHICAS:
+        cant = fila.get(f"_{cat}_cant", 0.0)
+        monto = fila.get(f"_{cat}_m", 0.0)
+        bruto += monto
+        filas_prod.append((f"{cat.upper()}  {int(cant)}", f"${monto:,.2f}", False))
+
+    total = bruto - descuento - multa
+    efectivo = total - vale - transferencia
+
+    filas = [("SUELDO", f"${sueldo:,.2f}", False)] + filas_prod + [
+        ("DESCUENTO", f"-${descuento:,.2f}", False),
+        ("MULTA", f"-${multa:,.2f}", False),
+        ("TOTAL", f"${total:,.2f}", True),
+        ("VALE", f"-${vale:,.2f}", False),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
+        ("EFECTIVO", f"${efectivo:,.2f}", True),
+        ("COCINA", f"-${cocina:,.2f}", False),
+    ]
+    return _encabezado_ticket(nombre, fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
+
+
+def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, comision_monto):
+    """Ticket de Mesero, Ayudante de Mesero, Seguridad, DJ y Animador: sin
+    desglose de producto, solo sueldo + propina/comisión + deducciones."""
+    nombre = fila["Nombre"]
+    puesto = fila["Puesto"]
+    sueldo = float(fila["Sueldo Base"])
+    vale = float(fila["Vales"])
+    transferencia = float(fila["Transferencia"])
+    retencion = float(fila.get("Retención", 0.0))
+    cocina = float(fila["Cocina"])
+
+    total = sueldo + propina + comision_monto
+    efectivo = total - transferencia - vale - retencion
+
+    filas = [
+        ("SUELDO", f"${sueldo:,.2f}", False),
+        ("PROPINA", f"${propina:,.2f}", False),
+        (f"COMISIÓN  {int(comision_cant)}", f"${comision_monto:,.2f}", False),
+        ("TOTAL", f"${total:,.2f}", True),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
+        ("VALE", f"-${vale:,.2f}", False),
+        ("RETENCIÓN", f"-${retencion:,.2f}", False),
+        ("EFECTIVO", f"${efectivo:,.2f}", True),
+        ("COCINA", f"-${cocina:,.2f}", False),
+    ]
+    return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
+
+
+def _desglose_productos_gerencia(chicas_totales_dia):
+    """Cantidad y monto de cada uno de los 7 productos del ticket de
+    Capitán/Gerente/Cajero, calculados igual que ya calcula 'comisiones_prod'
+    en procesar_grupo_general: sobre el total de productos vendidos en el bar
+    ese día (no por empleado), usando calcular_comision_gerencia_caja."""
+    resultado = {p: {"cant": 0.0, "monto": 0.0} for p in PRODUCTOS_TICKET_GERENCIA}
+    if chicas_totales_dia is None or chicas_totales_dia.empty:
+        return resultado
+    for _, fila_prod in chicas_totales_dia.iterrows():
+        desc = str(fila_prod['descripcion']).upper()
+        cant = float(fila_prod['cantidad']) if pd.notna(fila_prod['cantidad']) else 0.0
+        for etiqueta in PRODUCTOS_TICKET_GERENCIA:
+            if etiqueta in desc:
+                resultado[etiqueta]["cant"] += cant
+                resultado[etiqueta]["monto"] += cant * calcular_comision_gerencia_caja(desc)
+                break
+    return resultado
+
+
+def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia):
+    """Ticket de Capitán de Mesero, Gerente y Cajero: sueldo + las 7 líneas
+    fijas de producto + propina."""
+    nombre = fila["Nombre"]
+    puesto = fila["Puesto"]
+    sueldo = float(fila["Sueldo Base"])
+    vale = float(fila["Vales"])
+    transferencia = float(fila["Transferencia"])
+    retencion = float(fila.get("Retención", 0.0))
+    cocina = float(fila["Cocina"])
+
+    filas_prod = []
+    suma_prod = 0.0
+    for etiqueta in PRODUCTOS_TICKET_GERENCIA:
+        cant = productos_dia[etiqueta]["cant"]
+        monto = productos_dia[etiqueta]["monto"]
+        suma_prod += monto
+        filas_prod.append((f"{etiqueta}  {int(cant)}", f"${monto:,.2f}", False))
+
+    total = sueldo + suma_prod + propina
+    efectivo = total - transferencia - vale - retencion
+
+    filas = [("SUELDO", f"${sueldo:,.2f}", False)] + filas_prod + [
+        ("PROPINA", f"${propina:,.2f}", False),
+        ("TOTAL", f"${total:,.2f}", True),
+        ("TRANSFERENCIA", f"-${transferencia:,.2f}", False),
+        ("VALE", f"-${vale:,.2f}", False),
+        ("RETENCIÓN", f"-${retencion:,.2f}", False),
+        ("EFECTIVO", f"${efectivo:,.2f}", True),
+        ("COCINA", f"-${cocina:,.2f}", False),
+    ]
+    return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
+
+
+def _flowables_ticket_general_dispatch(fila, fecha_str, estilos, productos_dia_gerencia):
+    """Elige el formato de ticket (simple o de gerencia) según el puesto de
+    la fila — para grupos como 'Personal General y Fijo' que mezclan roles."""
+    tipo_up = str(fila["Puesto"]).upper()
+    propina = float(fila.get("_propinas_num", 0.0))
+    comision_monto = float(fila.get("Comisiones", 0.0))
+    if any(p in tipo_up for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+        return _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia_gerencia)
+    return _flowables_ticket_simple(fila, fecha_str, estilos, propina, 0, comision_monto)
+
+
+def generar_pdf_tickets(lista_flowables_por_ticket, alto_pagina_mm=160):
+    """lista_flowables_por_ticket: lista de listas de flowables (una por
+    ticket). Un solo PDF a 80mm de ancho, un ticket por página."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=(TICKET_ANCHO, alto_pagina_mm * mm),
+        leftMargin=TICKET_MARGEN, rightMargin=TICKET_MARGEN,
+        topMargin=TICKET_MARGEN, bottomMargin=TICKET_MARGEN
+    )
+    story = []
+    for idx, flowables_ticket in enumerate(lista_flowables_por_ticket):
+        if idx > 0:
+            story.append(PageBreak())
+        story.extend(flowables_ticket)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 
 # --- MENÚ LATERAL: CONTROL DE FECHA ---
 st.sidebar.header("Menú de Control")
@@ -988,6 +1180,7 @@ elif opcion == "Nómina del día":
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             descuento_emp = float(emp.get('descuento_nomina', 100.0))
             cocina_emp = float(emp.get('consumo_cocina', 0.0))
+            multa_emp = float(emp.get('retencion_nomina', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
             penalizada_cambiada = st.checkbox(
@@ -998,7 +1191,7 @@ elif opcion == "Nómina del día":
             )
 
             if puede_modificar and (penalizada_cambiada != penalizada_actual):
-                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa)
+                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa, nuevo_retencion=multa_emp)
                 st.rerun()
 
             sus_filas = pd.DataFrame()
@@ -1009,7 +1202,7 @@ elif opcion == "Nómina del día":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp - multa_emp
 
             fila_resultado = {
                 "ID": emp_id,
@@ -1021,6 +1214,7 @@ elif opcion == "Nómina del día":
                 "Transferencia": transf_emp,
                 "Descuento": descuento_emp,
                 "Cocina": cocina_emp,
+                "Multa": multa_emp,
                 "Comisiones": extras,
             }
             for cat in CATEGORIAS_CHICAS:
@@ -1051,7 +1245,7 @@ elif opcion == "Nómina del día":
             st.session_state[version_key] = 0
         editor_key = f"{editor_key_base}_v{st.session_state[version_key]}"
 
-        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento", "Cocina"]]
+        columnas_deshabilitadas = [c for c in cols_mostrar if c not in ["Sueldo Base", "Vales", "Transferencia", "Descuento", "Cocina", "Multa"]]
         if not puede_modificar:
             columnas_deshabilitadas = cols_mostrar
 
@@ -1071,6 +1265,7 @@ elif opcion == "Nómina del día":
                     "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
                     "Descuento": st.column_config.NumberColumn("Descuento ($)", format="$%.2f", required=True),
                     "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
+                    "Multa": st.column_config.NumberColumn("Multa ($)", format="$%.2f", required=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                 },
                 disabled=columnas_deshabilitadas,
@@ -1096,10 +1291,11 @@ elif opcion == "Nómina del día":
                     nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_modificada['Transferencia'])
                     nuevo_desc = float(edits["Descuento"]) if "Descuento" in edits else float(fila_modificada['Descuento'])
                     nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_modificada['Cocina'])
+                    nueva_multa = float(edits["Multa"]) if "Multa" in edits else float(fila_modificada['Multa'])
                     puesto_emp = fila_modificada['Puesto']
                     penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
 
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa)
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, nuevo_desc, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_retencion=nueva_multa)
                     actualizado_flag = True
 
         if actualizado_flag:
@@ -1129,6 +1325,7 @@ elif opcion == "Nómina del día":
         total_cocina_grupo = float(df_res['Cocina'].sum())
         total_sueldos_grupo = float(df_res['Sueldo Base'].sum())
         total_comisiones_grupo = float(df_res['Comisiones'].sum())
+        total_multa_grupo = float(df_res['Multa'].sum())
 
         with st.container(horizontal=True):
             st.metric("Subtotal nómina", f"${subtotal:,.2f}", border=True)
@@ -1140,6 +1337,32 @@ elif opcion == "Nómina del día":
             st.metric("Total sueldos base", f"${total_sueldos_grupo:,.2f}", border=True)
             st.metric("Total comisiones", f"${total_comisiones_grupo:,.2f}", border=True)
             st.metric("Total cocina", f"${total_cocina_grupo:,.2f}", border=True)
+            st.metric("Total multas", f"${total_multa_grupo:,.2f}", border=True)
+
+        st.subheader(":material/print: Imprimir tickets (80mm)")
+        col_ticket_ind, col_ticket_masivo = st.columns(2)
+        with col_ticket_ind:
+            nombre_ticket_sel = st.selectbox("Empleado", df_res["Nombre"].tolist(), key=f"sel_ticket_{key_sufijo}")
+            fila_ticket = df_res[df_res["Nombre"] == nombre_ticket_sel].iloc[0]
+            pdf_ticket_individual = generar_pdf_tickets(
+                [_flowables_ticket_chica(fila_ticket, fecha_activa, _estilos_ticket())], alto_pagina_mm=180
+            )
+            st.download_button(
+                "Descargar ticket individual", data=pdf_ticket_individual,
+                file_name=f"Ticket_{nombre_ticket_sel}_{fecha_activa}.pdf", mime="application/pdf",
+                icon=":material/receipt_long:", key=f"btn_ticket_ind_{key_sufijo}"
+            )
+        with col_ticket_masivo:
+            st.write("")
+            pdf_tickets_masivo = generar_pdf_tickets(
+                [_flowables_ticket_chica(fila_r, fecha_activa, _estilos_ticket()) for _, fila_r in df_res.iterrows()],
+                alto_pagina_mm=180
+            )
+            st.download_button(
+                f"Descargar todos los tickets ({len(df_res)})", data=pdf_tickets_masivo,
+                file_name=f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", mime="application/pdf",
+                icon=":material/print:", key=f"btn_ticket_masivo_{key_sufijo}"
+            )
 
         return df_editado, subtotal
 
@@ -1167,6 +1390,7 @@ elif opcion == "Nómina del día":
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             cocina_emp = float(emp.get('consumo_cocina', 0.0))
+            retencion_emp = float(emp.get('retencion_nomina', 0.0))
 
             puesto_upper_check = str(tipo_efectivo).upper()
             comisiones_prod = 0.0
@@ -1219,7 +1443,7 @@ elif opcion == "Nómina del día":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp - retencion_emp
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -1231,12 +1455,13 @@ elif opcion == "Nómina del día":
                 "Puesto del día": puesto_dia_actual if puesto_dia_actual else "(mismo puesto)",
                 "Total a Pagar": total_pagar, "Sueldo Base": sueldo_base,
                 "Vales": vales_emp, "Transferencia": transf_emp, "Cocina": cocina_emp,
+                "Retención": retencion_emp,
                 "Propina (%)": etiqueta_propina,
                 "Comisiones": comisiones_prod, "_propinas_num": propinas
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Puesto del día", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Propina (%)", "Comisiones"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Puesto del día", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Retención", "Propina (%)", "Comisiones"]
         opciones_puesto_dia = ["(mismo puesto)"] + [p for p in PUESTOS_CATALOGO.keys() if p != "Chicas / Bailarinas (Comisiones)"]
         editor_key_gen_base = f"editor_sueldos_gen_{key_sufijo}"
         version_key_gen = f"{editor_key_gen_base}_version"
@@ -1272,6 +1497,7 @@ elif opcion == "Nómina del día":
                     "Vales": st.column_config.NumberColumn("Vales ($)", format="$%.2f", required=True),
                     "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
                     "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
+                    "Retención": st.column_config.NumberColumn("Retención ($)", format="$%.2f", required=True),
                     "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                     "Puesto del día": st.column_config.SelectboxColumn(
@@ -1301,13 +1527,14 @@ elif opcion == "Nómina del día":
                     nuevo_vales = float(edits["Vales"]) if "Vales" in edits else float(fila_mod_gen['Vales'])
                     nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
                     nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
+                    nueva_retencion = float(edits["Retención"]) if "Retención" in edits else float(fila_mod_gen['Retención'])
                     nuevo_puesto_dia_sel = str(edits["Puesto del día"]) if "Puesto del día" in edits else str(fila_mod_gen['Puesto del día'])
                     nuevo_puesto_dia = "" if nuevo_puesto_dia_sel == "(mismo puesto)" else nuevo_puesto_dia_sel
                     puesto_emp = fila_mod_gen['Puesto']
                     penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                     descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
 
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_puesto_dia=nuevo_puesto_dia)
+                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_puesto_dia=nuevo_puesto_dia, nuevo_retencion=nueva_retencion)
                     actualizado_gen_flag = True
 
         if actualizado_gen_flag:
@@ -1326,6 +1553,7 @@ elif opcion == "Nómina del día":
         total_vales_gen = float(df_res_general['Vales'].sum())
         total_transf_gen = float(df_res_general['Transferencia'].sum())
         total_cocina_gen = float(df_res_general['Cocina'].sum())
+        total_retencion_gen = float(df_res_general['Retención'].sum())
 
         with st.container(horizontal=True):
             st.metric("Total sueldos base", f"${tot_sb:,.2f}", border=True)
@@ -1337,6 +1565,35 @@ elif opcion == "Nómina del día":
             st.metric("Total vales", f"${total_vales_gen:,.2f}", border=True)
             st.metric("Total transferencias", f"${total_transf_gen:,.2f}", border=True)
             st.metric("Total cocina", f"${total_cocina_gen:,.2f}", border=True)
+            st.metric("Total retenciones", f"${total_retencion_gen:,.2f}", border=True)
+
+        st.subheader(":material/print: Imprimir tickets (80mm)")
+        productos_dia_gerencia = _desglose_productos_gerencia(chicas_totales)
+        col_ticket_ind_gen, col_ticket_masivo_gen = st.columns(2)
+        with col_ticket_ind_gen:
+            nombre_ticket_gen_sel = st.selectbox("Empleado", df_res_general["Nombre"].tolist(), key=f"sel_ticket_gen_{key_sufijo}")
+            fila_ticket_gen = df_res_general[df_res_general["Nombre"] == nombre_ticket_gen_sel].iloc[0]
+            pdf_ticket_gen_individual = generar_pdf_tickets(
+                [_flowables_ticket_general_dispatch(fila_ticket_gen, fecha_activa, _estilos_ticket(), productos_dia_gerencia)],
+                alto_pagina_mm=140
+            )
+            st.download_button(
+                "Descargar ticket individual", data=pdf_ticket_gen_individual,
+                file_name=f"Ticket_{nombre_ticket_gen_sel}_{fecha_activa}.pdf", mime="application/pdf",
+                icon=":material/receipt_long:", key=f"btn_ticket_ind_gen_{key_sufijo}"
+            )
+        with col_ticket_masivo_gen:
+            st.write("")
+            pdf_tickets_gen_masivo = generar_pdf_tickets(
+                [_flowables_ticket_general_dispatch(fila_r, fecha_activa, _estilos_ticket(), productos_dia_gerencia)
+                 for _, fila_r in df_res_general.iterrows()],
+                alto_pagina_mm=140
+            )
+            st.download_button(
+                f"Descargar todos los tickets ({len(df_res_general)})", data=pdf_tickets_gen_masivo,
+                file_name=f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", mime="application/pdf",
+                icon=":material/print:", key=f"btn_ticket_masivo_gen_{key_sufijo}"
+            )
 
         return float(df_res_general['Total a Pagar'].sum())
 

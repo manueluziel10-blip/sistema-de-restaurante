@@ -23,6 +23,9 @@ TABLA_COMISIONES_CHICAS = [
     ("BOONS",           700.0,  "Boons"),
     ("COPA LADY",       100.0,  "Copa Lady"),
     ("MINI STRONGBOW",  250.0,  "Strongbow"),
+    ("STRONGBOW REL",   250.0,  "Strongbow"),
+    ("VINO ESPUMOSO REL", 1200.0, "Vino Espumoso"),
+    ("VINO ESPUMOSO",   1200.0, "Vino Espumoso"),
     ("VIP30",           1900.0, "VIP 30"),
     ("VIP 15",          1000.0, "VIP 15"),
     ("VIP15",           1000.0, "VIP 15"),
@@ -35,6 +38,7 @@ TABLA_COMISIONES_CHICAS = [
 CATEGORIAS_CHICAS = [
     "Boons", "Copa Lady", "Strongbow", "VIP 3",
     "Privados Promo", "VIP 5 / Priv / Artista", "VIP 15", "VIP 30",
+    "Vino Espumoso",
 ]
 
 # Bono de gerencia/caja (Gerente, Capitán de Mesero, Cajero) por producto vendido.
