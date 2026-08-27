@@ -792,11 +792,21 @@ if rol_actual_lower in ["admin", "cajero", "gerente"]:
     elif es_gerente:
         fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
     else:
-        if "fecha_corte_actual_input" not in st.session_state:
-            st.session_state["fecha_corte_actual_input"] = datetime.now(ZoneInfo("America/Mazatlan")).date()
-        fecha_activa_obj = st.sidebar.date_input(
-            "Fecha para el Corte Actual", key="fecha_corte_actual_input"
+        if "fecha_corte_confirmada" not in st.session_state:
+            st.session_state["fecha_corte_confirmada"] = datetime.now(ZoneInfo("America/Mazatlan")).date()
+
+        fecha_seleccionada = st.sidebar.date_input(
+            "Fecha para el Corte Actual",
+            value=st.session_state["fecha_corte_confirmada"],
+            key="fecha_corte_actual_picker"
         )
+        if fecha_seleccionada != st.session_state["fecha_corte_confirmada"]:
+            st.sidebar.warning(f"Fecha elegida: {fecha_seleccionada}. Presiona **Confirmar fecha** para aplicarla.")
+            if st.sidebar.button("✅ Confirmar fecha", use_container_width=True):
+                st.session_state["fecha_corte_confirmada"] = fecha_seleccionada
+                st.rerun()
+
+        fecha_activa_obj = st.session_state["fecha_corte_confirmada"]
 else:
     fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
     st.sidebar.info(f"Fecha de Operación: **{fecha_activa_obj.strftime('%Y-%m-%d')}**")
@@ -1495,6 +1505,7 @@ elif opcion == "Nómina del día":
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             cocina_emp = float(emp.get('consumo_cocina', 0.0))
             retencion_emp = float(emp.get('retencion_nomina', 0.0))
+            dulceria_emp = float(emp.get('dulceria', 0.0))
 
             puesto_upper_check = str(tipo_efectivo).upper()
             comisiones_prod = 0.0
@@ -1547,7 +1558,7 @@ elif opcion == "Nómina del día":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp - retencion_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp - retencion_emp - dulceria_emp
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -1559,13 +1570,13 @@ elif opcion == "Nómina del día":
                 "Puesto del día": puesto_dia_actual if puesto_dia_actual else "(mismo puesto)",
                 "Total a Pagar": total_pagar, "Sueldo Base": sueldo_base,
                 "Vales": vales_emp, "Transferencia": transf_emp, "Cocina": cocina_emp,
-                "Retención": retencion_emp,
+                "Retención": retencion_emp, "Dulcería": dulceria_emp,
                 "Propina (%)": etiqueta_propina,
                 "Comisiones": comisiones_prod, "_propinas_num": propinas
             })
 
         df_res_general = pd.DataFrame(res_general)
-        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Puesto del día", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Retención", "Propina (%)", "Comisiones"]
+        cols_mostrar_gen = ["ID", "Nombre", "Puesto", "Puesto del día", "Total a Pagar", "Sueldo Base", "Vales", "Transferencia", "Cocina", "Retención", "Dulcería", "Propina (%)", "Comisiones"]
         opciones_puesto_dia = ["(mismo puesto)"] + [p for p in PUESTOS_CATALOGO.keys() if p != "Chicas / Bailarinas (Comisiones)"]
         editor_key_gen_base = f"editor_sueldos_gen_{key_sufijo}"
         version_key_gen = f"{editor_key_gen_base}_version"
@@ -1602,6 +1613,7 @@ elif opcion == "Nómina del día":
                     "Transferencia": st.column_config.NumberColumn("Transferencia ($)", format="$%.2f", required=True),
                     "Cocina": st.column_config.NumberColumn("Cocina ($)", format="$%.2f", required=True),
                     "Retención": st.column_config.NumberColumn("Retención ($)", format="$%.2f", required=True),
+                    "Dulcería": st.column_config.NumberColumn("Dulcería ($)", format="$%.2f", required=True),
                     "Propina (%)": st.column_config.TextColumn("Propina (%)", disabled=True),
                     "Comisiones": st.column_config.NumberColumn("Comisiones ($)", format="$%.2f", disabled=True),
                     "Puesto del día": st.column_config.SelectboxColumn(
@@ -1632,13 +1644,18 @@ elif opcion == "Nómina del día":
                     nueva_transf = float(edits["Transferencia"]) if "Transferencia" in edits else float(fila_mod_gen['Transferencia'])
                     nueva_cocina = float(edits["Cocina"]) if "Cocina" in edits else float(fila_mod_gen['Cocina'])
                     nueva_retencion = float(edits["Retención"]) if "Retención" in edits else float(fila_mod_gen['Retención'])
+                    nueva_dulceria = float(edits["Dulcería"]) if "Dulcería" in edits else float(fila_mod_gen['Dulcería'])
                     nuevo_puesto_dia_sel = str(edits["Puesto del día"]) if "Puesto del día" in edits else str(fila_mod_gen['Puesto del día'])
                     nuevo_puesto_dia = "" if nuevo_puesto_dia_sel == "(mismo puesto)" else nuevo_puesto_dia_sel
                     puesto_emp = fila_mod_gen['Puesto']
                     penalizada_bd = bool(empleados_df[empleados_df['id'] == e_id]['penalizada'].values[0])
                     descuento_bd = float(empleados_df[empleados_df['id'] == e_id]['descuento_nomina'].values[0]) if 'descuento_nomina' in empleados_df.columns else 100.0
 
-                    actualizar_empleado(e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina, fecha_str=fecha_activa, nuevo_puesto_dia=nuevo_puesto_dia, nuevo_retencion=nueva_retencion)
+                    actualizar_empleado(
+                        e_id, puesto_emp, nuevo_sb, nuevo_vales, penalizada_bd, descuento_bd, nueva_transf, nueva_cocina,
+                        fecha_str=fecha_activa, nuevo_puesto_dia=nuevo_puesto_dia, nuevo_retencion=nueva_retencion,
+                        nuevo_dulceria=nueva_dulceria
+                    )
                     actualizado_gen_flag = True
 
         if actualizado_gen_flag:
@@ -1658,6 +1675,7 @@ elif opcion == "Nómina del día":
         total_transf_gen = float(df_res_general['Transferencia'].sum())
         total_cocina_gen = float(df_res_general['Cocina'].sum())
         total_retencion_gen = float(df_res_general['Retención'].sum())
+        total_dulceria_gen = float(df_res_general['Dulcería'].sum())
 
         with st.container(horizontal=True):
             st.metric("Total sueldos base", f"${tot_sb:,.2f}", border=True)
@@ -1670,6 +1688,7 @@ elif opcion == "Nómina del día":
             st.metric("Total transferencias", f"${total_transf_gen:,.2f}", border=True)
             st.metric("Total cocina", f"${total_cocina_gen:,.2f}", border=True)
             st.metric("Total retenciones", f"${total_retencion_gen:,.2f}", border=True)
+            st.metric("Total dulcería", f"${total_dulceria_gen:,.2f}", border=True)
 
         st.subheader(":material/print: Imprimir tickets (80mm)")
         productos_dia_gerencia = _desglose_productos_gerencia(chicas_totales)
