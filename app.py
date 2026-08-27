@@ -719,8 +719,9 @@ rol_actual_lower = st.session_state["rol_actual"].lower()
 es_gerente = rol_actual_lower == "gerente"
 hoy_str = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
 
-if rol_actual_lower in ["admin", "cajero"]:
-    modo_fecha = st.sidebar.radio("Modo de Operación", ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"])
+if rol_actual_lower in ["admin", "cajero", "gerente"]:
+    opciones_modo_fecha = ["📅 Día Actual", "🔍 Buscar Corte Histórico"] if es_gerente else ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"]
+    modo_fecha = st.sidebar.radio("Modo de Operación", opciones_modo_fecha)
     fecha_activa_obj = None
     if modo_fecha == "🔍 Buscar Corte Histórico":
         if fechas_disponibles:
@@ -729,6 +730,8 @@ if rol_actual_lower in ["admin", "cajero"]:
         else:
             st.sidebar.info("No hay cortes históricos registrados aún.")
             fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
+    elif es_gerente:
+        fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
     else:
         fecha_activa_obj = st.sidebar.date_input("Fecha para el Corte Actual", datetime.now(ZoneInfo("America/Mazatlan")))
 else:
