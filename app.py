@@ -712,6 +712,7 @@ st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
 rol_actual_lower = st.session_state["rol_actual"].lower()
+es_gerente = rol_actual_lower == "gerente"
 hoy_str = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
 
 if rol_actual_lower in ["admin", "cajero"]:
@@ -759,119 +760,122 @@ else:
 
 if rol_actual_lower == "admin":
     puede_modificar = not corte_esta_bloqueado
+elif es_gerente:
+    puede_modificar = False
 else:
     puede_modificar = es_dia_actual and (not corte_esta_bloqueado)
 
-# --- RESPALDO DE BASE DE DATOS (EXPORTAR / IMPORTAR) ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("💾 Respaldo de Base de Datos")
+if not es_gerente:
+    # --- RESPALDO DE BASE DE DATOS (EXPORTAR / IMPORTAR) ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("💾 Respaldo de Base de Datos")
 
-try:
-    buffer_respaldo = exportar_base_datos_excel()
-    st.sidebar.download_button(
-        label="📥 Descargar Respaldo Completo (Excel)",
-        data=buffer_respaldo,
-        file_name=f"Respaldo_ZullysDB_{datetime.now(ZoneInfo('America/Mazatlan')).strftime('%Y-%m-%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        help="Descarga TODAS las tablas (empleados, ventas, comisiones, nómina, asistencias, usuarios) en un solo Excel."
-    )
-except Exception as e:
-    st.sidebar.error(f"No se pudo generar el respaldo: {e}")
-
-if "mostrar_form_restaurar" not in st.session_state:
-    st.session_state["mostrar_form_restaurar"] = False
-
-if not st.session_state["mostrar_form_restaurar"]:
-    if st.sidebar.button("📤 Restaurar desde Respaldo"):
-        st.session_state["mostrar_form_restaurar"] = True
-        st.rerun()
-else:
-    with st.sidebar.form("form_confirmar_restaurar"):
-        st.warning(
-            "⚠️ Esto REEMPLAZA TODOS los datos actuales (empleados, ventas, "
-            "comisiones, nóminas, usuarios) con lo que traiga el archivo. "
-            "Úsalo para recuperar un respaldo después de un reinicio."
+    try:
+        buffer_respaldo = exportar_base_datos_excel()
+        st.sidebar.download_button(
+            label="📥 Descargar Respaldo Completo (Excel)",
+            data=buffer_respaldo,
+            file_name=f"Respaldo_ZullysDB_{datetime.now(ZoneInfo('America/Mazatlan')).strftime('%Y-%m-%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Descarga TODAS las tablas (empleados, ventas, comisiones, nómina, asistencias, usuarios) en un solo Excel."
         )
-        archivo_restaurar = st.file_uploader("Sube el archivo de respaldo (.xlsx)", type=["xlsx"], key="subir_respaldo_restaurar")
-        pass_admin_restaurar = st.text_input("Contraseña de Admin", type="password", key="pass_admin_restaurar")
-        texto_confirmacion_restaurar = st.text_input('Escribe exactamente "RESTAURAR" para confirmar', key="texto_confirmar_restaurar")
-        confirmar_check_restaurar = st.checkbox("Entiendo que esto reemplaza todos los datos actuales", key="check_confirmar_restaurar")
+    except Exception as e:
+        st.sidebar.error(f"No se pudo generar el respaldo: {e}")
 
-        col_r1, col_r2 = st.columns(2)
-        btn_ejecutar_restaurar = col_r1.form_submit_button("Sí, Restaurar")
-        btn_cancelar_restaurar = col_r2.form_submit_button("Cancelar")
+    if "mostrar_form_restaurar" not in st.session_state:
+        st.session_state["mostrar_form_restaurar"] = False
 
-        if btn_ejecutar_restaurar:
-            if archivo_restaurar is None:
-                st.error("Sube un archivo de respaldo primero.")
-            elif not confirmar_check_restaurar or texto_confirmacion_restaurar.strip() != "RESTAURAR":
-                st.error('Marca la casilla y escribe exactamente "RESTAURAR" para continuar.')
-            else:
-                usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
-                user_val = validar_login(usuario_actual_limpio, pass_admin_restaurar)
-                if not user_val and usuario_actual_limpio == "admin":
-                    user_val = validar_login("admin", pass_admin_restaurar)
+    if not st.session_state["mostrar_form_restaurar"]:
+        if st.sidebar.button("📤 Restaurar desde Respaldo"):
+            st.session_state["mostrar_form_restaurar"] = True
+            st.rerun()
+    else:
+        with st.sidebar.form("form_confirmar_restaurar"):
+            st.warning(
+                "⚠️ Esto REEMPLAZA TODOS los datos actuales (empleados, ventas, "
+                "comisiones, nóminas, usuarios) con lo que traiga el archivo. "
+                "Úsalo para recuperar un respaldo después de un reinicio."
+            )
+            archivo_restaurar = st.file_uploader("Sube el archivo de respaldo (.xlsx)", type=["xlsx"], key="subir_respaldo_restaurar")
+            pass_admin_restaurar = st.text_input("Contraseña de Admin", type="password", key="pass_admin_restaurar")
+            texto_confirmacion_restaurar = st.text_input('Escribe exactamente "RESTAURAR" para confirmar', key="texto_confirmar_restaurar")
+            confirmar_check_restaurar = st.checkbox("Entiendo que esto reemplaza todos los datos actuales", key="check_confirmar_restaurar")
 
-                if user_val and user_val.get("rol") == "admin":
-                    try:
-                        resultado_restaurar = importar_base_datos_excel(archivo_restaurar)
-                        resumen_restaurar = ", ".join(f"{k}: {v}" for k, v in resultado_restaurar.items())
-                        st.session_state["mostrar_form_restaurar"] = False
-                        st.sidebar.success(f"¡Base de datos restaurada! {resumen_restaurar}")
+            col_r1, col_r2 = st.columns(2)
+            btn_ejecutar_restaurar = col_r1.form_submit_button("Sí, Restaurar")
+            btn_cancelar_restaurar = col_r2.form_submit_button("Cancelar")
+
+            if btn_ejecutar_restaurar:
+                if archivo_restaurar is None:
+                    st.error("Sube un archivo de respaldo primero.")
+                elif not confirmar_check_restaurar or texto_confirmacion_restaurar.strip() != "RESTAURAR":
+                    st.error('Marca la casilla y escribe exactamente "RESTAURAR" para continuar.')
+                else:
+                    usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
+                    user_val = validar_login(usuario_actual_limpio, pass_admin_restaurar)
+                    if not user_val and usuario_actual_limpio == "admin":
+                        user_val = validar_login("admin", pass_admin_restaurar)
+
+                    if user_val and user_val.get("rol") == "admin":
+                        try:
+                            resultado_restaurar = importar_base_datos_excel(archivo_restaurar)
+                            resumen_restaurar = ", ".join(f"{k}: {v}" for k, v in resultado_restaurar.items())
+                            st.session_state["mostrar_form_restaurar"] = False
+                            st.sidebar.success(f"¡Base de datos restaurada! {resumen_restaurar}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al restaurar: {e}")
+                    else:
+                        st.error("Contraseña incorrecta o permisos insuficientes.")
+
+            if btn_cancelar_restaurar:
+                st.session_state["mostrar_form_restaurar"] = False
+                st.rerun()
+
+    # --- ZONA DE PELIGRO EN BARRA LATERAL ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚠️ Zona de Peligro")
+
+    if "mostrar_form_reinicio" not in st.session_state:
+        st.session_state["mostrar_form_reinicio"] = False
+
+    if not st.session_state["mostrar_form_reinicio"]:
+        if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
+            st.session_state["mostrar_form_reinicio"] = True
+            st.rerun()
+    else:
+        with st.sidebar.form("form_confirmar_reinicio"):
+            st.warning("⚠️ Esta acción borrará TODO (empleados, ventas, comisiones, nóminas, usuarios). No se puede deshacer.")
+            pass_admin = st.text_input("Contraseña de Admin", type="password")
+            texto_confirmacion = st.text_input('Escribe exactamente "BORRAR TODO" para confirmar')
+            confirmar_check = st.checkbox("Entiendo que esta acción es irreversible")
+        
+            col_f1, col_f2 = st.columns(2)
+            btn_ejecutar = col_f1.form_submit_button("Sí, Borrar")
+            btn_cancelar = col_f2.form_submit_button("Cancelar")
+        
+            if btn_ejecutar:
+                if confirmar_check and texto_confirmacion.strip() == "BORRAR TODO":
+                    usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
+                    user_val = validar_login(usuario_actual_limpio, pass_admin)
+                    if not user_val and usuario_actual_limpio == "admin":
+                        user_val = validar_login("admin", pass_admin)
+
+                    if user_val and user_val.get("rol") == "admin":
+                        reiniciar_base_de_datos()
+                        st.session_state["mostrar_form_reinicio"] = False
+                        st.sidebar.success("¡Base de datos limpiada con éxito!")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al restaurar: {e}")
+                    else:
+                        st.error("Contraseña incorrecta o permisos insuficientes.")
+                elif not confirmar_check:
+                    st.error("Debes marcar la casilla de confirmación.")
                 else:
-                    st.error("Contraseña incorrecta o permisos insuficientes.")
-
-        if btn_cancelar_restaurar:
-            st.session_state["mostrar_form_restaurar"] = False
-            st.rerun()
-
-# --- ZONA DE PELIGRO EN BARRA LATERAL ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚠️ Zona de Peligro")
-
-if "mostrar_form_reinicio" not in st.session_state:
-    st.session_state["mostrar_form_reinicio"] = False
-
-if not st.session_state["mostrar_form_reinicio"]:
-    if st.sidebar.button("🗑️ Reiniciar Base de Datos"):
-        st.session_state["mostrar_form_reinicio"] = True
-        st.rerun()
-else:
-    with st.sidebar.form("form_confirmar_reinicio"):
-        st.warning("⚠️ Esta acción borrará TODO (empleados, ventas, comisiones, nóminas, usuarios). No se puede deshacer.")
-        pass_admin = st.text_input("Contraseña de Admin", type="password")
-        texto_confirmacion = st.text_input('Escribe exactamente "BORRAR TODO" para confirmar')
-        confirmar_check = st.checkbox("Entiendo que esta acción es irreversible")
+                    st.error('Debes escribir exactamente "BORRAR TODO" para continuar.')
         
-        col_f1, col_f2 = st.columns(2)
-        btn_ejecutar = col_f1.form_submit_button("Sí, Borrar")
-        btn_cancelar = col_f2.form_submit_button("Cancelar")
-        
-        if btn_ejecutar:
-            if confirmar_check and texto_confirmacion.strip() == "BORRAR TODO":
-                usuario_actual_limpio = st.session_state["usuario_actual"].strip().lower()
-                user_val = validar_login(usuario_actual_limpio, pass_admin)
-                if not user_val and usuario_actual_limpio == "admin":
-                    user_val = validar_login("admin", pass_admin)
-
-                if user_val and user_val.get("rol") == "admin":
-                    reiniciar_base_de_datos()
-                    st.session_state["mostrar_form_reinicio"] = False
-                    st.sidebar.success("¡Base de datos limpiada con éxito!")
-                    st.rerun()
-                else:
-                    st.error("Contraseña incorrecta o permisos insuficientes.")
-            elif not confirmar_check:
-                st.error("Debes marcar la casilla de confirmación.")
-            else:
-                st.error('Debes escribir exactamente "BORRAR TODO" para continuar.')
-        
-        if btn_cancelar:
-            st.session_state["mostrar_form_reinicio"] = False
-            st.rerun()
+            if btn_cancelar:
+                st.session_state["mostrar_form_reinicio"] = False
+                st.rerun()
 
 # --- BARRA DE HERRAMIENTAS SUPERIOR ---
 if "seccion_activa" not in st.session_state:
@@ -888,6 +892,12 @@ nombres_secciones = [
 ]
 if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
+if es_gerente:
+    nombres_secciones = [
+        "2. Gestión de Empleados", "Nómina del día", "Registro de Vales", "5. Reportes"
+    ]
+if st.session_state["seccion_activa"] not in nombres_secciones:
+    st.session_state["seccion_activa"] = nombres_secciones[0]
 
 iconos_secciones = {
     "1. Subir Cortes Diarios (Excel)": ":material/upload_file:",
@@ -1106,6 +1116,10 @@ elif opcion == "2. Gestión de Empleados":
         vista.columns = ["ID", "Nombre", "Puesto", "Sueldo base", "Activo"]
         vista = vista.sort_values("Nombre").reset_index(drop=True)
 
+        if es_gerente:
+            st.dataframe(vista.drop(columns=["ID"]), hide_index=True, use_container_width=True)
+            return
+
         version_key = f"editor_directorio_{sufijo_key}_version"
         if version_key not in st.session_state:
             st.session_state[version_key] = 0
@@ -1155,44 +1169,45 @@ elif opcion == "2. Gestión de Empleados":
         df_general_dir = catalogo_df[~catalogo_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_general_dir, "general")
 
-    st.info(":material/folder: ¿Buscas la alta masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
+    if not es_gerente:
+        st.info(":material/folder: ¿Buscas la alta masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
 
-    st.subheader(":material/key: Reasignar PIN de asistencia")
-    if not catalogo_df.empty:
-        nombres_emps_pin = catalogo_df.sort_values("nombre")["nombre"].tolist()
-        emp_pin_sel = st.selectbox("Selecciona empleado", nombres_emps_pin, key="sel_emp_pin")
-        emp_pin_actual = catalogo_df[catalogo_df["nombre"] == emp_pin_sel].iloc[0]
-        nuevo_pin_reset = st.text_input(
-            "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
-            max_chars=6, key="pin_reset_input"
-        )
-        if st.button("Guardar nuevo PIN", key="btn_pin_reset"):
-            if nuevo_pin_reset.strip():
-                establecer_pin_empleado(int(emp_pin_actual["id"]), nuevo_pin_reset.strip())
-                st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
-            else:
-                st.error("El PIN no puede estar vacío.")
-    else:
-        st.info("No hay empleados registrados todavía.")
+        st.subheader(":material/key: Reasignar PIN de asistencia")
+        if not catalogo_df.empty:
+            nombres_emps_pin = catalogo_df.sort_values("nombre")["nombre"].tolist()
+            emp_pin_sel = st.selectbox("Selecciona empleado", nombres_emps_pin, key="sel_emp_pin")
+            emp_pin_actual = catalogo_df[catalogo_df["nombre"] == emp_pin_sel].iloc[0]
+            nuevo_pin_reset = st.text_input(
+                "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
+                max_chars=6, key="pin_reset_input"
+            )
+            if st.button("Guardar nuevo PIN", key="btn_pin_reset"):
+                if nuevo_pin_reset.strip():
+                    establecer_pin_empleado(int(emp_pin_actual["id"]), nuevo_pin_reset.strip())
+                    st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
+                else:
+                    st.error("El PIN no puede estar vacío.")
+        else:
+            st.info("No hay empleados registrados todavía.")
 
-    st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
-    with st.form("form_empleado"):
-        nuevo_nombre = st.text_input("Nombre completo")
-        nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
-        nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
-        nuevo_pin = st.text_input(
-            "Código PIN de asistencia (4 dígitos, único para este empleado)",
-            value=generar_pin_aleatorio(), max_chars=6
-        )
+        st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
+        with st.form("form_empleado"):
+            nuevo_nombre = st.text_input("Nombre completo")
+            nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
+            nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
+            nuevo_pin = st.text_input(
+                "Código PIN de asistencia (4 dígitos, único para este empleado)",
+                value=generar_pin_aleatorio(), max_chars=6
+            )
 
-        if st.form_submit_button("Guardar empleado"):
-            if nuevo_nombre.strip():
-                agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
-                registrar_asistencias_automaticas_dia(fecha_activa)
-                st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
-                st.rerun()
-            else:
-                st.error("El nombre no puede estar vacío.")
+            if st.form_submit_button("Guardar empleado"):
+                if nuevo_nombre.strip():
+                    agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
+                    registrar_asistencias_automaticas_dia(fecha_activa)
+                    st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
+                    st.rerun()
+                else:
+                    st.error("El nombre no puede estar vacío.")
 
 # --- SECCIÓN 3: CORTE Y NÓMINA FINAL ---
 elif opcion == "Nómina del día":
@@ -1682,36 +1697,37 @@ elif opcion == "Nómina del día":
             df_general_otros = pd.DataFrame()
         procesar_grupo_general(df_general_otros, "Personal General y Fijo", "general_otros")
 
-    st.subheader(":material/edit: Modificar o eliminar empleado")
-    if not empleados_df.empty:
-        nombres_emps = empleados_df['nombre'].tolist()
-        emp_a_editar = st.selectbox("Selecciona empleado a modificar o eliminar", nombres_emps, key="sel_emp_mod")
+    if not es_gerente:
+        st.subheader(":material/edit: Modificar o eliminar empleado")
+        if not empleados_df.empty:
+            nombres_emps = empleados_df['nombre'].tolist()
+            emp_a_editar = st.selectbox("Selecciona empleado a modificar o eliminar", nombres_emps, key="sel_emp_mod")
 
-        emp_actual = empleados_df[empleados_df['nombre'] == emp_a_editar].iloc[0]
-        nuevo_tipo_edit = st.selectbox(
-            "Nuevo puesto", list(PUESTOS_CATALOGO.keys()),
-            index=list(PUESTOS_CATALOGO.keys()).index(emp_actual['tipo']) if emp_actual['tipo'] in PUESTOS_CATALOGO else 0,
-            key="sel_tipo_mod"
-        )
-        sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
-        nuevo_sueldo_edit = st.number_input("Sueldo base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
+            emp_actual = empleados_df[empleados_df['nombre'] == emp_a_editar].iloc[0]
+            nuevo_tipo_edit = st.selectbox(
+                "Nuevo puesto", list(PUESTOS_CATALOGO.keys()),
+                index=list(PUESTOS_CATALOGO.keys()).index(emp_actual['tipo']) if emp_actual['tipo'] in PUESTOS_CATALOGO else 0,
+                key="sel_tipo_mod"
+            )
+            sueldo_sugerido = PUESTOS_CATALOGO.get(nuevo_tipo_edit, float(emp_actual['sueldo_base']))
+            nuevo_sueldo_edit = st.number_input("Sueldo base ($)", value=sueldo_sugerido, format="%.2f", key="edit_sueldo_input")
 
-        col_btn_1, col_btn_2 = st.columns(2)
-        with col_btn_1:
-            if st.button("Actualizar empleado"):
-                actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
-                st.success(f"¡Datos de {emp_a_editar} actualizados!")
-                st.rerun()
-        with col_btn_2:
-            if st.button("Eliminar empleado", icon=":material/delete:", type="secondary"):
-                exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
-                if exito_del:
-                    st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
+            col_btn_1, col_btn_2 = st.columns(2)
+            with col_btn_1:
+                if st.button("Actualizar empleado"):
+                    actualizar_empleado(int(emp_actual['id']), nuevo_tipo_edit, nuevo_sueldo_edit, fecha_str=fecha_activa)
+                    st.success(f"¡Datos de {emp_a_editar} actualizados!")
                     st.rerun()
-                else:
-                    st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
-    else:
-        st.info("No hay empleados registrados en esta fecha.")
+            with col_btn_2:
+                if st.button("Eliminar empleado", icon=":material/delete:", type="secondary"):
+                    exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
+                    if exito_del:
+                        st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
+                        st.rerun()
+                    else:
+                        st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
+        else:
+            st.info("No hay empleados registrados en esta fecha.")
 
 # --- SECCIÓN: VALES DIARIOS ---
 elif opcion == "Registro de Vales":
@@ -1813,6 +1829,8 @@ elif opcion == "Registro de Vales":
             with tab_pend:
                 if pendientes_df.empty:
                     st.info("No hay vales pendientes.")
+                elif es_gerente:
+                    tabla_vales_solo_lectura(pendientes_df)
                 else:
                     tabla_vales_editable(pendientes_df, f"{sufijo_key}_pendientes")
             with tab_pag:
