@@ -1222,6 +1222,17 @@ elif opcion == "2. Gestión de Empleados":
                     st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
                 else:
                     st.error("El PIN no puede estar vacío.")
+
+            puesto_actual_pin = emp_pin_actual['tipo']
+            nuevo_puesto_pin = st.selectbox(
+                "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
+                index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+                key="sel_puesto_pin"
+            )
+            if st.button("Guardar puesto", key="btn_puesto_pin"):
+                actualizar_empleado(int(emp_pin_actual["id"]), nuevo_puesto_pin, float(emp_pin_actual["sueldo_base"]), fecha_str=fecha_activa)
+                st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin}!")
+                st.rerun()
         else:
             st.info("No hay empleados registrados todavía.")
 
@@ -1264,6 +1275,18 @@ elif opcion == "Nómina del día":
             st.info(f"No hay registros en {nombre_pestana} para la fecha {fecha_activa}.")
             return pd.DataFrame(), 0.0
 
+        st.caption(":material/info: Marca la casilla junto al nombre para aplicar penalización (mitad de comisiones):")
+        checkboxes_penalizacion = {}
+        cols_penalizacion = st.columns(4)
+        for idx_chk, (_, emp_chk) in enumerate(df_subgrupo.iterrows()):
+            with cols_penalizacion[idx_chk % 4]:
+                checkboxes_penalizacion[emp_chk['id']] = st.checkbox(
+                    emp_chk['nombre'],
+                    value=bool(emp_chk.get('penalizada', False)),
+                    key=f"pen_{key_sufijo}_{emp_chk['id']}",
+                    disabled=not puede_modificar
+                )
+
         res_grupo = []
         for _, emp in df_subgrupo.iterrows():
             emp_id = emp['id']
@@ -1278,12 +1301,7 @@ elif opcion == "Nómina del día":
             dulceria_emp = float(emp.get('dulceria', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
 
-            penalizada_cambiada = st.checkbox(
-                f"¿Aplicar mitad de comisiones (penalización) a {nombre}?",
-                value=penalizada_actual,
-                key=f"pen_{key_sufijo}_{emp_id}",
-                disabled=not puede_modificar
-            )
+            penalizada_cambiada = checkboxes_penalizacion[emp_id]
 
             if puede_modificar and (penalizada_cambiada != penalizada_actual):
                 actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa, nuevo_retencion=multa_emp)
