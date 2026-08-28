@@ -6,3 +6,9 @@ __pycache__/
 *.xlsm
 .streamlit/secrets.toml
 .venv/
+venv/
+
+# Artefactos de build de la app de escritorio (se regeneran con build_escritorio.bat)
+build/
+dist/
+*.spec
