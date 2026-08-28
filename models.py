@@ -710,6 +710,8 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
     estados = {"PAGADO", "PENDIENTE", "YA NO PAGAR"}
     if estado not in estados:
         raise ValueError("Estado de vale no válido")
+    if forma_pago is not None and not isinstance(forma_pago, str):
+        forma_pago = None if pd.isna(forma_pago) else str(forma_pago)
     session = get_session()
     try:
         vale = session.query(ValeDiario).filter(ValeDiario.id == vale_id).first()

@@ -1874,7 +1874,7 @@ elif opcion == "Registro de Vales":
             if guardar:
                 folios_sin_forma_pago = [
                     str(fila["Folio"]) for _, fila in editado.iterrows()
-                    if fila["Estado"] == "PAGADO" and not str(fila["Forma de pago"] or "").strip()
+                    if fila["Estado"] == "PAGADO" and (pd.isna(fila["Forma de pago"]) or not str(fila["Forma de pago"]).strip())
                 ]
                 if folios_sin_forma_pago:
                     st.error(
@@ -1886,9 +1886,11 @@ elif opcion == "Registro de Vales":
                         error_guardado = None
                         for _, fila in editado.iterrows():
                             original = vista[vista["ID"] == fila["ID"]].iloc[0]
-                            if fila["Estado"] != original["Estado"] or fila["Forma de pago"] != original["Forma de pago"]:
+                            forma_pago_nueva = "" if pd.isna(fila["Forma de pago"]) else str(fila["Forma de pago"])
+                            forma_pago_original = "" if pd.isna(original["Forma de pago"]) else str(original["Forma de pago"])
+                            if fila["Estado"] != original["Estado"] or forma_pago_nueva != forma_pago_original:
                                 try:
-                                    actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), fila["Forma de pago"])
+                                    actualizar_estado_vale(int(fila["ID"]), str(fila["Estado"]), forma_pago_nueva or None)
                                 except ValueError as error:
                                     error_guardado = str(error)
                                     break
