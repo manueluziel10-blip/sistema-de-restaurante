@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 import io
 import base64
@@ -18,6 +18,7 @@ from models import (
     guardar_corte_ventas, guardar_corte_chicas,
     cargar_ventas_df, cargar_chicas_df,
     guardar_gastos_del_dia, cargar_gastos_hoy, sumar_consumo_cocina_dia,
+    guardar_fondo_apertura, guardar_monto_cierre,
     reiniciar_base_de_datos, obtener_fechas_disponibles,
     validar_login, cargar_usuarios_df, crear_usuario, actualizar_credenciales,
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
@@ -780,14 +781,24 @@ def generar_pdf_tickets(lista_flowables_por_ticket, alto_pagina_mm=160):
     return buffer
 
 
+def fecha_negocio_actual():
+    """Fecha del 'día de negocio' actual: el horario corre de 6:00pm a
+    5:59pm del día siguiente (típico de un club nocturno), así que antes
+    de las 6:00pm todavía es el día de negocio de ayer."""
+    ahora = datetime.now(ZoneInfo("America/Mazatlan"))
+    if ahora.hour < 18:
+        return (ahora - timedelta(days=1)).date()
+    return ahora.date()
+
+
 # --- MENÚ LATERAL: CONTROL DE FECHA ---
 st.sidebar.header("Menú de Control")
 
 fechas_disponibles = obtener_fechas_disponibles()
-hoy_str = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
+hoy_str = fecha_negocio_actual().strftime('%Y-%m-%d')
 
 if rol_actual_lower in ["admin", "cajero", "gerente"]:
-    opciones_modo_fecha = ["📅 Día Actual", "🔍 Buscar Corte Histórico"] if es_gerente else ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"]
+    opciones_modo_fecha = ["📅 Día Actual", "🔍 Buscar Corte Histórico"] if (es_gerente or rol_actual_lower == "cajero") else ["📅 Día Actual / Nuevo Corte", "🔍 Buscar Corte Histórico"]
     modo_fecha = st.sidebar.radio("Modo de Operación", opciones_modo_fecha)
     fecha_activa_obj = None
     if modo_fecha == "🔍 Buscar Corte Histórico":
@@ -796,9 +807,9 @@ if rol_actual_lower in ["admin", "cajero", "gerente"]:
             st.sidebar.warning(f"⚠️ Visualizando histórico: {fecha_activa_obj}")
         else:
             st.sidebar.info("No hay cortes históricos registrados aún.")
-            fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
-    elif es_gerente:
-        fecha_activa_obj = datetime.now(ZoneInfo("America/Mazatlan")).date()
+            fecha_activa_obj = fecha_negocio_actual()
+    elif es_gerente or rol_actual_lower == "cajero":
+        fecha_activa_obj = fecha_negocio_actual()
     else:
         if "fecha_corte_confirmada" not in st.session_state:
             st.session_state["fecha_corte_confirmada"] = datetime.now(ZoneInfo("America/Mazatlan")).date()
@@ -828,6 +839,19 @@ st.sidebar.subheader("🔒 Estado del Corte")
 
 corte_esta_bloqueado = verificar_corte_bloqueado(fecha_activa)
 
+if rol_actual_lower == "cajero" and es_dia_actual and not corte_esta_bloqueado:
+    gasto_hoy_cajero = cargar_gastos_hoy(fecha_activa)
+    if not gasto_hoy_cajero or gasto_hoy_cajero.fondo_apertura is None:
+        @st.dialog("Apertura de corte")
+        def _dialog_apertura_corte():
+            st.write(f"Corte del {fecha_activa} — captura el fondo de caja con el que abres.")
+            monto_apertura = st.number_input("Fondo de apertura ($)", min_value=0.0, format="%.2f")
+            if st.button("Confirmar apertura", type="primary"):
+                guardar_fondo_apertura(fecha_activa, monto_apertura)
+                st.rerun()
+        _dialog_apertura_corte()
+        st.stop()
+
 if corte_esta_bloqueado:
     st.sidebar.error(f"El corte del {fecha_activa} está **CERRADO**.")
     if rol_actual_lower == "admin":
@@ -839,12 +863,29 @@ if corte_esta_bloqueado:
         st.sidebar.info("Corte cerrado (Solo lectura). Contacte al administrador.")
 else:
     st.sidebar.success(f"El corte del {fecha_activa} está **ABIERTO**.")
-    if rol_actual_lower in ["admin", "cajero"]:
+    if rol_actual_lower == "admin":
         if st.sidebar.button("🔒 Cerrar Corte Actual", key="btn_cerrar_corte"):
             generar_vales_desde_nomina(fecha_activa)
             bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
             st.sidebar.warning(f"¡Corte del {fecha_activa} cerrado y bloqueado!")
             st.rerun()
+    elif rol_actual_lower == "cajero":
+        if st.sidebar.button("🔒 Cerrar Corte Actual", key="btn_cerrar_corte"):
+            st.session_state["mostrar_dialogo_cierre"] = True
+            st.rerun()
+
+        if st.session_state.get("mostrar_dialogo_cierre"):
+            @st.dialog("Cierre de corte")
+            def _dialog_cierre_corte():
+                st.write(f"Corte del {fecha_activa} — captura con cuánto cierras la caja.")
+                monto_cierre_input = st.number_input("Monto de cierre ($)", min_value=0.0, format="%.2f")
+                if st.button("Confirmar cierre", type="primary"):
+                    guardar_monto_cierre(fecha_activa, monto_cierre_input)
+                    generar_vales_desde_nomina(fecha_activa)
+                    bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
+                    st.session_state["mostrar_dialogo_cierre"] = False
+                    st.rerun()
+            _dialog_cierre_corte()
 
 if rol_actual_lower == "admin":
     puede_modificar = not corte_esta_bloqueado

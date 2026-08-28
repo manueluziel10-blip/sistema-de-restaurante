@@ -222,6 +222,8 @@ class GastoDiario(Base):
     nomina_personal_fijo = Column(Numeric(10, 2), default=4483.66)
     notas = Column(String)
     creado_en = Column(DateTime, server_default=func.now())
+    fondo_apertura = Column(Numeric(10, 2))
+    monto_cierre = Column(Numeric(10, 2))
 
 
 class UsuarioSistema(Base):
@@ -525,6 +527,20 @@ def asegurar_columnas_empleado(session):
             if 'pin_hash' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
                 session.commit()
+    except Exception:
+        session.rollback()
+
+
+def asegurar_columnas_gasto(session):
+    try:
+        inspector = inspect(session.bind)
+        if 'gastos_diarios' in inspector.get_table_names():
+            columnas_tabla = [col['name'] for col in inspector.get_columns('gastos_diarios')]
+            if 'fondo_apertura' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE gastos_diarios ADD COLUMN fondo_apertura NUMERIC(10,2)"))
+            if 'monto_cierre' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE gastos_diarios ADD COLUMN monto_cierre NUMERIC(10,2)"))
+            session.commit()
     except Exception:
         session.rollback()
 
@@ -1507,6 +1523,30 @@ def guardar_gastos_del_dia(gasto_cocina, gasto_compras, gasto_vales, nomina_pers
     session.close()
 
 
+def guardar_fondo_apertura(fecha_str: str, monto: float):
+    session = get_session()
+    f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    fila = session.query(GastoDiario).filter(GastoDiario.fecha == f_date).first()
+    if fila:
+        fila.fondo_apertura = monto
+    else:
+        session.add(GastoDiario(fecha=f_date, fondo_apertura=monto))
+    session.commit()
+    session.close()
+
+
+def guardar_monto_cierre(fecha_str: str, monto: float):
+    session = get_session()
+    f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    fila = session.query(GastoDiario).filter(GastoDiario.fecha == f_date).first()
+    if fila:
+        fila.monto_cierre = monto
+    else:
+        session.add(GastoDiario(fecha=f_date, monto_cierre=monto))
+    session.commit()
+    session.close()
+
+
 def obtener_fechas_disponibles() -> list:
     session = get_session()
     try:
@@ -1916,6 +1956,7 @@ try:
     # cualquier registro de asistencia (incluido el modo kiosko público, que no
     # pasa por cargar_empleados_df) intente un INSERT ... ON CONFLICT.
     asegurar_nomina_dia(_session_auto, None)
+    asegurar_columnas_gasto(_session_auto)
     _session_auto.close()
     inicializar_usuarios_por_defecto()
 except Exception as _err_inicial:
