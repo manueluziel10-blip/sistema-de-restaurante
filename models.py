@@ -663,6 +663,15 @@ def generar_vales_desde_nomina(fecha_str: str):
             empleado = session.query(Empleado).filter(Empleado.id == nomina.empleado_id).first()
             if not empleado:
                 continue
+
+            vale_existente = session.query(ValeDiario).filter(
+                ValeDiario.fecha == fecha, ValeDiario.empleado_id == empleado.id
+            ).first()
+            if vale_existente:
+                vale_existente.importe = float(nomina.vales_nomina)
+                vale_existente.importe_bruto = float(nomina.vales_nomina)
+                continue
+
             ultimo_folio = session.query(ValeDiario.folio).filter(
                 ValeDiario.folio.like("V-%")
             ).order_by(ValeDiario.id.desc()).first()

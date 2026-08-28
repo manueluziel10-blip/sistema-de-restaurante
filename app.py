@@ -1297,7 +1297,7 @@ elif opcion == "Nómina del día":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - cocina_emp - multa_emp - peinado_emp - dulceria_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp
 
             fila_resultado = {
                 "ID": emp_id,
@@ -1558,7 +1558,7 @@ elif opcion == "Nómina del día":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp - cocina_emp - retencion_emp - dulceria_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - retencion_emp
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -2336,8 +2336,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
     nomina_chicas_efectivo = (
-        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
-        - cocina_chicas_total - multa_chicas_total - peinado_chicas_total - dulceria_chicas_total
+        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total - multa_chicas_total
     )
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
