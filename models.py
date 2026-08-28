@@ -471,6 +471,15 @@ def asegurar_nomina_dia(session, fecha_date):
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN peinado_maquillaje NUMERIC(10,2) DEFAULT 0.0"))
             if 'dulceria' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN dulceria NUMERIC(10,2) DEFAULT 0.0"))
+
+            # Filas insertadas por el sincronizador automático antes de que
+            # estas columnas se agregaran explícitamente ahí quedaron con
+            # NULL (SQLite no aplica el DEFAULT de la ORM a INSERTs en SQL
+            # crudo). Se corrigen aquí para que no aparezcan como "None" en
+            # la nómina ni rompan el cálculo de Total a Pagar.
+            session.execute(db_text("UPDATE nomina_diaria SET retencion_nomina = 0.0 WHERE retencion_nomina IS NULL"))
+            session.execute(db_text("UPDATE nomina_diaria SET peinado_maquillaje = 0.0 WHERE peinado_maquillaje IS NULL"))
+            session.execute(db_text("UPDATE nomina_diaria SET dulceria = 0.0 WHERE dulceria IS NULL"))
             session.commit()
 
             # IMPORTANTE: el resto del código (registro de asistencia, sincronización
@@ -600,8 +609,8 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     try:
         session.execute(
             db_text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-                SELECT :fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+                SELECT :fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0
                 FROM asistencias a
                 JOIN empleados e ON e.id = a.empleado_id
                 WHERE a.fecha = :fecha AND e.activo = TRUE
@@ -638,16 +647,16 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
     
     if not df.empty:
         df['sueldo_base'] = df['sueldo_base'].astype(float)
-        df['vales_nomina'] = df['vales_nomina'].astype(float) if 'vales_nomina' in df.columns else 0.0
-        df['descuento_nomina'] = df['descuento_nomina'].astype(float) if 'descuento_nomina' in df.columns else 100.0
-        df['transferencia_nomina'] = df['transferencia_nomina'].astype(float) if 'transferencia_nomina' in df.columns else 0.0
-        df['consumo_cocina'] = df['consumo_cocina'].astype(float) if 'consumo_cocina' in df.columns else 0.0
+        df['vales_nomina'] = df['vales_nomina'].astype(float).fillna(0.0) if 'vales_nomina' in df.columns else 0.0
+        df['descuento_nomina'] = df['descuento_nomina'].astype(float).fillna(100.0) if 'descuento_nomina' in df.columns else 100.0
+        df['transferencia_nomina'] = df['transferencia_nomina'].astype(float).fillna(0.0) if 'transferencia_nomina' in df.columns else 0.0
+        df['consumo_cocina'] = df['consumo_cocina'].astype(float).fillna(0.0) if 'consumo_cocina' in df.columns else 0.0
         df['penalizada'] = df['penalizada'].astype(bool) if 'penalizada' in df.columns else False
         df['puesto_dia'] = df['puesto_dia'].fillna("") if 'puesto_dia' in df.columns else ""
         df['tipo_efectivo'] = df['puesto_dia'].where(df['puesto_dia'] != "", df['tipo'])
-        df['retencion_nomina'] = df['retencion_nomina'].astype(float) if 'retencion_nomina' in df.columns else 0.0
-        df['peinado_maquillaje'] = df['peinado_maquillaje'].astype(float) if 'peinado_maquillaje' in df.columns else 0.0
-        df['dulceria'] = df['dulceria'].astype(float) if 'dulceria' in df.columns else 0.0
+        df['retencion_nomina'] = df['retencion_nomina'].astype(float).fillna(0.0) if 'retencion_nomina' in df.columns else 0.0
+        df['peinado_maquillaje'] = df['peinado_maquillaje'].astype(float).fillna(0.0) if 'peinado_maquillaje' in df.columns else 0.0
+        df['dulceria'] = df['dulceria'].astype(float).fillna(0.0) if 'dulceria' in df.columns else 0.0
     return df
 
 
@@ -1077,8 +1086,8 @@ def registrar_asistencia_lista_empleados(empleado_ids: list, fecha_str: str,
             )
             session.execute(
                 db_text("""
-                    INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-                    VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
+                    INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+                    VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0)
                     ON CONFLICT (empleado_id, fecha) DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": emp_id, "sueldo": float(sueldo_emp) if sueldo_emp is not None else 300.0}
@@ -1649,8 +1658,8 @@ def reparar_nomina_faltante_rango(fecha_inicio: str, fecha_fin: str) -> int:
 
         resultado = session.execute(
             db_text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-                SELECT DISTINCT a.fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+                SELECT DISTINCT a.fecha, a.empleado_id, COALESCE(e.sueldo_base, 300.0), 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0
                 FROM asistencias a
                 JOIN empleados e ON e.id = a.empleado_id
                 WHERE a.fecha BETWEEN :f_ini AND :f_fin
