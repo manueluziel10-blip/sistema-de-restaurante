@@ -560,7 +560,10 @@ def cargar_catalogo_empleados() -> pd.DataFrame:
     puesto, y para el directorio completo de personal (activos e inactivos)."""
     session = get_session()
     df = pd.read_sql(
-        session.query(Empleado.id, Empleado.nombre, Empleado.tipo, Empleado.sueldo_base, Empleado.activo).statement,
+        session.query(
+            Empleado.id, Empleado.nombre, Empleado.tipo, Empleado.sueldo_base,
+            Empleado.activo, Empleado.creado_en
+        ).statement,
         session.bind
     )
     session.close()

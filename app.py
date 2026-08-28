@@ -1199,11 +1199,13 @@ elif opcion == "2. Gestión de Empleados":
             "Personal operativo y general"
         ])
         tab_alta_pin = None
+        tab_exportar = None
     else:
-        tab_gest_chicas, tab_gest_general, tab_alta_pin = st.tabs([
+        tab_gest_chicas, tab_gest_general, tab_alta_pin, tab_exportar = st.tabs([
             "Bailarinas y chicas de salón",
             "Personal operativo y general",
-            "➕ Alta y PIN"
+            "➕ Alta y PIN",
+            "📥 Exportar"
         ])
     with tab_gest_chicas:
         df_chicas_dir = catalogo_df[catalogo_df['tipo'].apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
@@ -1265,6 +1267,30 @@ elif opcion == "2. Gestión de Empleados":
                         st.rerun()
                     else:
                         st.error("El nombre no puede estar vacío.")
+
+    if tab_exportar is not None:
+        with tab_exportar:
+            st.subheader(":material/download: Exportar alta de trabajadores")
+            if catalogo_df.empty:
+                st.info("No hay empleados registrados todavía.")
+            else:
+                df_export = catalogo_df[["id", "nombre", "tipo", "creado_en", "activo"]].copy()
+                df_export.columns = ["ID", "Nombre", "Puesto", "Fecha de registro", "Activo"]
+                df_export = df_export.sort_values("Nombre")
+
+                st.dataframe(df_export, hide_index=True, use_container_width=True)
+
+                buffer_export = io.BytesIO()
+                with pd.ExcelWriter(buffer_export, engine='openpyxl') as writer:
+                    df_export.to_excel(writer, index=False, sheet_name='Alta_Trabajadores')
+                buffer_export.seek(0)
+
+                st.download_button(
+                    label="📥 Descargar Excel de alta de trabajadores",
+                    data=buffer_export,
+                    file_name=f"Alta_Trabajadores_{datetime.now(ZoneInfo('America/Mazatlan')).strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
 # --- SECCIÓN 3: CORTE Y NÓMINA FINAL ---
 elif opcion == "Nómina del día":
