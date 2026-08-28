@@ -1224,12 +1224,14 @@ elif opcion == "2. Gestión de Empleados":
                     st.error("El PIN no puede estar vacío.")
 
             puesto_actual_pin = emp_pin_actual['tipo']
-            nuevo_puesto_pin = st.selectbox(
-                "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
-                index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
-                key="sel_puesto_pin"
-            )
-            if st.button("Guardar puesto", key="btn_puesto_pin"):
+            with st.form("form_puesto_pin"):
+                nuevo_puesto_pin = st.selectbox(
+                    "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
+                    index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+                )
+                guardar_puesto_pin = st.form_submit_button("Guardar puesto")
+
+            if guardar_puesto_pin:
                 actualizar_empleado(int(emp_pin_actual["id"]), nuevo_puesto_pin, float(emp_pin_actual["sueldo_base"]), fecha_str=fecha_activa)
                 st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin}!")
                 st.rerun()
