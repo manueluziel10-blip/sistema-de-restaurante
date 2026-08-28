@@ -10,10 +10,14 @@ pyinstaller --name ZullysSistema --onedir --noconfirm ^
   --collect-all openpyxl ^
   --collect-all xlrd ^
   --collect-all reportlab ^
+  --hidden-import win32print ^
+  --hidden-import win32api ^
+  --hidden-import win32con ^
   --add-data "app.py;." ^
   --add-data "models.py;." ^
   --add-data "comisiones.py;." ^
   --add-data "database.py;." ^
+  --add-data "config_local.py;." ^
   escritorio.py
 
 echo.

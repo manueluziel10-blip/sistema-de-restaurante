@@ -38,6 +38,10 @@ from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
     calcular_bono_dj_animador, calcular_propina_ventas_propias, CATEGORIAS_CHICAS
 )
+from config_local import (
+    IMPRESION_DISPONIBLE, listar_impresoras, obtener_impresora_principal,
+    guardar_impresora_principal, imprimir_pdf_bytes
+)
 
 st.set_page_config(layout="wide")
 
@@ -221,6 +225,7 @@ nombres_secciones = [
 ]
 if rol_actual_lower == "admin":
     nombres_secciones.append("6. Usuarios y Accesos")
+    nombres_secciones.append("Configuración")
 if es_gerente:
     nombres_secciones = [
         "2. Gestión de Empleados", "Nómina del día", "4. Cierre de Caja (Dashboard)",
@@ -239,6 +244,7 @@ iconos_secciones = {
     "5. Reportes": ":material/analytics:",
     "Registro de Asistencia": ":material/assignment_turned_in:",
     "6. Usuarios y Accesos": ":material/admin_panel_settings:",
+    "Configuración": ":material/settings:",
 }
 
 st.sidebar.markdown("---")
@@ -1300,6 +1306,21 @@ elif opcion == "Nómina del día":
     ventas_totales = cargar_ventas_df(fecha_activa)
     chicas_totales = cargar_chicas_df(fecha_activa)
 
+    def boton_imprimir_ticket(pdf_bytes, nombre_archivo, key):
+        """Botón "Imprimir" que envía el PDF directo a la impresora
+        principal configurada en 'Configuración' — solo aparece en la app
+        de escritorio (requiere pywin32) y solo si ya se eligió una."""
+        if not IMPRESION_DISPONIBLE:
+            return
+        impresora = obtener_impresora_principal()
+        if not impresora:
+            return
+        if st.button(f"🖨️ Imprimir en {impresora}", key=key, use_container_width=True):
+            if imprimir_pdf_bytes(pdf_bytes, impresora, nombre_archivo):
+                st.toast(f"✅ Enviado a imprimir en {impresora}", icon="🖨️")
+            else:
+                st.error("No se pudo enviar a imprimir.")
+
     def procesar_grupo_chicas(df_subgrupo, nombre_pestana, key_sufijo):
         if df_subgrupo.empty:
             st.info(f"No hay registros en {nombre_pestana} para la fecha {fecha_activa}.")
@@ -1513,6 +1534,7 @@ elif opcion == "Nómina del día":
                 file_name=f"Ticket_{nombre_ticket_sel}_{fecha_activa}.pdf", mime="application/pdf",
                 icon=":material/receipt_long:", key=f"btn_ticket_ind_{key_sufijo}"
             )
+            boton_imprimir_ticket(pdf_ticket_individual, f"Ticket_{nombre_ticket_sel}_{fecha_activa}.pdf", f"btn_imprimir_ind_{key_sufijo}")
         with col_ticket_masivo:
             st.write("")
             pdf_tickets_masivo = generar_pdf_tickets(
@@ -1525,6 +1547,7 @@ elif opcion == "Nómina del día":
                 file_name=f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", mime="application/pdf",
                 icon=":material/print:", key=f"btn_ticket_masivo_{key_sufijo}"
             )
+            boton_imprimir_ticket(pdf_tickets_masivo, f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", f"btn_imprimir_masivo_{key_sufijo}")
 
         return df_editado, subtotal
 
@@ -1755,6 +1778,7 @@ elif opcion == "Nómina del día":
                 file_name=f"Ticket_{nombre_ticket_gen_sel}_{fecha_activa}.pdf", mime="application/pdf",
                 icon=":material/receipt_long:", key=f"btn_ticket_ind_gen_{key_sufijo}"
             )
+            boton_imprimir_ticket(pdf_ticket_gen_individual, f"Ticket_{nombre_ticket_gen_sel}_{fecha_activa}.pdf", f"btn_imprimir_ind_gen_{key_sufijo}")
         with col_ticket_masivo_gen:
             st.write("")
             pdf_tickets_gen_masivo = generar_pdf_tickets(
@@ -1769,6 +1793,7 @@ elif opcion == "Nómina del día":
                 file_name=f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", mime="application/pdf",
                 icon=":material/print:", key=f"btn_ticket_masivo_gen_{key_sufijo}"
             )
+            boton_imprimir_ticket(pdf_tickets_gen_masivo, f"Tickets_{nombre_pestana}_{fecha_activa}.pdf", f"btn_imprimir_masivo_gen_{key_sufijo}")
 
         return float(df_res_general['Total a Pagar'].sum())
 
@@ -2753,3 +2778,34 @@ elif opcion == "6. Usuarios y Accesos":
                     cambiar_fecha_corte(fecha_origen, fecha_destino_input.strftime('%Y-%m-%d'))
                     st.success("¡Reasignado con éxito!")
                     st.rerun()
+
+# --- SECCIÓN: CONFIGURACIÓN ---
+elif opcion == "Configuración":
+    st.subheader(":material/settings: Configuración")
+    st.markdown("### 🖨️ Impresora principal para tickets (80mm)")
+
+    if not IMPRESION_DISPONIBLE:
+        st.info(
+            "La impresión directa solo está disponible en la app de escritorio. "
+            "En la versión web, descarga el ticket en PDF y imprímelo manualmente desde tu computadora."
+        )
+    else:
+        impresoras = listar_impresoras()
+        if not impresoras:
+            st.warning("No se detectaron impresoras instaladas en esta computadora.")
+        else:
+            impresora_guardada = obtener_impresora_principal()
+            index_actual = impresoras.index(impresora_guardada) if impresora_guardada in impresoras else 0
+            impresora_elegida = st.selectbox("Impresora principal", impresoras, index=index_actual)
+
+            if st.button("Guardar impresora principal"):
+                guardar_impresora_principal(impresora_elegida)
+                st.toast(f"✅ Impresora principal: {impresora_elegida}", icon="🖨️")
+                st.rerun()
+
+            st.caption(f"Impresora configurada actualmente: **{obtener_impresora_principal() or '(ninguna)'}**")
+            st.caption(
+                "Con una impresora principal configurada, aparece un botón adicional \"🖨️ Imprimir en ...\" "
+                "junto a los botones de descarga de tickets en 'Nómina del día', que envía el ticket "
+                "directo a esa impresora sin abrir ningún diálogo."
+            )

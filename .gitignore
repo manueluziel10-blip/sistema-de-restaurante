@@ -12,3 +12,5 @@ venv/
 build/
 dist/
 *.spec
+config_local.json
+tickets_temp/
