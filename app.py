@@ -1193,10 +1193,18 @@ elif opcion == "2. Gestión de Empleados":
             st.session_state[version_key] += 1
             st.rerun()
 
-    tab_gest_chicas, tab_gest_general = st.tabs([
-        "Bailarinas y chicas de salón",
-        "Personal operativo y general"
-    ])
+    if es_gerente:
+        tab_gest_chicas, tab_gest_general = st.tabs([
+            "Bailarinas y chicas de salón",
+            "Personal operativo y general"
+        ])
+        tab_alta_pin = None
+    else:
+        tab_gest_chicas, tab_gest_general, tab_alta_pin = st.tabs([
+            "Bailarinas y chicas de salón",
+            "Personal operativo y general",
+            "➕ Alta y PIN"
+        ])
     with tab_gest_chicas:
         df_chicas_dir = catalogo_df[catalogo_df['tipo'].apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_chicas_dir, "chicas")
@@ -1204,58 +1212,59 @@ elif opcion == "2. Gestión de Empleados":
         df_general_dir = catalogo_df[~catalogo_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_general_dir, "general")
 
-    if not es_gerente:
-        st.info(":material/folder: ¿Buscas la alta masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
+    if tab_alta_pin is not None:
+        with tab_alta_pin:
+            st.info(":material/folder: ¿Buscas la alta masiva por Excel? Se movió a **'1. Subir Cortes Diarios (Excel)'**, como Paso 1, antes de subir ventas/comisiones.")
 
-        st.subheader(":material/key: Reasignar PIN de asistencia")
-        if not catalogo_df.empty:
-            nombres_emps_pin = catalogo_df.sort_values("nombre")["nombre"].tolist()
-            emp_pin_sel = st.selectbox("Selecciona empleado", nombres_emps_pin, key="sel_emp_pin")
-            emp_pin_actual = catalogo_df[catalogo_df["nombre"] == emp_pin_sel].iloc[0]
-            nuevo_pin_reset = st.text_input(
-                "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
-                max_chars=6, key="pin_reset_input"
-            )
-            if st.button("Guardar nuevo PIN", key="btn_pin_reset"):
-                if nuevo_pin_reset.strip():
-                    establecer_pin_empleado(int(emp_pin_actual["id"]), nuevo_pin_reset.strip())
-                    st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
-                else:
-                    st.error("El PIN no puede estar vacío.")
-
-            puesto_actual_pin = emp_pin_actual['tipo']
-            with st.form("form_puesto_pin"):
-                nuevo_puesto_pin = st.selectbox(
-                    "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
-                    index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+            st.subheader(":material/key: Reasignar PIN de asistencia")
+            if not catalogo_df.empty:
+                nombres_emps_pin = catalogo_df.sort_values("nombre")["nombre"].tolist()
+                emp_pin_sel = st.selectbox("Selecciona empleado", nombres_emps_pin, key="sel_emp_pin")
+                emp_pin_actual = catalogo_df[catalogo_df["nombre"] == emp_pin_sel].iloc[0]
+                nuevo_pin_reset = st.text_input(
+                    "Nuevo PIN (4-6 dígitos)", value=generar_pin_aleatorio(),
+                    max_chars=6, key="pin_reset_input"
                 )
-                guardar_puesto_pin = st.form_submit_button("Guardar puesto")
+                if st.button("Guardar nuevo PIN", key="btn_pin_reset"):
+                    if nuevo_pin_reset.strip():
+                        establecer_pin_empleado(int(emp_pin_actual["id"]), nuevo_pin_reset.strip())
+                        st.success(f"¡Nuevo PIN para {emp_pin_sel}: **{nuevo_pin_reset.strip()}** (anótalo, no se volverá a mostrar).")
+                    else:
+                        st.error("El PIN no puede estar vacío.")
 
-            if guardar_puesto_pin:
-                actualizar_empleado(int(emp_pin_actual["id"]), nuevo_puesto_pin, float(emp_pin_actual["sueldo_base"]), fecha_str=fecha_activa)
-                st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin}!")
-                st.rerun()
-        else:
-            st.info("No hay empleados registrados todavía.")
+                puesto_actual_pin = emp_pin_actual['tipo']
+                with st.form("form_puesto_pin"):
+                    nuevo_puesto_pin = st.selectbox(
+                        "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
+                        index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+                    )
+                    guardar_puesto_pin = st.form_submit_button("Guardar puesto")
 
-        st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
-        with st.form("form_empleado"):
-            nuevo_nombre = st.text_input("Nombre completo")
-            nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
-            nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
-            nuevo_pin = st.text_input(
-                "Código PIN de asistencia (4 dígitos, único para este empleado)",
-                value=generar_pin_aleatorio(), max_chars=6
-            )
-
-            if st.form_submit_button("Guardar empleado"):
-                if nuevo_nombre.strip():
-                    agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
-                    registrar_asistencias_automaticas_dia(fecha_activa)
-                    st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
+                if guardar_puesto_pin:
+                    actualizar_empleado(int(emp_pin_actual["id"]), nuevo_puesto_pin, float(emp_pin_actual["sueldo_base"]), fecha_str=fecha_activa)
+                    st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin}!")
                     st.rerun()
-                else:
-                    st.error("El nombre no puede estar vacío.")
+            else:
+                st.info("No hay empleados registrados todavía.")
+
+            st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
+            with st.form("form_empleado"):
+                nuevo_nombre = st.text_input("Nombre completo")
+                nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
+                nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
+                nuevo_pin = st.text_input(
+                    "Código PIN de asistencia (4 dígitos, único para este empleado)",
+                    value=generar_pin_aleatorio(), max_chars=6
+                )
+
+                if st.form_submit_button("Guardar empleado"):
+                    if nuevo_nombre.strip():
+                        agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
+                        registrar_asistencias_automaticas_dia(fecha_activa)
+                        st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
+                        st.rerun()
+                    else:
+                        st.error("El nombre no puede estar vacío.")
 
 # --- SECCIÓN 3: CORTE Y NÓMINA FINAL ---
 elif opcion == "Nómina del día":
