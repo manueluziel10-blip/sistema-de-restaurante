@@ -93,8 +93,8 @@ if query_params.get("modo") == "asistencia":
             sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
             session.execute(
                 text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0)
                 ON CONFLICT DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
@@ -332,8 +332,8 @@ def registrar_asistencias_automaticas_dia(fecha_str):
 
             session.execute(
                 text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
+                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0)
                 ON CONFLICT DO NOTHING
                 """),
                 {"fecha": f_date, "emp_id": emp_id, "sueldo": sueldo_emp}
@@ -812,7 +812,7 @@ if rol_actual_lower in ["admin", "cajero", "gerente"]:
         fecha_activa_obj = fecha_negocio_actual()
     else:
         if "fecha_corte_confirmada" not in st.session_state:
-            st.session_state["fecha_corte_confirmada"] = datetime.now(ZoneInfo("America/Mazatlan")).date()
+            st.session_state["fecha_corte_confirmada"] = fecha_negocio_actual()
 
         fecha_seleccionada = st.sidebar.date_input(
             "Fecha para el Corte Actual",
@@ -2638,7 +2638,9 @@ elif opcion == "5. Reportes":
 # --- SECCIÓN: REGISTRO DE ASISTENCIA ---
 elif opcion == "Registro de Asistencia":
     st.subheader(f":material/edit_note: Módulo de autoregistro con código PIN — fecha activa: {fecha_activa}")
-    empleados_activos_df = cargar_empleados_df(fecha_activa)
+    empleados_activos_df = cargar_catalogo_empleados()
+    if not empleados_activos_df.empty:
+        empleados_activos_df = empleados_activos_df[empleados_activos_df['activo'] == True]
 
     if empleados_activos_df.empty:
         st.warning("No hay empleados registrados en el sistema para esta fecha.")
