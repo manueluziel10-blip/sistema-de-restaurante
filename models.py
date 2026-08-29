@@ -1917,13 +1917,21 @@ def importar_base_datos_excel(archivo) -> dict:
         xls = pd.ExcelFile(archivo)
 
         # Se vacía todo (en cascada, por las relaciones) antes de recargar.
-        session.execute(db_text("""
-            TRUNCATE TABLE
-                cortes_productos_chicas, cortes_ventas, nomina_diaria,
-                asistencias, cortes_bloqueos, gastos_diarios,
-                empleados, puestos_catalogo, usuarios_sistema
-            RESTART IDENTITY CASCADE
-        """))
+        # TRUNCATE ... RESTART IDENTITY CASCADE es sintaxis de PostgreSQL;
+        # SQLite (la app de escritorio) no la soporta, así que ahí se
+        # vacía tabla por tabla con DELETE.
+        tablas_para_vaciar = (
+            "cortes_productos_chicas", "cortes_ventas", "nomina_diaria",
+            "asistencias", "cortes_bloqueos", "gastos_diarios",
+            "empleados", "puestos_catalogo", "usuarios_sistema",
+        )
+        if session.bind.dialect.name == "postgresql":
+            session.execute(db_text(
+                "TRUNCATE TABLE " + ", ".join(tablas_para_vaciar) + " RESTART IDENTITY CASCADE"
+            ))
+        else:
+            for tabla in tablas_para_vaciar:
+                session.execute(db_text(f"DELETE FROM {tabla}"))
         session.commit()
 
         for nombre_hoja, modelo, col_id in orden_tablas:
@@ -1952,12 +1960,17 @@ def importar_base_datos_excel(archivo) -> dict:
             resultado[nombre_hoja] = len(registros)
 
         # Reinicia cada secuencia de autoincremento al máximo id restaurado.
-        for nombre_hoja, modelo, col_id in orden_tablas:
-            if col_id:
-                session.execute(db_text(
-                    f"SELECT setval(pg_get_serial_sequence('{nombre_hoja}', '{col_id}'), "
-                    f"COALESCE((SELECT MAX({col_id}) FROM {nombre_hoja}), 1), true)"
-                ))
+        # setval/pg_get_serial_sequence son de PostgreSQL; en SQLite (app de
+        # escritorio) no hace falta -- ahí el próximo id autogenerado ya se
+        # calcula solo como max(id)+1 de los datos reales, sin secuencia
+        # aparte que resincronizar.
+        if session.bind.dialect.name == "postgresql":
+            for nombre_hoja, modelo, col_id in orden_tablas:
+                if col_id:
+                    session.execute(db_text(
+                        f"SELECT setval(pg_get_serial_sequence('{nombre_hoja}', '{col_id}'), "
+                        f"COALESCE((SELECT MAX({col_id}) FROM {nombre_hoja}), 1), true)"
+                    ))
         session.commit()
 
         return resultado
@@ -1986,15 +1999,15 @@ def reiniciar_base_de_datos():
     session = get_session()
     try:
         session.commit()
-        session.execute(db_text('DROP TABLE IF EXISTS asistencias CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS cortes_bloqueos CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS nomina_diaria CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS cortes_productos_chicas CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS cortes_ventas CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS gastos_diarios CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS empleados CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS puestos_catalogo CASCADE;'))
-        session.execute(db_text('DROP TABLE IF EXISTS usuarios_sistema CASCADE;'))
+        # CASCADE es sintaxis de PostgreSQL; SQLite (la app de escritorio)
+        # no la soporta y no la necesita, ya que no aplica llaves foráneas
+        # por defecto -- se agrega solo cuando el motor es Postgres.
+        sufijo_cascade = " CASCADE" if session.bind.dialect.name == "postgresql" else ""
+        for tabla in (
+            "asistencias", "cortes_bloqueos", "nomina_diaria", "cortes_productos_chicas",
+            "cortes_ventas", "gastos_diarios", "empleados", "puestos_catalogo", "usuarios_sistema",
+        ):
+            session.execute(db_text(f"DROP TABLE IF EXISTS {tabla}{sufijo_cascade};"))
         session.commit()
         
         Base.metadata.create_all(session.bind)
