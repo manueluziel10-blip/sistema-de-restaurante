@@ -78,6 +78,15 @@ class Empleado(Base):
     activo = Column(Boolean, default=True)
     pin_hash = Column(String, nullable=True)
     creado_en = Column(DateTime, server_default=func.now())
+    fecha_nacimiento = Column(Date)
+
+
+class CarnetSanidad(Base):
+    __tablename__ = "carnet_sanidad"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False, unique=True)
+    fecha_entrega = Column(Date)
+    fecha_expiracion = Column(Date)
 
 
 class NominaDiaria(Base):
@@ -526,7 +535,9 @@ def asegurar_columnas_empleado(session):
             columnas_tabla = [col['name'] for col in inspector.get_columns('empleados')]
             if 'pin_hash' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE empleados ADD COLUMN pin_hash VARCHAR"))
-                session.commit()
+            if 'fecha_nacimiento' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE empleados ADD COLUMN fecha_nacimiento DATE"))
+            session.commit()
     except Exception:
         session.rollback()
 
@@ -584,10 +595,11 @@ def cargar_catalogo_empleados() -> pd.DataFrame:
     abarcan varias fechas (ej. el historial completo de vales) por tipo de
     puesto, y para el directorio completo de personal (activos e inactivos)."""
     session = get_session()
+    asegurar_columnas_empleado(session)
     df = pd.read_sql(
         session.query(
             Empleado.id, Empleado.nombre, Empleado.tipo, Empleado.sueldo_base,
-            Empleado.activo, Empleado.creado_en
+            Empleado.activo, Empleado.creado_en, Empleado.fecha_nacimiento
         ).statement,
         session.bind
     )
@@ -596,6 +608,52 @@ def cargar_catalogo_empleados() -> pd.DataFrame:
         df['sueldo_base'] = df['sueldo_base'].astype(float)
         df['activo'] = df['activo'].astype(bool)
     return df
+
+
+def actualizar_fecha_nacimiento(empleado_id: int, fecha_nacimiento):
+    session = get_session()
+    try:
+        emp = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if emp:
+            emp.fecha_nacimiento = fecha_nacimiento
+            session.commit()
+    finally:
+        session.close()
+
+
+def cargar_carnet_sanidad_df() -> pd.DataFrame:
+    """Todos los empleados activos con su carnet de sanidad (si ya lo
+    tienen capturado) -- LEFT JOIN para que aparezcan incluso quienes
+    todavía no tienen fecha de entrega/expiración registrada."""
+    session = get_session()
+    df = pd.read_sql(
+        session.query(
+            Empleado.id, Empleado.nombre,
+            CarnetSanidad.fecha_entrega, CarnetSanidad.fecha_expiracion
+        ).outerjoin(CarnetSanidad, Empleado.id == CarnetSanidad.empleado_id)
+        .filter(Empleado.activo == True)
+        .order_by(Empleado.nombre)
+        .statement,
+        session.bind
+    )
+    session.close()
+    return df
+
+
+def guardar_carnet_sanidad(empleado_id: int, fecha_entrega, fecha_expiracion):
+    session = get_session()
+    try:
+        fila = session.query(CarnetSanidad).filter(CarnetSanidad.empleado_id == empleado_id).first()
+        if fila:
+            fila.fecha_entrega = fecha_entrega
+            fila.fecha_expiracion = fecha_expiracion
+        else:
+            session.add(CarnetSanidad(
+                empleado_id=empleado_id, fecha_entrega=fecha_entrega, fecha_expiracion=fecha_expiracion
+            ))
+        session.commit()
+    finally:
+        session.close()
 
 
 PUESTOS_CATALOGO = {
@@ -2044,6 +2102,7 @@ try:
     # pasa por cargar_empleados_df) intente un INSERT ... ON CONFLICT.
     asegurar_nomina_dia(_session_auto, None)
     asegurar_columnas_gasto(_session_auto)
+    asegurar_columnas_empleado(_session_auto)
     _session_auto.close()
     inicializar_usuarios_por_defecto()
 except Exception as _err_inicial:

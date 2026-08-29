@@ -34,7 +34,8 @@ from models import (
     registrar_venta_boutique, cargar_ventas_boutique_df,
     cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df,
     eliminar_datos_boutique,
-    PUESTOS_CATALOGO, es_chica_o_bailarina, registrar_asistencia
+    PUESTOS_CATALOGO, es_chica_o_bailarina, registrar_asistencia,
+    actualizar_fecha_nacimiento, cargar_carnet_sanidad_df, guardar_carnet_sanidad
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -907,13 +908,34 @@ elif opcion == "2. Gestión de Empleados":
 
     catalogo_df = cargar_catalogo_empleados()
 
+    def _formatear_antiguedad(fecha_creado):
+        if fecha_creado is None or (isinstance(fecha_creado, float) and pd.isna(fecha_creado)):
+            return "—"
+        fecha_creado_date = fecha_creado.date() if hasattr(fecha_creado, "date") else fecha_creado
+        hoy = datetime.now(ZoneInfo("America/Mazatlan")).date()
+        dias = (hoy - fecha_creado_date).days
+        if dias < 0:
+            return "—"
+        anios, resto = divmod(dias, 365)
+        meses = resto // 30
+        if anios > 0 and meses > 0:
+            return f"{anios} año{'s' if anios != 1 else ''}, {meses} mes{'es' if meses != 1 else ''}"
+        elif anios > 0:
+            return f"{anios} año{'s' if anios != 1 else ''}"
+        elif meses > 0:
+            return f"{meses} mes{'es' if meses != 1 else ''}"
+        else:
+            return f"{dias} día{'s' if dias != 1 else ''}"
+
     def tabla_directorio_empleados(df_grupo, sufijo_key):
         if df_grupo.empty:
             st.info("No hay empleados en este grupo.")
             return
 
-        vista = df_grupo[["id", "nombre", "tipo", "sueldo_base", "activo"]].copy()
-        vista.columns = ["ID", "Nombre", "Puesto", "Sueldo base", "Activo"]
+        vista = df_grupo[["id", "nombre", "tipo", "sueldo_base", "activo", "fecha_nacimiento", "creado_en"]].copy()
+        vista["Antigüedad"] = vista["creado_en"].apply(_formatear_antiguedad)
+        vista = vista.drop(columns=["creado_en"])
+        vista.columns = ["ID", "Nombre", "Puesto", "Sueldo base", "Activo", "Cumpleaños", "Antigüedad"]
         vista = vista.sort_values("Nombre").reset_index(drop=True)
 
         if es_gerente:
@@ -933,10 +955,11 @@ elif opcion == "2. Gestión de Empleados":
                 vista,
                 hide_index=True,
                 use_container_width=True,
-                disabled=["ID", "Nombre", "Puesto", "Sueldo base"],
+                disabled=["ID", "Nombre", "Puesto", "Sueldo base", "Antigüedad"],
                 column_config={
                     "Sueldo base": st.column_config.NumberColumn("Sueldo base ($)", format="$%.2f"),
                     "Activo": st.column_config.CheckboxColumn("Activo"),
+                    "Cumpleaños": st.column_config.DateColumn("Cumpleaños", format="DD/MM/YYYY"),
                 },
                 key=editor_key
             )
@@ -951,24 +974,28 @@ elif opcion == "2. Gestión de Empleados":
                     original = vista[vista["ID"] == fila["ID"]].iloc[0]
                     if bool(fila["Activo"]) != bool(original["Activo"]):
                         actualizar_estatus_empleado(int(fila["ID"]), bool(fila["Activo"]))
+                    if fila["Cumpleaños"] != original["Cumpleaños"]:
+                        actualizar_fecha_nacimiento(int(fila["ID"]), fila["Cumpleaños"])
             st.session_state[version_key] += 1
-            st.success("Cambios guardados.")
+            st.toast("✅ Cambios guardados.", icon="✅")
             st.rerun()
         elif descartar:
             st.session_state[version_key] += 1
             st.rerun()
 
     if es_gerente:
-        tab_gest_chicas, tab_gest_general = st.tabs([
+        tab_gest_chicas, tab_gest_general, tab_carnet = st.tabs([
             "Bailarinas y chicas de salón",
-            "Personal operativo y general"
+            "Personal operativo y general",
+            "🩺 Carnet Sanidad"
         ])
         tab_alta_pin = None
         tab_exportar = None
     else:
-        tab_gest_chicas, tab_gest_general, tab_alta_pin, tab_exportar = st.tabs([
+        tab_gest_chicas, tab_gest_general, tab_carnet, tab_alta_pin, tab_exportar = st.tabs([
             "Bailarinas y chicas de salón",
             "Personal operativo y general",
+            "🩺 Carnet Sanidad",
             "➕ Alta y PIN",
             "📥 Exportar"
         ])
@@ -978,6 +1005,59 @@ elif opcion == "2. Gestión de Empleados":
     with tab_gest_general:
         df_general_dir = catalogo_df[~catalogo_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_general_dir, "general")
+
+    with tab_carnet:
+        st.subheader(":material/health_and_safety: Carnet de Sanidad")
+        st.caption("Fecha de entrega y vencimiento del carnet de sanidad de cada empleado activo.")
+        df_carnet = cargar_carnet_sanidad_df()
+
+        if df_carnet.empty:
+            st.info("No hay empleados activos registrados.")
+        else:
+            vista_carnet = df_carnet[["id", "nombre", "fecha_entrega", "fecha_expiracion"]].copy()
+            vista_carnet.columns = ["ID", "Nombre", "Fecha de entrega", "Fecha de expiración"]
+            vista_carnet = vista_carnet.sort_values("Nombre").reset_index(drop=True)
+
+            if es_gerente:
+                st.dataframe(vista_carnet.drop(columns=["ID"]), hide_index=True, use_container_width=True)
+            else:
+                version_key_carnet = "editor_carnet_sanidad_version"
+                if version_key_carnet not in st.session_state:
+                    st.session_state[version_key_carnet] = 0
+                editor_key_carnet = f"editor_carnet_sanidad_v{st.session_state[version_key_carnet]}"
+
+                if st.session_state.get(editor_key_carnet, {}).get("edited_rows", {}):
+                    st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
+
+                with st.form("form_carnet_sanidad"):
+                    editado_carnet = st.data_editor(
+                        vista_carnet,
+                        hide_index=True,
+                        use_container_width=True,
+                        disabled=["ID", "Nombre"],
+                        column_config={
+                            "Fecha de entrega": st.column_config.DateColumn("Fecha de entrega", format="DD/MM/YYYY"),
+                            "Fecha de expiración": st.column_config.DateColumn("Fecha de expiración", format="DD/MM/YYYY"),
+                        },
+                        key=editor_key_carnet
+                    )
+                    col_gc, col_dc = st.columns(2)
+                    with col_gc:
+                        guardar_carnet = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    with col_dc:
+                        descartar_carnet = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
+                if guardar_carnet:
+                    with st.spinner("Guardando cambios..."):
+                        for _, fila in editado_carnet.iterrows():
+                            original = vista_carnet[vista_carnet["ID"] == fila["ID"]].iloc[0]
+                            if fila["Fecha de entrega"] != original["Fecha de entrega"] or fila["Fecha de expiración"] != original["Fecha de expiración"]:
+                                guardar_carnet_sanidad(int(fila["ID"]), fila["Fecha de entrega"], fila["Fecha de expiración"])
+                    st.session_state[version_key_carnet] += 1
+                    st.toast("✅ Carnet de sanidad actualizado.", icon="✅")
+                    st.rerun()
+                elif descartar_carnet:
+                    st.session_state[version_key_carnet] += 1
+                    st.rerun()
 
     if tab_alta_pin is not None:
         with tab_alta_pin:
