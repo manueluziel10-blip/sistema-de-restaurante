@@ -85,7 +85,7 @@ if query_params.get("modo") == "asistencia":
                         st.markdown(f"- **Hora Local de Registro:** {hora_str}")
                         st.markdown(f"- **Estado Asignado:** :{color_est}[**{estado_asignado}**]")
                     else:
-                        st.error(f"❌ Error al guardar en la base de datos: {error_sql}")
+                        st.error(f"❌ {error_sql}")
                 else:
                     st.error("❌ Código PIN incorrecto o el empleado aún no tiene un PIN configurado. Pide a un administrador que te asigne uno en '2. Gestión de Empleados'.")
     else:
@@ -2557,7 +2557,7 @@ elif opcion == "Registro de Asistencia":
                     if exito:
                         st.markdown(f"### 🎉 ¡Asistencia registrada con éxito! ({estado_asignado} a las {hora_str})")
                     else:
-                        st.error(f"❌ Error al guardar: {error_sql}")
+                        st.error(f"❌ {error_sql}")
                 else:
                     st.error("❌ Código PIN incorrecto o el empleado aún no tiene un PIN configurado.")
 

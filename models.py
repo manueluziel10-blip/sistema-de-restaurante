@@ -635,12 +635,19 @@ def registrar_asistencia(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_a
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+
+        existente = session.query(Asistencia).filter(
+            Asistencia.empleado_id == empleado_id, Asistencia.fecha == f_date
+        ).first()
+        if existente:
+            return False, existente.estado, "", f"Ya registraste tu asistencia hoy ({existente.comentarios})."
+
         session.execute(
             db_text("""
             INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios)
             VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
             ON CONFLICT (empleado_id, fecha)
-            DO UPDATE SET estado = :estado, comentarios = :comentarios
+            DO NOTHING
             """),
             {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
         )
