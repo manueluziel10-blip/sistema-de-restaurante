@@ -1300,7 +1300,7 @@ elif opcion == "Nómina del día":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp
 
             fila_resultado = {
                 "ID": emp_id,
@@ -1565,7 +1565,7 @@ elif opcion == "Nómina del día":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp - retencion_emp
+            total_pagar = total_bruto - vales_emp - transf_emp - retencion_emp - cocina_emp - dulceria_emp
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -2325,6 +2325,14 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     with col_g1:
         gasto_cocina = sumar_consumo_cocina_dia(fecha_activa)
         st.metric("Gastos - Cocina ($)", f"${gasto_cocina:,.2f}", help="Se calcula solo, sumando la columna Cocina de todos los empleados en '3. Corte y Nómina Final' para esta fecha.")
+
+    total_ventas_cobradas_nomina = 0.0
+    if not empleados_dashboard_df.empty:
+        total_ventas_cobradas_nomina = float(
+            empleados_dashboard_df.get('consumo_cocina', 0.0).sum()
+            + empleados_dashboard_df.get('peinado_maquillaje', 0.0).sum()
+            + empleados_dashboard_df.get('dulceria', 0.0).sum()
+        )
     with col_g2:
         gasto_compras = st.number_input("Gastos - Compras ($)", value=g_compras_val, format="%.2f", disabled=not puede_modificar)
     with col_g3:
@@ -2352,7 +2360,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total - multa_chicas_total
     )
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
-    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo
+    efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo - total_ventas_cobradas_nomina
     
     utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
@@ -2402,6 +2410,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     with st.container(horizontal=True):
         st.metric("Efectivo entregado", f"${efectivo_entregado:,.2f}", border=True)
         st.metric(f"Utilidad antes de costos ({utilidad_porcentaje:.1f}%)", f"${utilidad_monto:,.2f}", border=True)
+        st.metric("Consumos no cobrados en caja (Cocina/Peinado/Dulcería)", f"${total_ventas_cobradas_nomina:,.2f}", border=True, help="Ya está incluido en 'Ventas efectivo' pero no entró físicamente a caja: se descontó del sueldo del empleado en la nómina.")
 
     st.subheader(":material/summarize: Resumen detallado de nómina y vales por grupo")
     nomina_cards = [
@@ -2426,6 +2435,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
+        {"Concepto": "Consumos no cobrados en caja (Cocina/Peinado/Dulcería)", "Monto": total_ventas_cobradas_nomina},
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
