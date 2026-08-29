@@ -33,7 +33,8 @@ from models import (
     agregar_producto_boutique, actualizar_producto_boutique, cargar_productos_boutique_df,
     registrar_venta_boutique, cargar_ventas_boutique_df,
     cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df,
-    eliminar_datos_boutique
+    eliminar_datos_boutique,
+    PUESTOS_CATALOGO, es_chica_o_bailarina, registrar_asistencia
 )
 from comisiones import (
     calcular_comision_chica, calcular_comision_gerencia_caja, calcular_comisiones_detalle,
@@ -46,19 +47,6 @@ from config_local import (
 
 st.set_page_config(layout="wide")
 
-PUESTOS_CATALOGO = {
-    "Chicas / Bailarinas (Comisiones)": 600.0,
-    "Mesero (Comisiones)": 300.0,
-    "Barman (Fijo)": 300.0,
-    "Seguridad (Fijo)": 500.0,
-    "DJ (Fijo)": 600.0,
-    "Animador (Fijo)": 400.0,
-    "Gerente (Fijo)": 500.0,
-    "Capitán de Mesero (Fijo)": 400.0,
-    "Ayudante de Mesero (Fijo)": 300.0,
-    "Cajero (Fijo)": 400.0
-}
-
 # --- MODO KIOSKO / ASISTENCIA PÚBLICA (ACCESO DIRECTO PARA EMPLEADOS) ---
 query_params = st.query_params
 if query_params.get("modo") == "asistencia":
@@ -67,59 +55,9 @@ if query_params.get("modo") == "asistencia":
 
     st.info(f"Fecha Activa: **{fecha_hoy_kiosko}**. Selecciona tu nombre e ingresa tu PIN de asistencia.\n* **Personal General:** Límite hasta las **6:30 PM**.\n* **Bailarinas / Chicas:** Límite hasta las **7:30 PM**.")
 
-    def registrar_asistencia_individual_publico(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
-        if ('CHICA' in str(tipo_puesto).upper()) or ('BAILARINA' in str(tipo_puesto).upper()):
-            limite_retardo = time(19, 30, 0)
-        else:
-            limite_retardo = time(18, 30, 0)
-
-        estado = "Presente" if hora_actual_obj <= limite_retardo else "Retardo"
-        comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
-
-        session = get_session()
-        try:
-            f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-            
-            session.execute(
-                text("""
-                INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
-                VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
-                ON CONFLICT (empleado_id, fecha) 
-                DO UPDATE SET estado = :estado, comentarios = :comentarios
-                """),
-                {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
-            )
-            
-            sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
-            session.execute(
-                text("""
-                INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
-                VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0)
-                ON CONFLICT DO NOTHING
-                """),
-                {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
-            )
-
-            session.commit()
-            return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
-        except Exception as e:
-            session.rollback()
-            return False, "", "", str(e)
-        finally:
-            session.close()
-
-    session_kiosko = get_session()
-    empleados_activos_df = pd.DataFrame()
-    try:
-        res_emps = session_kiosko.execute(
-            text("SELECT id, nombre, tipo FROM public.empleados")
-        ).fetchall()
-        if res_emps:
-            empleados_activos_df = pd.DataFrame(res_emps, columns=["id", "nombre", "tipo"])
-    except Exception as e:
-        st.error(f"Error crítico al conectar con la base de datos: {e}")
-    finally:
-        session_kiosko.close()
+    empleados_activos_df = cargar_catalogo_empleados()
+    if not empleados_activos_df.empty:
+        empleados_activos_df = empleados_activos_df[empleados_activos_df['activo'] == True]
 
     if not empleados_activos_df.empty:
         with st.form("form_auto_asistencia_publico"):
@@ -135,7 +73,7 @@ if query_params.get("modo") == "asistencia":
 
                 if verificar_pin_empleado(emp_id, pin_ingresado):
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
-                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual_publico(
+                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia(
                         empleado_id=emp_id, nombre_emp=emp_seleccionado,
                         tipo_puesto=tipo_puesto_emp, fecha_str=fecha_hoy_kiosko,
                         hora_actual_obj=hora_actual_sistema
@@ -263,50 +201,6 @@ for idx, sec in enumerate(nombres_secciones):
 st.sidebar.markdown("---")
 
 opcion = st.session_state["seccion_activa"]
-
-def es_chica_o_bailarina(tipo_str):
-    t = str(tipo_str).upper()
-    return ('CHICA' in t) or ('BAILARINA' in t)
-
-def registrar_asistencia_individual(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
-    if es_chica_o_bailarina(tipo_puesto):
-        limite_retardo = time(19, 30, 0)
-    else:
-        limite_retardo = time(18, 30, 0)
-
-    estado = "Presente" if hora_actual_obj <= limite_retardo else "Retardo"
-    comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
-
-    session = get_session()
-    try:
-        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        session.execute(
-            text("""
-            INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios) 
-            VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
-            ON CONFLICT (empleado_id, fecha) 
-            DO UPDATE SET estado = :estado, comentarios = :comentarios
-            """),
-            {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
-        )
-        
-        sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
-        session.execute(
-            text("""
-            INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada)
-            VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE)
-            ON CONFLICT DO NOTHING
-            """),
-            {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
-        )
-
-        session.commit()
-        return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
-    except Exception as e:
-        session.rollback()
-        return False, "", "", str(e)
-    finally:
-        session.close()
 
 def registrar_asistencias_automaticas_dia(fecha_str):
     session = get_session()
@@ -2655,7 +2549,7 @@ elif opcion == "Registro de Asistencia":
                 fila_emp = empleados_activos_df[empleados_activos_df['nombre'] == emp_seleccionado].iloc[0]
                 if verificar_pin_empleado(int(fila_emp['id']), pin_ingresado):
                     hora_actual_sistema = datetime.now(ZoneInfo("America/Mazatlan")).time()
-                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia_individual(
+                    exito, estado_asignado, hora_str, error_sql = registrar_asistencia(
                         empleado_id=int(fila_emp['id']), nombre_emp=emp_seleccionado,
                         tipo_puesto=str(fila_emp['tipo']), fecha_str=fecha_activa,
                         hora_actual_obj=hora_actual_sistema

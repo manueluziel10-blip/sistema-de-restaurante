@@ -8,7 +8,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, relationship
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, time
 import hashlib
 import hmac
 import os
@@ -596,6 +596,72 @@ def cargar_catalogo_empleados() -> pd.DataFrame:
         df['sueldo_base'] = df['sueldo_base'].astype(float)
         df['activo'] = df['activo'].astype(bool)
     return df
+
+
+PUESTOS_CATALOGO = {
+    "Chicas / Bailarinas (Comisiones)": 600.0,
+    "Mesero (Comisiones)": 300.0,
+    "Barman (Fijo)": 300.0,
+    "Seguridad (Fijo)": 500.0,
+    "DJ (Fijo)": 600.0,
+    "Animador (Fijo)": 400.0,
+    "Gerente (Fijo)": 500.0,
+    "Capitán de Mesero (Fijo)": 400.0,
+    "Ayudante de Mesero (Fijo)": 300.0,
+    "Cajero (Fijo)": 400.0
+}
+
+
+def es_chica_o_bailarina(tipo_str):
+    t = str(tipo_str).upper()
+    return ('CHICA' in t) or ('BAILARINA' in t)
+
+
+def registrar_asistencia(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_actual_obj):
+    """Registra el check-in de un empleado: crea/actualiza su fila de
+    'asistencias' del día y asegura que exista su fila de 'nomina_diaria'
+    (para que aparezca en la nómina del día sin que nadie más la cree a
+    mano). Usada tanto por el módulo de asistencia logueado como por los
+    kioskos públicos (web y de red local), para no duplicar esta lógica
+    en varios lugares."""
+    if es_chica_o_bailarina(tipo_puesto):
+        limite_retardo = time(19, 30, 0)
+    else:
+        limite_retardo = time(18, 30, 0)
+
+    estado = "Presente" if hora_actual_obj <= limite_retardo else "Retardo"
+    comentarios = f"Check-in a las {hora_actual_obj.strftime('%H:%M:%S')}"
+
+    session = get_session()
+    try:
+        f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        session.execute(
+            db_text("""
+            INSERT INTO asistencias (empleado_id, nombre_empleado, fecha, estado, comentarios)
+            VALUES (:emp_id, :nombre_emp, :fecha, :estado, :comentarios)
+            ON CONFLICT (empleado_id, fecha)
+            DO UPDATE SET estado = :estado, comentarios = :comentarios
+            """),
+            {"emp_id": empleado_id, "nombre_emp": nombre_emp, "fecha": f_date, "estado": estado, "comentarios": comentarios}
+        )
+
+        sueldo_default = PUESTOS_CATALOGO.get(tipo_puesto, 300.0)
+        session.execute(
+            db_text("""
+            INSERT INTO nomina_diaria (fecha, empleado_id, sueldo_base, vales_nomina, descuento_nomina, transferencia_nomina, consumo_cocina, penalizada, retencion_nomina, peinado_maquillaje, dulceria)
+            VALUES (:fecha, :emp_id, :sueldo, 0.0, 100.0, 0.0, 0.0, FALSE, 0.0, 0.0, 0.0)
+            ON CONFLICT DO NOTHING
+            """),
+            {"fecha": f_date, "emp_id": empleado_id, "sueldo": sueldo_default}
+        )
+
+        session.commit()
+        return True, estado, hora_actual_obj.strftime('%H:%M:%S'), None
+    except Exception as e:
+        session.rollback()
+        return False, "", "", str(e)
+    finally:
+        session.close()
 
 
 def actualizar_estatus_empleado(emp_id: int, activo: bool):

@@ -18,6 +18,7 @@ pyinstaller --name ZullysSistema --onedir --noconfirm ^
   --add-data "comisiones.py;." ^
   --add-data "database.py;." ^
   --add-data "config_local.py;." ^
+  --add-data "kiosko_servidor.py;." ^
   escritorio.py
 
 echo.
