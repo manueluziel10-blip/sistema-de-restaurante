@@ -742,6 +742,7 @@ if rol_actual_lower == "cajero" and es_dia_actual and not corte_esta_bloqueado:
             monto_apertura = st.number_input("Fondo de apertura ($)", min_value=0.0, format="%.2f")
             if st.button("Confirmar apertura", type="primary"):
                 guardar_fondo_apertura(fecha_activa, monto_apertura)
+                st.toast(f"✅ Fondo de apertura registrado: ${monto_apertura:,.2f}", icon="✅")
                 st.rerun()
         _dialog_apertura_corte()
         st.stop()
@@ -778,6 +779,7 @@ else:
                     generar_vales_desde_nomina(fecha_activa)
                     bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
                     st.session_state["mostrar_dialogo_cierre"] = False
+                    st.toast(f"✅ Corte del {fecha_activa} cerrado con ${monto_cierre_input:,.2f}.", icon="✅")
                     st.rerun()
             _dialog_cierre_corte()
 
@@ -1182,6 +1184,7 @@ elif opcion == "Nómina del día":
 
             if puede_modificar and (penalizada_cambiada != penalizada_actual):
                 actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa, nuevo_retencion=multa_emp)
+                st.toast(f"✅ Penalización de {nombre} actualizada.", icon="✅")
                 st.rerun()
 
             sus_filas = pd.DataFrame()
