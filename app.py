@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, date
 from zoneinfo import ZoneInfo
 import io
 import base64
@@ -908,6 +908,27 @@ elif opcion == "2. Gestión de Empleados":
 
     catalogo_df = cargar_catalogo_empleados()
 
+    def _a_fecha_o_none(valor):
+        """Normaliza lo que devuelva un DateColumn de data_editor (puede
+        venir como str ISO, datetime/Timestamp, date, o NaN/None si la
+        celda quedó vacía) a un date de Python o None, para que SQLite no
+        rechace el guardado."""
+        if valor is None:
+            return None
+        try:
+            if pd.isna(valor):
+                return None
+        except (TypeError, ValueError):
+            pass
+        if isinstance(valor, str):
+            valor = valor.strip()
+            return datetime.strptime(valor[:10], "%Y-%m-%d").date() if valor else None
+        if isinstance(valor, datetime):
+            return valor.date()
+        if isinstance(valor, date):
+            return valor
+        return None
+
     def _formatear_antiguedad(fecha_creado):
         if fecha_creado is None or (isinstance(fecha_creado, float) and pd.isna(fecha_creado)):
             return "—"
@@ -975,7 +996,7 @@ elif opcion == "2. Gestión de Empleados":
                     if bool(fila["Activo"]) != bool(original["Activo"]):
                         actualizar_estatus_empleado(int(fila["ID"]), bool(fila["Activo"]))
                     if fila["Cumpleaños"] != original["Cumpleaños"]:
-                        actualizar_fecha_nacimiento(int(fila["ID"]), fila["Cumpleaños"])
+                        actualizar_fecha_nacimiento(int(fila["ID"]), _a_fecha_o_none(fila["Cumpleaños"]))
             st.session_state[version_key] += 1
             st.toast("✅ Cambios guardados.", icon="✅")
             st.rerun()
@@ -1051,7 +1072,11 @@ elif opcion == "2. Gestión de Empleados":
                         for _, fila in editado_carnet.iterrows():
                             original = vista_carnet[vista_carnet["ID"] == fila["ID"]].iloc[0]
                             if fila["Fecha de entrega"] != original["Fecha de entrega"] or fila["Fecha de expiración"] != original["Fecha de expiración"]:
-                                guardar_carnet_sanidad(int(fila["ID"]), fila["Fecha de entrega"], fila["Fecha de expiración"])
+                                guardar_carnet_sanidad(
+                                    int(fila["ID"]),
+                                    _a_fecha_o_none(fila["Fecha de entrega"]),
+                                    _a_fecha_o_none(fila["Fecha de expiración"])
+                                )
                     st.session_state[version_key_carnet] += 1
                     st.toast("✅ Carnet de sanidad actualizado.", icon="✅")
                     st.rerun()
