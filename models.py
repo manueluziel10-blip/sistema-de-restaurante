@@ -608,7 +608,8 @@ PUESTOS_CATALOGO = {
     "Gerente (Fijo)": 500.0,
     "Capitán de Mesero (Fijo)": 400.0,
     "Ayudante de Mesero (Fijo)": 300.0,
-    "Cajero (Fijo)": 400.0
+    "Cajero (Fijo)": 400.0,
+    "DJ/Scom (Fijo)": 600.0
 }
 
 

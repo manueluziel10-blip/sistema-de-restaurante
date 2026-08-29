@@ -1406,7 +1406,9 @@ elif opcion == "Nómina del día":
 
             puesto_upper_check = str(tipo_efectivo).upper()
             comisiones_prod = 0.0
-            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+            if "SCOM" in puesto_upper_check:
+                porcentaje_propina = 0.0
+            elif any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
                 comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_count)
             elif "SEGURIDAD" in puesto_upper_check:
@@ -2104,7 +2106,9 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             
             puesto_upper_check = tipo.upper()
             comisiones_prod = 0.0
-            if any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+            if "SCOM" in puesto_upper_check:
+                porcentaje_propina = 0.0
+            elif any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
                 porcentaje_propina = 0.0
                 comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_dash)
             elif "SEGURIDAD" in puesto_upper_check:
@@ -2485,7 +2489,9 @@ elif opcion == "5. Reportes":
                         propina_propia = 0.0
                         comision_producto = 0.0
 
-                        if any(p in tipo for p in ["DJ", "ANIMADOR"]):
+                        if "SCOM" in tipo:
+                            pass
+                        elif any(p in tipo for p in ["DJ", "ANIMADOR"]):
                             comision_producto = calcular_bono_dj_animador(chicas_con_desc_count)
                         elif any(p in tipo for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
                             # 8% de rol sobre el total de propinas del periodo

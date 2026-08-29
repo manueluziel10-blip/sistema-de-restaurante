@@ -132,6 +132,11 @@ def main():
     if not _esperar_servidor(puerto):
         raise RuntimeError("El servidor local no arrancó a tiempo.")
 
+    # pywebview bloquea las descargas de archivos por defecto (los botones
+    # de "Descargar..." de Streamlit generan el archivo pero WebView2 no
+    # deja guardarlo, sin ningún mensaje de error) -- se habilita aquí.
+    webview.settings['ALLOW_DOWNLOADS'] = True
+
     proceso_kiosko = subprocess.Popen(_comando_reinvocacion_kiosko())
     try:
         webview.create_window(
