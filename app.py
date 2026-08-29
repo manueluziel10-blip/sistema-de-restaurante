@@ -2435,7 +2435,6 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         {"Concepto": "Cocina", "Monto": gasto_cocina},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
-        {"Concepto": "Consumos no cobrados en caja (Cocina/Peinado/Dulcería)", "Monto": total_ventas_cobradas_nomina},
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
     ])
     st.dataframe(tabla_gastos, use_container_width=True)
