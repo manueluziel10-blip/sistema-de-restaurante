@@ -22,6 +22,36 @@ from models import cargar_catalogo_empleados, verificar_pin_empleado, registrar_
 
 st.set_page_config(layout="centered", page_title="Registro de Asistencia")
 
+st.markdown(
+    """
+    <style>
+    /* Botones del teclado numérico: grandes y táctiles en cualquier tamaño de pantalla */
+    div[data-testid="stButton"] button {
+        min-height: 70px;
+        font-size: clamp(1.2rem, 5vw, 1.8rem);
+        font-weight: 600;
+    }
+    .pin-indicador {
+        text-align: center;
+        letter-spacing: clamp(4px, 2vw, 10px);
+        font-size: clamp(1.6rem, 8vw, 2.5rem);
+        margin: 0.5rem 0 1rem 0;
+        word-break: break-all;
+    }
+    @media (max-width: 600px) {
+        div[data-testid="stButton"] button {
+            min-height: 56px;
+        }
+        .block-container {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("Zully's Men's Club — Registro de Asistencia")
 fecha_hoy_kiosko = datetime.now(ZoneInfo("America/Mazatlan")).strftime('%Y-%m-%d')
 
@@ -46,8 +76,8 @@ else:
 
     st.markdown("**Tu PIN:**")
     st.markdown(
-        f"<h1 style='letter-spacing: 10px;'>{'●' * len(st.session_state['pin_kiosko'])}"
-        f"{'○' * (6 - len(st.session_state['pin_kiosko']))}</h1>",
+        f"<div class='pin-indicador'>{'●' * len(st.session_state['pin_kiosko'])}"
+        f"{'○' * (6 - len(st.session_state['pin_kiosko']))}</div>",
         unsafe_allow_html=True
     )
 

@@ -253,6 +253,44 @@ class CorteBloqueo(Base):
     fecha_bloqueo = Column(DateTime, server_default=func.now())
 
 
+class LogMovimiento(Base):
+    """Bitácora de acciones sensibles del sistema (altas/bajas de
+    empleados, cambios de puesto, cierres de corte, vales, etc.) — quién
+    hizo qué y cuándo."""
+    __tablename__ = "log_movimientos"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    usuario = Column(String, nullable=False)
+    accion = Column(String, nullable=False)
+    detalle = Column(String)
+    fecha = Column(DateTime, server_default=func.now())
+
+
+def registrar_log(usuario: str, accion: str, detalle: str = ""):
+    """Escribe una entrada en el log de movimientos. No lanza excepción
+    si falla — nunca debe tumbar la acción principal por un problema de
+    logging."""
+    session = get_session()
+    try:
+        session.add(LogMovimiento(usuario=usuario or "sistema", accion=accion, detalle=detalle))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error al registrar log de movimientos: {e}")
+    finally:
+        session.close()
+
+
+def cargar_log_movimientos(limite: int = 500) -> pd.DataFrame:
+    session = get_session()
+    try:
+        query = session.query(
+            LogMovimiento.fecha, LogMovimiento.usuario, LogMovimiento.accion, LogMovimiento.detalle
+        ).order_by(LogMovimiento.fecha.desc()).limit(limite)
+        return pd.read_sql(query.statement, session.bind)
+    finally:
+        session.close()
+
+
 # --- FUNCIONES DE AUTENTICACIÓN Y BLOQUEOS ---
 
 def inicializar_usuarios_por_defecto():
@@ -300,7 +338,7 @@ def cargar_usuarios_df() -> pd.DataFrame:
         session.close()
 
 
-def crear_usuario(username, password, rol):
+def crear_usuario(username, password, rol, actor=None):
     session = get_session()
     try:
         existe = session.query(UsuarioSistema).filter(UsuarioSistema.username == username).first()
@@ -308,6 +346,7 @@ def crear_usuario(username, password, rol):
             nuevo = UsuarioSistema(username=username, password=_hash_valor(password), rol=rol)
             session.add(nuevo)
             session.commit()
+            registrar_log(actor or username, "Alta usuario del sistema", f"usuario={username}, rol={rol}")
     except Exception as e:
         session.rollback()
         raise e
@@ -356,6 +395,7 @@ def bloquear_corte_fecha(fecha_str: str, usuario: str):
             nuevo_b = CorteBloqueo(fecha=f_obj, bloqueado=True, bloqueado_por=usuario)
             session.add(nuevo_b)
         session.commit()
+        registrar_log(usuario, "Cierre de corte", f"fecha={fecha_str}")
     except Exception as e:
         session.rollback()
         raise e
@@ -730,7 +770,7 @@ def registrar_asistencia(empleado_id, nombre_emp, tipo_puesto, fecha_str, hora_a
         session.close()
 
 
-def actualizar_estatus_empleado(emp_id: int, activo: bool):
+def actualizar_estatus_empleado(emp_id: int, activo: bool, actor: str = None):
     """Activa o desactiva a un empleado (baja/alta indefinida, reversible).
     No toca su puesto, sueldo ni ningún registro de nomina_diaria."""
     session = get_session()
@@ -740,6 +780,7 @@ def actualizar_estatus_empleado(emp_id: int, activo: bool):
             return False
         emp.activo = activo
         session.commit()
+        registrar_log(actor or "sistema", "Baja de empleado" if not activo else "Reactivación de empleado", f"empleado={emp.nombre} (id={emp_id})")
         return True
     finally:
         session.close()
@@ -848,6 +889,7 @@ def generar_vales_desde_nomina(fecha_str: str):
                 importe=float(nomina.vales_nomina), importe_bruto=float(nomina.vales_nomina),
                 abono_boutique=0.0, estado="PENDIENTE", fecha_pago=None,
             ))
+            registrar_log("sistema", "Vale generado", f"folio={folio}, empleado={empleado.nombre}, monto=${float(nomina.vales_nomina):.2f}, fecha={fecha_str}")
         session.commit()
     except Exception:
         session.rollback()
@@ -884,6 +926,21 @@ def actualizar_estado_vale(vale_id: int, estado: str, forma_pago: str = None):
         vale.forma_pago = forma_pago or vale.forma_pago
         vale.fecha_pago = datetime.now().date() if estado == "PAGADO" else None
         session.commit()
+        return True
+    finally:
+        session.close()
+
+
+def eliminar_vale(vale_id: int, actor: str = None) -> bool:
+    session = get_session()
+    try:
+        vale = session.query(ValeDiario).filter(ValeDiario.id == vale_id).first()
+        if not vale:
+            return False
+        detalle = f"folio={vale.folio}, empleado={vale.empleado_nombre}, monto=${float(vale.importe):.2f}"
+        session.delete(vale)
+        session.commit()
+        registrar_log(actor or "sistema", "Vale eliminado", detalle)
         return True
     finally:
         session.close()
@@ -1103,15 +1160,20 @@ def cargar_abonos_boutique_df(empleado_id: int = None) -> pd.DataFrame:
     return df
 
 
-def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
+def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None, fecha_str=None, actor=None):
     """Da de alta o actualiza un empleado SOLO en el catálogo (tabla
-    empleados) — NO crea ni toca ningún registro de nomina_diaria.
+    empleados) — NO crea registros nuevos de nomina_diaria.
     Devuelve el id del empleado (nuevo o existente).
 
     Se usa para altas individuales sueltas. Para importar varios
     empleados de un Excel a la vez, usar agregar_empleados_catalogo_bulk
     (una sola conexión para todo el archivo, mucho más rápida).
-    """
+
+    Si el empleado YA existía (se está reactivando o volviendo a subir),
+    se limpian los montos de nómina que pudiera tener de antes para la
+    fecha activa (vales, descuentos, consumos, etc.) — de lo contrario
+    un vale o descuento capturado en el pasado reaparecería tal cual
+    "solo", sin que nadie lo haya vuelto a teclear."""
     session = get_session()
     try:
         asegurar_columnas_empleado(session)
@@ -1123,7 +1185,25 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
             emp.activo = True
             if pin:
                 emp.pin_hash = _hash_valor(str(pin).strip())
+
+            f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+            f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+            nom = session.query(NominaDiaria).filter(
+                NominaDiaria.fecha == f_date, NominaDiaria.empleado_id == emp.id
+            ).first()
+            if nom:
+                nom.vales_nomina = 0.0
+                nom.descuento_nomina = 100.0
+                nom.transferencia_nomina = 0.0
+                nom.consumo_cocina = 0.0
+                nom.retencion_nomina = 0.0
+                nom.peinado_maquillaje = 0.0
+                nom.dulceria = 0.0
+                nom.penalizada = False
+                nom.sueldo_base = sueldo_base
+
             session.commit()
+            registrar_log(actor or "sistema", "Alta de empleado (reactivación)", f"empleado={emp.nombre}")
             return emp.id
         else:
             pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
@@ -1137,6 +1217,7 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
             session.add(emp)
             session.commit()
             session.refresh(emp)
+            registrar_log(actor or "sistema", "Alta de empleado", f"empleado={emp.nombre}, puesto={tipo}")
             return emp.id
     except Exception as e:
         session.rollback()
@@ -1145,7 +1226,7 @@ def agregar_empleado_catalogo(nombre, tipo, sueldo_base, pin=None):
         session.close()
 
 
-def agregar_empleados_catalogo_bulk(filas: list) -> list:
+def agregar_empleados_catalogo_bulk(filas: list, fecha_str: str = None, actor: str = None) -> list:
     """Versión en lote de agregar_empleado_catalogo, pensada para la
     importación masiva por Excel. Antes, cada fila del archivo abría su
     propia conexión a la base de datos (get_session/commit/close) y
@@ -1157,7 +1238,13 @@ def agregar_empleados_catalogo_bulk(filas: list) -> list:
     filas: lista de dicts con llaves 'nombre', 'tipo', 'sueldo_base',
     y opcionalmente 'pin'.
     Devuelve una lista de empleado_id en el mismo orden que 'filas'.
-    """
+
+    Si un nombre subido ya existía (reactivación, o el mismo Excel se
+    vuelve a importar), se limpian los montos de nómina de la fecha
+    activa que pudiera tener de antes (vales, descuentos, consumos,
+    etc.) — igual que en agregar_empleado_catalogo, para que no
+    reaparezcan vales o descuentos viejos sin que nadie los haya vuelto
+    a capturar."""
     if not filas:
         return []
     session = get_session()
@@ -1168,11 +1255,22 @@ def agregar_empleados_catalogo_bulk(filas: list) -> list:
         for puesto in puestos_unicos:
             asegurar_puesto_existe(session, puesto)
 
+        f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
+        f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
+
         nombres_norm = [normalizar_nombre(f['nombre']) for f in filas]
         existentes = session.query(Empleado).filter(Empleado.nombre.in_(nombres_norm)).all()
         mapa_existentes = {e.nombre: e for e in existentes}
 
+        nominas_existentes = session.query(NominaDiaria).filter(
+            NominaDiaria.fecha == f_date,
+            NominaDiaria.empleado_id.in_([e.id for e in existentes])
+        ).all() if existentes else []
+        mapa_nominas = {n.empleado_id: n for n in nominas_existentes}
+
         ids_resultado = []
+        reactivados = []
+        nuevos = []
         for f in filas:
             nombre_norm = normalizar_nombre(f['nombre'])
             pin = f.get('pin')
@@ -1183,6 +1281,19 @@ def agregar_empleados_catalogo_bulk(filas: list) -> list:
                 emp.activo = True
                 if pin:
                     emp.pin_hash = _hash_valor(str(pin).strip())
+
+                nom = mapa_nominas.get(emp.id)
+                if nom:
+                    nom.vales_nomina = 0.0
+                    nom.descuento_nomina = 100.0
+                    nom.transferencia_nomina = 0.0
+                    nom.consumo_cocina = 0.0
+                    nom.retencion_nomina = 0.0
+                    nom.peinado_maquillaje = 0.0
+                    nom.dulceria = 0.0
+                    nom.penalizada = False
+                    nom.sueldo_base = f['sueldo_base']
+                reactivados.append(nombre_norm)
             else:
                 pin_final = str(pin).strip() if pin else generar_pin_aleatorio()
                 emp = Empleado(
@@ -1195,9 +1306,14 @@ def agregar_empleados_catalogo_bulk(filas: list) -> list:
                 session.add(emp)
                 session.flush()  # asigna el id sin comitear toda la transacción
                 mapa_existentes[nombre_norm] = emp
+                nuevos.append(nombre_norm)
             ids_resultado.append(emp.id)
 
         session.commit()
+        registrar_log(
+            actor or "sistema", "Alta masiva de empleados",
+            f"nuevos={len(nuevos)}, reactivados={len(reactivados)}" + (f" ({', '.join(reactivados)})" if reactivados else "")
+        )
         return ids_resultado
     except Exception as e:
         session.rollback()
@@ -1264,7 +1380,7 @@ def registrar_asistencia_lista_empleados(empleado_ids: list, fecha_str: str,
         session.close()
 
 
-def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwargs):
+def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, actor=None, **kwargs):
     session = get_session()
     try:
         asegurar_columnas_empleado(session)
@@ -1313,6 +1429,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
             existe_nom.sueldo_base = sueldo_base
 
         session.commit()
+        registrar_log(actor or "sistema", "Alta de empleado", f"empleado={normalizar_nombre(nombre)}, puesto={tipo}")
     except Exception as e:
         session.rollback()
         raise e
@@ -1320,13 +1437,16 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, **kwar
         session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, nuevo_puesto_dia=None, nuevo_retencion=None, nuevo_peinado_maquillaje=None, nuevo_dulceria=None, **kwargs):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, nuevo_puesto_dia=None, nuevo_retencion=None, nuevo_peinado_maquillaje=None, nuevo_dulceria=None, actor=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
-    
+
     emp = session.query(Empleado).filter(Empleado.id == emp_id).first()
+    tipo_anterior = emp.tipo if emp else None
+    cambio_de_puesto = bool(emp) and tipo_anterior != nuevo_tipo
     if emp:
         emp.tipo = nuevo_tipo
+        emp.sueldo_base = nuevo_sueldo
 
     f_str = fecha_str if fecha_str else datetime.now().strftime('%Y-%m-%d')
     f_date = datetime.strptime(f_str, "%Y-%m-%d").date()
@@ -1341,6 +1461,21 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         session.add(nom)
 
     nom.sueldo_base = nuevo_sueldo
+
+    if cambio_de_puesto:
+        # El puesto cambió: los montos de nómina del día (vales, descuentos,
+        # consumos, etc.) pertenecían al puesto anterior y no deben
+        # arrastrarse al nuevo puesto.
+        nom.vales_nomina = 0.0
+        nom.descuento_nomina = 100.0
+        nom.transferencia_nomina = 0.0
+        nom.consumo_cocina = 0.0
+        nom.retencion_nomina = 0.0
+        nom.peinado_maquillaje = 0.0
+        nom.dulceria = 0.0
+        nom.penalizada = False
+        nom.puesto_dia = nuevo_tipo
+
     if nuevo_vales is not None:
         nom.vales_nomina = nuevo_vales
     if nueva_penalizacion is not None:
@@ -1360,8 +1495,12 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
     if nuevo_dulceria is not None:
         nom.dulceria = nuevo_dulceria
 
+    nombre_emp = emp.nombre if emp else str(emp_id)
     session.commit()
     session.close()
+
+    if cambio_de_puesto:
+        registrar_log(actor or "sistema", "Cambio de puesto", f"empleado={nombre_emp}: {tipo_anterior} -> {nuevo_tipo}, sueldo=${nuevo_sueldo:.2f}")
 
 
 def eliminar_empleado_por_id(emp_id, fecha_str):

@@ -29,7 +29,7 @@ from models import (
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
     cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados, actualizar_estatus_empleado,
-    generar_vales_desde_nomina,
+    generar_vales_desde_nomina, eliminar_vale, cargar_log_movimientos,
     agregar_producto_boutique, actualizar_producto_boutique, cargar_productos_boutique_df,
     registrar_venta_boutique, cargar_ventas_boutique_df,
     cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df,
@@ -994,7 +994,7 @@ elif opcion == "2. Gestión de Empleados":
                 for _, fila in editado.iterrows():
                     original = vista[vista["ID"] == fila["ID"]].iloc[0]
                     if bool(fila["Activo"]) != bool(original["Activo"]):
-                        actualizar_estatus_empleado(int(fila["ID"]), bool(fila["Activo"]))
+                        actualizar_estatus_empleado(int(fila["ID"]), bool(fila["Activo"]), actor=st.session_state["usuario_actual"])
                     if fila["Cumpleaños"] != original["Cumpleaños"]:
                         actualizar_fecha_nacimiento(int(fila["ID"]), _a_fecha_o_none(fila["Cumpleaños"]))
             st.session_state[version_key] += 1
@@ -1012,6 +1012,16 @@ elif opcion == "2. Gestión de Empleados":
         ])
         tab_alta_pin = None
         tab_exportar = None
+        tab_log = None
+    elif rol_actual_lower == "admin":
+        tab_gest_chicas, tab_gest_general, tab_carnet, tab_alta_pin, tab_exportar, tab_log = st.tabs([
+            "Bailarinas y chicas de salón",
+            "Personal operativo y general",
+            "🩺 Carnet Sanidad",
+            "➕ Alta y PIN",
+            "📥 Exportar",
+            "📜 Log de Movimientos"
+        ])
     else:
         tab_gest_chicas, tab_gest_general, tab_carnet, tab_alta_pin, tab_exportar = st.tabs([
             "Bailarinas y chicas de salón",
@@ -1020,12 +1030,33 @@ elif opcion == "2. Gestión de Empleados":
             "➕ Alta y PIN",
             "📥 Exportar"
         ])
+        tab_log = None
     with tab_gest_chicas:
         df_chicas_dir = catalogo_df[catalogo_df['tipo'].apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_chicas_dir, "chicas")
     with tab_gest_general:
         df_general_dir = catalogo_df[~catalogo_df['tipo'].astype(str).str.upper().apply(es_chica_o_bailarina)] if not catalogo_df.empty else pd.DataFrame()
         tabla_directorio_empleados(df_general_dir, "general")
+    if tab_log is not None:
+        with tab_log:
+            st.subheader(":material/history: Log de Movimientos")
+            log_df = cargar_log_movimientos()
+            if log_df.empty:
+                st.info("Todavía no hay movimientos registrados.")
+            else:
+                fechas_log = sorted(pd.to_datetime(log_df["fecha"]).dt.date.unique(), reverse=True)
+                filtro_fecha_log = st.selectbox(
+                    "Filtrar por fecha", ["Todas"] + [f.strftime("%Y-%m-%d") for f in fechas_log]
+                )
+                vista_log = log_df.copy()
+                if filtro_fecha_log != "Todas":
+                    vista_log = vista_log[pd.to_datetime(vista_log["fecha"]).dt.strftime("%Y-%m-%d") == filtro_fecha_log]
+                st.dataframe(
+                    vista_log.rename(columns={
+                        "fecha": "Fecha", "usuario": "Usuario", "accion": "Acción", "detalle": "Detalle"
+                    }),
+                    hide_index=True, use_container_width=True
+                )
 
     with tab_carnet:
         st.subheader(":material/health_and_safety: Carnet de Sanidad")
@@ -1103,22 +1134,29 @@ elif opcion == "2. Gestión de Empleados":
                         st.error("El PIN no puede estar vacío.")
 
                 puesto_actual_pin = emp_pin_actual['tipo']
+                nuevo_puesto_pin = st.selectbox(
+                    "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
+                    index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+                    key="selectbox_puesto_pin",
+                )
                 with st.form("form_puesto_pin"):
-                    nuevo_puesto_pin = st.selectbox(
-                        "Puesto oficial", list(PUESTOS_CATALOGO.keys()),
-                        index=list(PUESTOS_CATALOGO.keys()).index(puesto_actual_pin) if puesto_actual_pin in PUESTOS_CATALOGO else 0,
+                    nuevo_sueldo_puesto = st.number_input(
+                        "Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_puesto_pin], format="%.2f"
                     )
                     guardar_puesto_pin = st.form_submit_button("Guardar puesto")
 
                 if guardar_puesto_pin:
-                    actualizar_empleado(int(emp_pin_actual["id"]), nuevo_puesto_pin, float(emp_pin_actual["sueldo_base"]), fecha_str=fecha_activa)
-                    st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin}!")
+                    actualizar_empleado(
+                        int(emp_pin_actual["id"]), nuevo_puesto_pin, float(nuevo_sueldo_puesto),
+                        fecha_str=fecha_activa, actor=st.session_state["usuario_actual"]
+                    )
+                    st.success(f"¡Puesto oficial de {emp_pin_sel} actualizado a {nuevo_puesto_pin} (sueldo ${nuevo_sueldo_puesto:,.2f})!")
                     st.rerun()
             else:
                 st.info("No hay empleados registrados todavía.")
 
             st.subheader(f":material/person_add: Agregar empleado manual ({fecha_activa})")
-            with st.form("form_empleado"):
+            with st.form("form_empleado", clear_on_submit=True):
                 nuevo_nombre = st.text_input("Nombre completo")
                 nuevo_tipo = st.selectbox("Puesto", list(PUESTOS_CATALOGO.keys()), key="form_puesto")
                 nuevo_sueldo = st.number_input("Sueldo base ($)", value=PUESTOS_CATALOGO[nuevo_tipo], format="%.2f", key="form_sueldo_input")
@@ -1129,7 +1167,7 @@ elif opcion == "2. Gestión de Empleados":
 
                 if st.form_submit_button("Guardar empleado"):
                     if nuevo_nombre.strip():
-                        agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip())
+                        agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip(), actor=st.session_state["usuario_actual"])
                         registrar_asistencias_automaticas_dia(fecha_activa)
                         st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
                         st.rerun()
@@ -1192,7 +1230,7 @@ elif opcion == "2. Gestión de Empleados":
 
                             # Una sola conexión para todo el archivo, en vez de una
                             # por cada empleado — mucho más rápido con listas largas.
-                            ids_procesados = agregar_empleados_catalogo_bulk(filas_para_importar)
+                            ids_procesados = agregar_empleados_catalogo_bulk(filas_para_importar, fecha_str=fecha_activa, actor=st.session_state["usuario_actual"])
 
                             st.success(
                                 f"¡Importación completada! Empleados agregados al catálogo: {len(ids_procesados)}. "
@@ -1822,8 +1860,11 @@ elif opcion == "Registro de Vales":
         estados = ["PENDIENTE", "PAGADO", "YA NO PAGAR"]
 
         def tabla_vales_editable(df_subset, sufijo_key, texto_boton_guardar="💾 Guardar cambios"):
+            puede_eliminar_vales = rol_actual_lower == "admin"
             vista = df_subset[["id", "folio", "fecha", "empleado_nombre", "importe", "estado", "forma_pago", "fecha_pago"]].copy()
             vista.columns = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Estado", "Forma de pago", "Fecha de pago"]
+            if puede_eliminar_vales:
+                vista["Eliminar"] = False
 
             version_key = f"editor_vales_{sufijo_key}_version"
             if version_key not in st.session_state:
@@ -1833,25 +1874,50 @@ elif opcion == "Registro de Vales":
             if st.session_state.get(editor_key, {}).get("edited_rows", {}):
                 st.warning("⚠️ Hay cambios sin guardar. Usa 'Descartar cambios' para regresar a los valores guardados.")
 
+            disabled_cols = ["ID", "Folio", "Fecha", "Empleado", "Monto", "Fecha de pago"]
+            column_config = {
+                "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
+                "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
+                "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
+            }
+            if puede_eliminar_vales:
+                column_config["Eliminar"] = st.column_config.CheckboxColumn("🗑️ Eliminar")
+
             with st.form(f"form_vales_{sufijo_key}"):
                 editado = st.data_editor(
                     vista,
                     hide_index=True,
                     use_container_width=True,
-                    disabled=["ID", "Folio", "Fecha", "Empleado", "Monto", "Fecha de pago"],
-                    column_config={
-                        "Monto": st.column_config.NumberColumn("Monto ($)", format="$%.2f"),
-                        "Estado": st.column_config.SelectboxColumn("Estado", options=estados, required=True),
-                        "Forma de pago": st.column_config.SelectboxColumn("Forma de pago", options=formas_pago),
-                    },
+                    disabled=disabled_cols,
+                    column_config=column_config,
                     key=editor_key
                 )
-                col_g, col_d = st.columns(2)
+                if puede_eliminar_vales:
+                    col_g, col_e, col_d = st.columns(3)
+                else:
+                    col_g, col_d = st.columns(2)
+                    col_e = None
                 with col_g:
                     guardar = st.form_submit_button(texto_boton_guardar, use_container_width=True)
+                if col_e is not None:
+                    with col_e:
+                        eliminar_seleccionados = st.form_submit_button("🗑️ Eliminar seleccionados", use_container_width=True)
+                else:
+                    eliminar_seleccionados = False
                 with col_d:
                     descartar = st.form_submit_button("↩️ Descartar cambios", use_container_width=True)
-            if guardar:
+            if eliminar_seleccionados:
+                ids_a_eliminar = [int(fila["ID"]) for _, fila in editado.iterrows() if bool(fila.get("Eliminar", False))]
+                if not ids_a_eliminar:
+                    st.warning("No marcaste ningún vale para eliminar.")
+                else:
+                    with st.spinner("Eliminando vales..."):
+                        for vale_id in ids_a_eliminar:
+                            eliminar_vale(vale_id, actor=st.session_state["usuario_actual"])
+                    st.session_state[version_key] += 1
+                    st.success(f"{len(ids_a_eliminar)} vale(s) eliminado(s).")
+                    st.rerun()
+            elif guardar:
                 folios_sin_forma_pago = [
                     str(fila["Folio"]) for _, fila in editado.iterrows()
                     if fila["Estado"] == "PAGADO" and (pd.isna(fila["Forma de pago"]) or not str(fila["Forma de pago"]).strip())
@@ -2701,7 +2767,7 @@ elif opcion == "6. Usuarios y Accesos":
             nuevo_rol = st.selectbox("Rol del Usuario", ["admin", "cajero", "gerente"])
             if st.form_submit_button("Crear Usuario"):
                 if nuevo_user.strip() and nuevo_pass.strip():
-                    crear_usuario(nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol)
+                    crear_usuario(nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol, actor=st.session_state["usuario_actual"])
                     st.success("¡Usuario creado!")
                     st.rerun()
 
