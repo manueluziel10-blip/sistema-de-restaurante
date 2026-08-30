@@ -517,8 +517,9 @@ def _encabezado_ticket(subtitulo, fecha_str, estilos):
 
 def _flowables_ticket_chica(fila, fecha_str, estilos, folios_vale=""):
     """Ticket de Bailarinas y Chicas: sueldo + una línea por categoría de
-    producto + descuento/multa (restados ANTES del total) + vale/transferencia
-    (restados del total para dar el efectivo) + cocina informativa."""
+    producto + descuento/multa (restados ANTES del total) + vale/transferencia/
+    cocina/peinado y maquillaje/dulcería (restados del total para dar el
+    efectivo, igual que 'Total a Pagar' en Nómina del día)."""
     nombre = fila["Nombre"]
     sueldo = float(fila["Sueldo Base"])
     descuento = float(fila["Descuento"])
@@ -526,6 +527,8 @@ def _flowables_ticket_chica(fila, fecha_str, estilos, folios_vale=""):
     vale = float(fila["Vales"])
     transferencia = float(fila["Transferencia"])
     cocina = float(fila["Cocina"])
+    peinado = float(fila["Peinado y maquillaje"])
+    dulceria = float(fila["Dulcería"])
 
     filas_prod = []
     bruto = sueldo
@@ -536,7 +539,7 @@ def _flowables_ticket_chica(fila, fecha_str, estilos, folios_vale=""):
         filas_prod.append((cat.upper(), str(int(cant)), f"${monto:,.2f}", "normal"))
 
     total = bruto - descuento - multa
-    efectivo = total - vale - transferencia
+    efectivo = total - vale - transferencia - cocina - peinado - dulceria
     etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
     filas = [("SUELDO", "", f"${sueldo:,.2f}", "normal")] + filas_prod + [
@@ -545,8 +548,10 @@ def _flowables_ticket_chica(fila, fecha_str, estilos, folios_vale=""):
         ("TOTAL", "", f"${total:,.2f}", "negrita"),
         (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
         ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
-        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
         ("COCINA", "", f"-${cocina:,.2f}", "normal"),
+        ("PEINADO Y MAQUILLAJE", "", f"-${peinado:,.2f}", "normal"),
+        ("DULCERÍA", "", f"-${dulceria:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
     ]
     return _encabezado_ticket(nombre, fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
@@ -561,9 +566,10 @@ def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, c
     transferencia = float(fila["Transferencia"])
     retencion = float(fila.get("Retención", 0.0))
     cocina = float(fila["Cocina"])
+    dulceria = float(fila.get("Dulcería", 0.0))
 
     total = sueldo + propina + comision_monto
-    efectivo = total - transferencia - vale - retencion
+    efectivo = total - transferencia - vale - retencion - cocina - dulceria
     etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
     filas = [
@@ -574,8 +580,9 @@ def _flowables_ticket_simple(fila, fecha_str, estilos, propina, comision_cant, c
         ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
         (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
         ("RETENCIÓN", "", f"-${retencion:,.2f}", "normal"),
-        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
         ("COCINA", "", f"-${cocina:,.2f}", "normal"),
+        ("DULCERÍA", "", f"-${dulceria:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
@@ -609,6 +616,7 @@ def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia,
     transferencia = float(fila["Transferencia"])
     retencion = float(fila.get("Retención", 0.0))
     cocina = float(fila["Cocina"])
+    dulceria = float(fila.get("Dulcería", 0.0))
 
     filas_prod = []
     suma_prod = 0.0
@@ -619,7 +627,7 @@ def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia,
         filas_prod.append((etiqueta, str(int(cant)), f"${monto:,.2f}", "normal"))
 
     total = sueldo + suma_prod + propina
-    efectivo = total - transferencia - vale - retencion
+    efectivo = total - transferencia - vale - retencion - cocina - dulceria
     etiqueta_vale = f"VALE ({folios_vale})" if folios_vale else "VALE"
 
     filas = [("SUELDO", "", f"${sueldo:,.2f}", "normal")] + filas_prod + [
@@ -628,8 +636,9 @@ def _flowables_ticket_gerencia(fila, fecha_str, estilos, propina, productos_dia,
         ("TRANSFERENCIA", "", f"-${transferencia:,.2f}", "normal"),
         (etiqueta_vale, "", f"-${vale:,.2f}", "negrita"),
         ("RETENCIÓN", "", f"-${retencion:,.2f}", "normal"),
-        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
         ("COCINA", "", f"-${cocina:,.2f}", "normal"),
+        ("DULCERÍA", "", f"-${dulceria:,.2f}", "normal"),
+        ("EFECTIVO", "", f"${efectivo:,.2f}", "destacado"),
     ]
     return _encabezado_ticket(f"{nombre} — {puesto}", fecha_str, estilos) + [_tabla_ticket(filas, estilos)]
 
