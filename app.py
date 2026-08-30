@@ -734,19 +734,15 @@ st.sidebar.subheader("🔒 Estado del Corte")
 
 corte_esta_bloqueado = verificar_corte_bloqueado(fecha_activa)
 
+# Para el cajero, un corte del día actual sin fondo de apertura capturado
+# se trata como CERRADO a la vista (aunque técnicamente no esté bloqueado
+# en cortes_bloqueos) — debe entrar con el corte cerrado y presionar
+# "Abrir Corte" para capturar el fondo, en vez de que el sistema se lo
+# exija de golpe al iniciar sesión.
+fondo_pendiente_cajero = False
 if rol_actual_lower == "cajero" and es_dia_actual and not corte_esta_bloqueado:
     gasto_hoy_cajero = cargar_gastos_hoy(fecha_activa)
-    if not gasto_hoy_cajero or gasto_hoy_cajero.fondo_apertura is None:
-        @st.dialog("Apertura de corte")
-        def _dialog_apertura_corte():
-            st.write(f"Corte del {fecha_activa} — captura el fondo de caja con el que abres.")
-            monto_apertura = st.number_input("Fondo de apertura ($)", min_value=0.0, format="%.2f")
-            if st.button("Confirmar apertura", type="primary"):
-                guardar_fondo_apertura(fecha_activa, monto_apertura)
-                st.toast(f"✅ Fondo de apertura registrado: ${monto_apertura:,.2f}", icon="✅")
-                st.rerun()
-        _dialog_apertura_corte()
-        st.stop()
+    fondo_pendiente_cajero = not gasto_hoy_cajero or gasto_hoy_cajero.fondo_apertura is None
 
 if corte_esta_bloqueado:
     st.sidebar.error(f"El corte del {fecha_activa} está **CERRADO**.")
@@ -757,6 +753,23 @@ if corte_esta_bloqueado:
             st.rerun()
     else:
         st.sidebar.info("Corte cerrado (Solo lectura). Contacte al administrador.")
+elif fondo_pendiente_cajero:
+    st.sidebar.error(f"El corte del {fecha_activa} está **CERRADO** (pendiente de apertura).")
+    if st.sidebar.button("🔓 Abrir Corte", key="btn_abrir_corte_cajero"):
+        st.session_state["mostrar_dialogo_apertura"] = True
+        st.rerun()
+
+    if st.session_state.get("mostrar_dialogo_apertura"):
+        @st.dialog("Apertura de corte")
+        def _dialog_apertura_corte():
+            st.write(f"Corte del {fecha_activa} — captura el fondo de caja con el que abres.")
+            monto_apertura = st.number_input("Fondo de apertura ($)", min_value=0.0, format="%.2f")
+            if st.button("Confirmar apertura", type="primary"):
+                guardar_fondo_apertura(fecha_activa, monto_apertura)
+                st.session_state["mostrar_dialogo_apertura"] = False
+                st.toast(f"✅ Fondo de apertura registrado: ${monto_apertura:,.2f}", icon="✅")
+                st.rerun()
+        _dialog_apertura_corte()
 else:
     st.sidebar.success(f"El corte del {fecha_activa} está **ABIERTO**.")
     if rol_actual_lower == "admin":
@@ -789,7 +802,7 @@ if rol_actual_lower == "admin":
 elif es_gerente:
     puede_modificar = False
 else:
-    puede_modificar = es_dia_actual and (not corte_esta_bloqueado)
+    puede_modificar = es_dia_actual and (not corte_esta_bloqueado) and (not fondo_pendiente_cajero)
 
 
 st.markdown("---")
@@ -2386,6 +2399,12 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     gasto_previo = cargar_gastos_hoy(fecha_activa)
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
     g_vales_val = float(gasto_previo.gasto_vales) if gasto_previo else 0.0
+    fondo_apertura_val = float(gasto_previo.fondo_apertura) if gasto_previo and gasto_previo.fondo_apertura is not None else None
+    monto_cierre_val = float(gasto_previo.monto_cierre) if gasto_previo and gasto_previo.monto_cierre is not None else None
+
+    with st.container(horizontal=True):
+        st.metric("Fondo de apertura ($)", f"${fondo_apertura_val:,.2f}" if fondo_apertura_val is not None else "— (sin registrar)", border=True)
+        st.metric("Monto de cierre ($)", f"${monto_cierre_val:,.2f}" if monto_cierre_val is not None else "— (sin registrar)", border=True)
 
     col_g1, col_g1b, col_g2, col_g3 = st.columns(4)
     with col_g1:
