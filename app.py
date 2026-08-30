@@ -2387,16 +2387,22 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     g_compras_val = float(gasto_previo.gasto_compras) if gasto_previo else 0.0
     g_vales_val = float(gasto_previo.gasto_vales) if gasto_previo else 0.0
 
-    col_g1, col_g2, col_g3 = st.columns(3)
+    col_g1, col_g1b, col_g2, col_g3 = st.columns(4)
     with col_g1:
         gasto_cocina = sumar_consumo_cocina_dia(fecha_activa)
         st.metric("Gastos - Cocina ($)", f"${gasto_cocina:,.2f}", help="Se calcula solo, sumando la columna Cocina de todos los empleados en '3. Corte y Nómina Final' para esta fecha.")
+    with col_g1b:
+        gasto_peinado = float(empleados_dashboard_df.get('peinado_maquillaje', 0.0).sum()) if not empleados_dashboard_df.empty else 0.0
+        st.metric("Gastos - Peinado y maquillaje ($)", f"${gasto_peinado:,.2f}", help="Se le paga a la persona que da el servicio (gasto real del negocio); se recupera descontándolo de la nómina de la empleada.")
 
+    # Dulcería y Cocina son consumo de producto que el POS YA contó como
+    # venta, pero nunca se cobró en billete (se descuenta de la nómina en
+    # su lugar) — a diferencia de Peinado y maquillaje, que es un gasto de
+    # servicio pagado a una persona, no una venta.
     total_ventas_cobradas_nomina = 0.0
     if not empleados_dashboard_df.empty:
         total_ventas_cobradas_nomina = float(
             empleados_dashboard_df.get('consumo_cocina', 0.0).sum()
-            + empleados_dashboard_df.get('peinado_maquillaje', 0.0).sum()
             + empleados_dashboard_df.get('dulceria', 0.0).sum()
         )
     with col_g2:
@@ -2425,10 +2431,10 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     nomina_chicas_efectivo = (
         nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total - multa_chicas_total
     )
-    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_compras + gasto_vales
+    total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_peinado + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo - total_ventas_cobradas_nomina
-    
-    utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina)
+
+    utilidad_monto = ventas_totales_con_propinas - ((nomina_personal_p_total + nomina_chicas_calc) + gasto_cocina + gasto_peinado)
     utilidad_porcentaje = (utilidad_monto / ventas_totales_con_propinas * 100.0) if ventas_totales_con_propinas > 0 else 0.0
 
     resumen_meseros = pd.DataFrame()
@@ -2476,7 +2482,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     with st.container(horizontal=True):
         st.metric("Efectivo entregado", f"${efectivo_entregado:,.2f}", border=True)
         st.metric(f"Utilidad antes de costos ({utilidad_porcentaje:.1f}%)", f"${utilidad_monto:,.2f}", border=True)
-        st.metric("Consumos no cobrados en caja (Cocina/Peinado/Dulcería)", f"${total_ventas_cobradas_nomina:,.2f}", border=True, help="Ya está incluido en 'Ventas efectivo' pero no entró físicamente a caja: se descontó del sueldo del empleado en la nómina.")
+        st.metric("Consumos no cobrados en caja (Cocina/Dulcería)", f"${total_ventas_cobradas_nomina:,.2f}", border=True, help="Ya está incluido en 'Ventas efectivo' pero no entró físicamente a caja: se descontó del sueldo del empleado en la nómina.")
 
     st.subheader(":material/summarize: Resumen detallado de nómina y vales por grupo")
     nomina_cards = [
@@ -2499,6 +2505,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         {"Concepto": "Nómina - Personal (P)", "Monto": nomina_personal_efectivo},
         {"Concepto": "Nómina - Comisiones Chicas (CH)", "Monto": nomina_chicas_efectivo},
         {"Concepto": "Cocina", "Monto": gasto_cocina},
+        {"Concepto": "Peinado y maquillaje", "Monto": gasto_peinado},
         {"Concepto": "Compras", "Monto": gasto_compras},
         {"Concepto": "Vales (Gastos / Otros)", "Monto": gasto_vales},
         {"Concepto": "TOTAL GASTOS / NÓMINA", "Monto": total_gastos_nomina_efectivo}
