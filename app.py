@@ -2926,7 +2926,7 @@ elif opcion == "Seguridad":
                             user_val = validar_login("admin", pass_admin)
 
                         if user_val and user_val.get("rol") == "admin":
-                            reiniciar_base_de_datos()
+                            reiniciar_base_de_datos(actor=st.session_state["usuario_actual"])
                             st.session_state["mostrar_form_reinicio"] = False
                             st.success("¡Base de datos limpiada con éxito!")
                             st.rerun()

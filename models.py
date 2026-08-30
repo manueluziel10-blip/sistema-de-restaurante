@@ -2193,7 +2193,7 @@ def eliminar_datos_boutique():
         session.close()
 
 
-def reiniciar_base_de_datos():
+def reiniciar_base_de_datos(actor: str = None):
     session = get_session()
     try:
         session.commit()
@@ -2204,10 +2204,14 @@ def reiniciar_base_de_datos():
         for tabla in (
             "asistencias", "cortes_bloqueos", "nomina_diaria", "cortes_productos_chicas",
             "cortes_ventas", "gastos_diarios", "empleados", "puestos_catalogo", "usuarios_sistema",
+            "vales_diarios", "carnet_sanidad", "productos_boutique", "ventas_boutique", "abonos_boutique",
+            # "log_movimientos" se deja fuera a propósito: es la bitácora de
+            # auditoría, no debe borrarse ni con el propio reinicio que la
+            # registra (ver registrar_log(...) al final de esta función).
         ):
             session.execute(db_text(f"DROP TABLE IF EXISTS {tabla}{sufijo_cascade};"))
         session.commit()
-        
+
         Base.metadata.create_all(session.bind)
         
         puestos_iniciales = [
@@ -2225,6 +2229,7 @@ def reiniciar_base_de_datos():
         session.add_all(puestos_iniciales)
         session.commit()
         inicializar_usuarios_por_defecto()
+        registrar_log(actor or "sistema", "Reinicio de base de datos", "Se borraron todas las tablas de datos del sistema.")
     except Exception as e:
         session.rollback()
         raise e
