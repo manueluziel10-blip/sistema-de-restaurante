@@ -2261,6 +2261,25 @@ elif opcion == "Boutique / Tienda":
 
 # --- SECCIÓN 4: CIERRE DE CAJA DIARIO (DASHBOARD) ---
 elif opcion == "4. Cierre de Caja (Dashboard)":
+    # Colores por categoría para las tarjetas de este dashboard, para poder
+    # distinguirlas a simple vista (mismo color = mismo grupo). Reutiliza los
+    # acentos que ya existen en la app (verde/rojo) y extiende con la misma
+    # familia tonal Material para las categorías que faltaban.
+    st.markdown(
+        """
+        <style>
+        .st-key-dash_ventas [data-testid="stMetric"] { border-left: 5px solid #00E676 !important; background: rgba(0,230,118,0.06); }
+        .st-key-dash_resultado [data-testid="stMetric"] { border-left: 5px solid #FFC400 !important; background: rgba(255,196,0,0.08); }
+        .st-key-dash_gastos [data-testid="stMetric"],
+        .st-key-dash_gastos_peinado [data-testid="stMetric"] { border-left: 5px solid #FF5252 !important; background: rgba(255,82,82,0.06); }
+        .st-key-dash_nomina [data-testid="stMetric"] { border-left: 5px solid #448AFF !important; background: rgba(68,138,255,0.06); }
+        .st-key-dash_conteos [data-testid="stMetric"] { border-left: 5px solid #90A4AE !important; background: rgba(144,164,178,0.06); }
+        .st-key-dash_fondo [data-testid="stMetric"] { border-left: 5px solid #E040FB !important; background: rgba(224,64,251,0.06); }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     ruta_logo_local = "LogoSinBailarina.png"
     if os.path.exists(ruta_logo_local):
         with open(ruta_logo_local, "rb") as f_img:
@@ -2411,17 +2430,19 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     fondo_apertura_val = float(gasto_previo.fondo_apertura) if gasto_previo and gasto_previo.fondo_apertura is not None else None
     monto_cierre_val = float(gasto_previo.monto_cierre) if gasto_previo and gasto_previo.monto_cierre is not None else None
 
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, key="dash_fondo"):
         st.metric("Fondo de apertura ($)", f"${fondo_apertura_val:,.2f}" if fondo_apertura_val is not None else "— (sin registrar)", border=True)
         st.metric("Monto de cierre ($)", f"${monto_cierre_val:,.2f}" if monto_cierre_val is not None else "— (sin registrar)", border=True)
 
     col_g1, col_g1b, col_g2, col_g3 = st.columns(4)
     with col_g1:
         gasto_cocina = sumar_consumo_cocina_dia(fecha_activa)
-        st.metric("Gastos - Cocina ($)", f"${gasto_cocina:,.2f}", help="Se calcula solo, sumando la columna Cocina de todos los empleados en '3. Corte y Nómina Final' para esta fecha.")
+        with st.container(key="dash_gastos"):
+            st.metric("Gastos - Cocina ($)", f"${gasto_cocina:,.2f}", border=True, help="Se calcula solo, sumando la columna Cocina de todos los empleados en '3. Corte y Nómina Final' para esta fecha.")
     with col_g1b:
         gasto_peinado = float(empleados_dashboard_df.get('peinado_maquillaje', 0.0).sum()) if not empleados_dashboard_df.empty else 0.0
-        st.metric("Gastos - Peinado y maquillaje ($)", f"${gasto_peinado:,.2f}", help="Se le paga a la persona que da el servicio (gasto real del negocio); se recupera descontándolo de la nómina de la empleada.")
+        with st.container(key="dash_gastos_peinado"):
+            st.metric("Gastos - Peinado y maquillaje ($)", f"${gasto_peinado:,.2f}", border=True, help="Se le paga a la persona que da el servicio (gasto real del negocio); se recupera descontándolo de la nómina de la empleada.")
 
     # Dulcería y Cocina son consumo de producto que el POS YA contó como
     # venta, pero nunca se cobró en billete (se descuenta de la nómina en
@@ -2504,11 +2525,11 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         ("Ventas transferencias", transferencia_ventas),
         ("Ventas por cobrar", ventas_por_cobrar),
     ]
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, key="dash_ventas"):
         for titulo, valor in ventas_cards:
             st.metric(titulo, f"${valor:,.2f}", border=True)
 
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, key="dash_resultado"):
         st.metric("Efectivo entregado", f"${efectivo_entregado:,.2f}", border=True)
         st.metric(f"Utilidad antes de costos ({utilidad_porcentaje:.1f}%)", f"${utilidad_monto:,.2f}", border=True)
         st.metric("Consumos no cobrados en caja (Cocina/Dulcería)", f"${total_ventas_cobradas_nomina:,.2f}", border=True, help="Ya está incluido en 'Ventas efectivo' pero no entró físicamente a caja: se descontó del sueldo del empleado en la nómina.")
@@ -2520,11 +2541,11 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         ("Vales - Personal general", vales_personal_total),
         ("Vales - Bailarinas / chicas", vales_chicas_total),
     ]
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, key="dash_nomina"):
         for titulo, valor in nomina_cards:
             st.metric(titulo, f"${valor:,.2f}", border=True)
 
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, key="dash_conteos"):
         st.metric("Bailarinas penalizadas (multas)", f"{conteo_penalizadas}", border=True)
         st.metric("Bailarinas con sueldo base", f"{conteo_con_sueldo}", border=True)
         st.metric("Bailarinas sin sueldo ($0.00)", f"{conteo_sin_sueldo}", border=True)
