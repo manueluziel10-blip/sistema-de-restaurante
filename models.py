@@ -1505,11 +1505,15 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
 
 
 def eliminar_empleado_por_id(emp_id, fecha_str):
+    """Quita a un empleado de la nómina/asistencia de UNA fecha
+    específica (botón "Quitar de nómina de hoy" en Nómina del día) —
+    NUNCA borra su registro de la tabla `empleados`. Para dar de baja a
+    un empleado de verdad, usar el checkbox "Activo" en
+    '2. Gestión de Empleados' (actualizar_estatus_empleado)."""
     session = get_session()
     try:
         f_date = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        
-        # 1. Limpiar dependencias asociadas a la fecha activa
+
         session.execute(
             db_text("DELETE FROM cortes_productos_chicas WHERE empleado_id = :emp_id AND fecha = :fecha"),
             {"emp_id": emp_id, "fecha": f_date}
@@ -1522,27 +1526,7 @@ def eliminar_empleado_por_id(emp_id, fecha_str):
             db_text("DELETE FROM asistencias WHERE empleado_id = :emp_id AND fecha = :fecha"),
             {"emp_id": emp_id, "fecha": f_date}
         )
-        
-        # 2. Verificar si tiene registros históricos en otras fechas
-        otras_nominas = session.execute(
-            db_text("SELECT COUNT(*) FROM nomina_diaria WHERE empleado_id = :emp_id AND fecha != :fecha"),
-            {"emp_id": emp_id, "fecha": f_date}
-        ).scalar()
-        
-        if otras_nominas == 0:
-            session.execute(
-                db_text("DELETE FROM cortes_productos_chicas WHERE empleado_id = :emp_id"),
-                {"emp_id": emp_id}
-            )
-            session.execute(
-                db_text("DELETE FROM cortes_ventas WHERE idmesero = :emp_id"),
-                {"emp_id": emp_id}
-            )
-            session.execute(
-                db_text("DELETE FROM empleados WHERE id = :emp_id"),
-                {"emp_id": emp_id}
-            )
-            
+
         session.commit()
         return True, None
     except Exception as e:

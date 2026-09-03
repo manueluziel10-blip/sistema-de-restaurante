@@ -1850,13 +1850,13 @@ elif opcion == "Nómina del día":
                     st.success(f"¡Datos de {emp_a_editar} actualizados!")
                     st.rerun()
             with col_btn_2:
-                if st.button("Eliminar empleado", icon=":material/delete:", type="secondary"):
+                if st.button("Quitar de nómina de hoy", icon=":material/delete:", type="secondary", help="Quita a este empleado de la nómina/asistencia de hoy. No lo elimina del sistema — para dar de baja a un empleado, usa el checkbox 'Activo' en '2. Gestión de Empleados'."):
                     exito_del, err_msg = eliminar_empleado_por_id(int(emp_actual['id']), fecha_activa)
                     if exito_del:
-                        st.success(f"¡Empleado {emp_a_editar} eliminado correctamente!")
+                        st.success(f"¡{emp_a_editar} fue quitado(a) de la nómina del {fecha_activa}!")
                         st.rerun()
                     else:
-                        st.error(f"No se pudo eliminar el empleado. Detalle: {err_msg}")
+                        st.error(f"No se pudo quitar de la nómina. Detalle: {err_msg}")
         else:
             st.info("No hay empleados registrados en esta fecha.")
 
