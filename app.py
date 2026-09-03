@@ -1189,8 +1189,8 @@ elif opcion == "2. Gestión de Empleados":
 
                 if st.form_submit_button("Guardar empleado"):
                     if nuevo_nombre.strip():
-                        agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip(), actor=st.session_state["usuario_actual"])
-                        registrar_asistencias_automaticas_dia(fecha_activa)
+                        nuevo_emp_id = agregar_empleado(nuevo_nombre, nuevo_tipo, nuevo_sueldo, fecha_str=fecha_activa, pin=nuevo_pin.strip(), actor=st.session_state["usuario_actual"])
+                        registrar_asistencia_lista_empleados([nuevo_emp_id], fecha_activa)
                         st.success(f"¡Guardado con éxito! PIN asignado a {nuevo_nombre}: **{nuevo_pin.strip()}** (anótalo, no se volverá a mostrar).")
                         st.rerun()
                     else:

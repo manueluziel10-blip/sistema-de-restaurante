@@ -1430,6 +1430,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, actor=
 
         session.commit()
         registrar_log(actor or "sistema", "Alta de empleado", f"empleado={normalizar_nombre(nombre)}, puesto={tipo}")
+        return emp.id
     except Exception as e:
         session.rollback()
         raise e
