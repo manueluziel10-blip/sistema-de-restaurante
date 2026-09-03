@@ -2457,7 +2457,8 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
     nomina_chicas_efectivo = (
-        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total - multa_chicas_total
+        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
+        - multa_chicas_total - cocina_chicas_total - peinado_chicas_total - dulceria_chicas_total
     )
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_peinado + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo - total_ventas_cobradas_nomina
