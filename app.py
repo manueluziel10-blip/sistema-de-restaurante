@@ -2463,6 +2463,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             })
 
     nomina_chicas_calc = 0.0
+    nomina_chicas_efectivo_calc = 0.0
     vales_chicas_total = 0.0
     transferencia_chicas_total = 0.0
     cocina_chicas_total = 0.0
@@ -2513,6 +2514,9 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                 comisiones_chica_ind /= 2.0
 
             nomina_chicas_calc += ((sueldo_chica + comisiones_chica_ind) - descuento_emp)
+            total_pagar_chica = max(0.0, (sueldo_chica + comisiones_chica_ind - descuento_emp)
+                                     - vales_emp - transf_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp)
+            nomina_chicas_efectivo_calc += total_pagar_chica
 
     st.markdown("### 📥 Registro de Gastos y Datos del Día")
     if not puede_modificar:
@@ -2571,10 +2575,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
     nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
-    nomina_chicas_efectivo = (
-        nomina_chicas_calc - vales_chicas_total - transferencia_chicas_total
-        - multa_chicas_total - cocina_chicas_total - peinado_chicas_total - dulceria_chicas_total
-    )
+    nomina_chicas_efectivo = nomina_chicas_efectivo_calc
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_peinado + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo - total_ventas_cobradas_nomina
 
