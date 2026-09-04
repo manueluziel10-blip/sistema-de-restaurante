@@ -2307,7 +2307,8 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     nomina_personal_p_total = 0.0
     vales_personal_total = 0.0
     transferencia_personal_total = 0.0
-    
+    desglose_nomina_personal = []
+
     if not empleados_dashboard_df.empty:
         df_operativo_dash = empleados_dashboard_df[~empleados_dashboard_df['tipo'].apply(es_chica_o_bailarina)]
         for _, emp in df_operativo_dash.iterrows():
@@ -2366,7 +2367,13 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
                         cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
-            nomina_personal_p_total += (sueldo_base + propinas + comisiones_prod)
+            subtotal_emp = sueldo_base + propinas + comisiones_prod
+            nomina_personal_p_total += subtotal_emp
+            desglose_nomina_personal.append({
+                "Nombre": emp.get('nombre', ''), "Puesto": tipo,
+                "Sueldo base": sueldo_base, "Propina": propinas,
+                "Comisión": comisiones_prod, "Subtotal": subtotal_emp,
+            })
 
     nomina_chicas_calc = 0.0
     vales_chicas_total = 0.0
@@ -2544,6 +2551,21 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
     with st.container(horizontal=True, key="dash_nomina"):
         for titulo, valor in nomina_cards:
             st.metric(titulo, f"${valor:,.2f}", border=True)
+
+    with st.expander("Ver desglose de \"Nómina - Personal general\" por empleado"):
+        if desglose_nomina_personal:
+            st.dataframe(
+                pd.DataFrame(desglose_nomina_personal),
+                hide_index=True,
+                column_config={
+                    "Sueldo base": st.column_config.NumberColumn(format="$%.2f"),
+                    "Propina": st.column_config.NumberColumn(format="$%.2f"),
+                    "Comisión": st.column_config.NumberColumn(format="$%.2f"),
+                    "Subtotal": st.column_config.NumberColumn(format="$%.2f"),
+                },
+            )
+        else:
+            st.info("No hay empleados de Personal general con nómina en esta fecha.")
 
     with st.container(horizontal=True, key="dash_conteos"):
         st.metric("Bailarinas penalizadas (multas)", f"{conteo_penalizadas}", border=True)
