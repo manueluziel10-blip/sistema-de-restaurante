@@ -131,6 +131,36 @@ class ValeDiario(Base):
     creado_en = Column(DateTime, server_default=func.now())
 
 
+class AdeudoNomina(Base):
+    """Lo contrario de un vale: cuando el 'Total a Pagar' de una chica
+    sale negativo (consumió más en Cocina/Peinado/Dulcería de lo que
+    ganó ese día), el faltante se registra aquí como deuda pendiente de
+    cobrarle después, en vez de perderse al día siguiente."""
+    __tablename__ = "adeudos_nomina"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    empleado_nombre = Column(String, nullable=False)
+    fecha = Column(Date, nullable=False)
+    monto = Column(Numeric(10, 2), nullable=False)
+    creado_en = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha_adeudo'),
+    )
+
+
+class AbonoAdeudoNomina(Base):
+    """Pago (abono) de un empleado hacia su saldo general de adeudos de
+    nómina — igual patrón que AbonoBoutique."""
+    __tablename__ = "abonos_adeudos_nomina"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    monto = Column(Numeric(10, 2), nullable=False)
+    metodo_pago = Column(String(30), nullable=False)
+    fecha_pago = Column(Date, nullable=False)
+    creado_en = Column(DateTime, server_default=func.now())
+
+
 class ProductoBoutique(Base):
     __tablename__ = "productos_boutique"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -894,6 +924,130 @@ def generar_vales_desde_nomina(fecha_str: str):
     except Exception:
         session.rollback()
         raise
+    finally:
+        session.close()
+
+
+def generar_adeudos_nomina(fecha_str: str):
+    """Al cerrar el corte, si el 'Total a Pagar' de una chica salió
+    negativo ese día (consumió en Cocina/Peinado y maquillaje/Dulcería
+    más de lo que ganó), registra la diferencia como un adeudo
+    pendiente de cobrarle después — lo contrario de un vale. Replica el
+    mismo cálculo de 'Total a Pagar' que procesar_grupo_chicas en
+    app.py, reutilizando cargar_chicas_df/calcular_comisiones_detalle
+    para no duplicar la lógica de negocio."""
+    from comisiones import calcular_comisiones_detalle
+
+    fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    chicas_totales = cargar_chicas_df(fecha_str)
+    session = get_session()
+    try:
+        nominas = session.query(NominaDiaria, Empleado).join(
+            Empleado, Empleado.id == NominaDiaria.empleado_id
+        ).filter(
+            NominaDiaria.fecha == fecha, Empleado.tipo.isnot(None)
+        ).all()
+
+        for nomina, empleado in nominas:
+            if not es_chica_o_bailarina(str(empleado.tipo)):
+                continue
+
+            sueldo_base = float(nomina.sueldo_base or 0.0)
+            vales_emp = float(nomina.vales_nomina or 0.0)
+            transf_emp = float(nomina.transferencia_nomina or 0.0)
+            descuento_emp = float(nomina.descuento_nomina or 0.0)
+            cocina_emp = float(nomina.consumo_cocina or 0.0)
+            multa_emp = float(nomina.retencion_nomina or 0.0)
+            peinado_emp = float(nomina.peinado_maquillaje or 0.0)
+            dulceria_emp = float(nomina.dulceria or 0.0)
+            penalizada = bool(nomina.penalizada)
+
+            sus_filas = pd.DataFrame()
+            if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
+                sus_filas = chicas_totales[chicas_totales['empleado_id'] == empleado.id]
+            extras = calcular_comisiones_detalle(sus_filas, penalizada=penalizada)["total"]
+
+            total_bruto = sueldo_base + extras
+            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp
+
+            if total_pagar >= 0:
+                continue
+
+            monto_adeudo = abs(total_pagar)
+            adeudo_existente = session.query(AdeudoNomina).filter(
+                AdeudoNomina.fecha == fecha, AdeudoNomina.empleado_id == empleado.id
+            ).first()
+            if adeudo_existente:
+                adeudo_existente.monto = monto_adeudo
+            else:
+                session.add(AdeudoNomina(
+                    empleado_id=empleado.id, empleado_nombre=empleado.nombre,
+                    fecha=fecha, monto=monto_adeudo,
+                ))
+                registrar_log("sistema", "Adeudo de nómina generado", f"empleado={empleado.nombre}, monto=${monto_adeudo:.2f}, fecha={fecha_str}")
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def cargar_saldos_adeudos_nomina_df() -> pd.DataFrame:
+    """Saldo general de adeudos de nómina por empleado: total adeudado
+    (todos sus AdeudoNomina), total abonado (todos sus
+    AbonoAdeudoNomina) y saldo pendiente — mismo patrón que
+    cargar_saldos_boutique_df."""
+    session = get_session()
+    adeudado = dict(
+        session.query(AdeudoNomina.empleado_id, func.sum(AdeudoNomina.monto))
+        .group_by(AdeudoNomina.empleado_id).all()
+    )
+    abonado = dict(
+        session.query(AbonoAdeudoNomina.empleado_id, func.sum(AbonoAdeudoNomina.monto))
+        .group_by(AbonoAdeudoNomina.empleado_id).all()
+    )
+    empleados = session.query(Empleado.id, Empleado.nombre).filter(Empleado.id.in_(adeudado.keys())).all()
+    session.close()
+
+    filas = []
+    for emp_id, nombre in empleados:
+        total_adeudado = float(adeudado.get(emp_id, 0) or 0)
+        total_abonado = float(abonado.get(emp_id, 0) or 0)
+        filas.append({
+            "empleado_id": emp_id, "empleado_nombre": nombre,
+            "total_adeudado": total_adeudado, "total_abonado": total_abonado,
+            "saldo_pendiente": total_adeudado - total_abonado,
+        })
+    df = pd.DataFrame(filas, columns=["empleado_id", "empleado_nombre", "total_adeudado", "total_abonado", "saldo_pendiente"])
+    if not df.empty:
+        df = df.sort_values("empleado_nombre").reset_index(drop=True)
+    return df
+
+
+def registrar_abono_adeudo_nomina(empleado_id: int, monto: float, metodo_pago: str):
+    """Registra un abono de un empleado hacia su saldo de adeudos de
+    nómina. La fecha de pago se fija sola (hoy) — mismo patrón que
+    registrar_abono_boutique."""
+    metodos = {"Efectivo", "Transferencia"}
+    if metodo_pago not in metodos:
+        raise ValueError("Debes indicar una forma de pago (Efectivo o Transferencia).")
+    if monto is None or monto <= 0:
+        raise ValueError("El monto del abono debe ser mayor a cero.")
+    session = get_session()
+    try:
+        empleado = session.query(Empleado).filter(Empleado.id == empleado_id).first()
+        if not empleado:
+            raise ValueError("Empleado no encontrado.")
+        session.add(AbonoAdeudoNomina(
+            empleado_id=empleado_id, monto=monto, metodo_pago=metodo_pago,
+            fecha_pago=datetime.now().date(),
+        ))
+        session.commit()
+        registrar_log("sistema", "Abono a adeudo de nómina", f"empleado={empleado.nombre}, monto=${monto:.2f}, forma_pago={metodo_pago}")
+    except Exception as e:
+        session.rollback()
+        raise e
     finally:
         session.close()
 

@@ -30,6 +30,8 @@ from models import (
     exportar_base_datos_excel, importar_base_datos_excel,
     cargar_vales_df, actualizar_estado_vale, cargar_catalogo_empleados, actualizar_estatus_empleado,
     generar_vales_desde_nomina, eliminar_vale, cargar_log_movimientos,
+    generar_adeudos_nomina, cargar_saldos_adeudos_nomina_df, registrar_abono_adeudo_nomina,
+    AdeudoNomina, AbonoAdeudoNomina,
     agregar_producto_boutique, actualizar_producto_boutique, cargar_productos_boutique_df,
     registrar_venta_boutique, cargar_ventas_boutique_df,
     cargar_saldos_boutique_df, registrar_abono_boutique, cargar_abonos_boutique_df,
@@ -784,6 +786,7 @@ else:
     if rol_actual_lower == "admin":
         if st.sidebar.button("🔒 Cerrar Corte Actual", key="btn_cerrar_corte"):
             generar_vales_desde_nomina(fecha_activa)
+            generar_adeudos_nomina(fecha_activa)
             bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
             st.sidebar.warning(f"¡Corte del {fecha_activa} cerrado y bloqueado!")
             st.rerun()
@@ -800,6 +803,7 @@ else:
                 if st.button("Confirmar cierre", type="primary"):
                     guardar_monto_cierre(fecha_activa, monto_cierre_input)
                     generar_vales_desde_nomina(fecha_activa)
+                    generar_adeudos_nomina(fecha_activa)
                     bloquear_corte_fecha(fecha_activa, st.session_state["usuario_actual"])
                     st.session_state["mostrar_dialogo_cierre"] = False
                     st.toast(f"✅ Corte del {fecha_activa} cerrado con ${monto_cierre_input:,.2f}.", icon="✅")
@@ -1360,7 +1364,7 @@ elif opcion == "Nómina del día":
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp
+            total_pagar = max(0.0, total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp)
 
             fila_resultado = {
                 "ID": emp_id,
@@ -2011,11 +2015,93 @@ elif opcion == "Registro de Vales":
 
             st.metric("Total del grupo", f"${float(df_grupo['importe'].sum()):,.2f}")
 
-        tab_bailarinas, tab_trabajadores = st.tabs(["🎀 Bailarinas y Chicas", "👥 Trabajadores"])
+        tab_bailarinas, tab_trabajadores, tab_adeudos = st.tabs(["🎀 Bailarinas y Chicas", "👥 Trabajadores", "💸 Adeudos"])
         with tab_bailarinas:
             renderizar_vales_grupo(vales_df[vales_df["es_chica"]], "bailarinas")
         with tab_trabajadores:
             renderizar_vales_grupo(vales_df[~vales_df["es_chica"]], "trabajadores")
+
+        with tab_adeudos:
+            st.caption("Cuando el 'Total a Pagar' de una chica sale negativo (consumió más de lo que ganó ese día), el faltante queda registrado aquí para cobrárselo después. Los abonos se aplican al saldo general del empleado, no a un día en particular.")
+            METODOS_PAGO_ADEUDO = ["Efectivo", "Transferencia"]
+            saldos_adeudos_df = cargar_saldos_adeudos_nomina_df()
+
+            subtab_adeudo_saldos, subtab_adeudo_abono, subtab_adeudo_historial = st.tabs([
+                "Saldo por empleado", "Registrar abono", "Historial"
+            ])
+
+            with subtab_adeudo_saldos:
+                if saldos_adeudos_df.empty:
+                    st.info("No hay adeudos registrados todavía.")
+                else:
+                    vista_saldos_adeudo = saldos_adeudos_df[["empleado_nombre", "total_adeudado", "total_abonado", "saldo_pendiente"]].copy()
+                    vista_saldos_adeudo.columns = ["Empleado", "Total adeudado", "Total abonado", "Saldo pendiente"]
+
+                    def _pintar_saldo_adeudo(val):
+                        return 'color: #00E676; font-weight: bold;' if isinstance(val, (int, float)) and val <= 0 else ''
+
+                    st.dataframe(
+                        vista_saldos_adeudo.style.format({
+                            "Total adeudado": "${:,.2f}", "Total abonado": "${:,.2f}", "Saldo pendiente": "${:,.2f}"
+                        }).map(_pintar_saldo_adeudo, subset=["Saldo pendiente"]),
+                        hide_index=True, use_container_width=True
+                    )
+
+            with subtab_adeudo_abono:
+                if es_gerente or rol_actual_lower not in ("admin", "cajero"):
+                    st.info("Solo lectura para este rol.")
+                elif saldos_adeudos_df.empty:
+                    st.info("No hay adeudos registrados todavía.")
+                else:
+                    deudores_nomina_df = saldos_adeudos_df[saldos_adeudos_df["saldo_pendiente"] > 0]
+                    if deudores_nomina_df.empty:
+                        st.info("Nadie tiene saldo pendiente en este momento.")
+                    else:
+                        emp_adeudo_sel = st.selectbox(
+                            "Empleado", deudores_nomina_df["empleado_nombre"].tolist(), key="adeudo_nomina_empleado"
+                        )
+                        fila_deudor_nomina = deudores_nomina_df[deudores_nomina_df["empleado_nombre"] == emp_adeudo_sel].iloc[0]
+                        st.caption(f"Saldo pendiente actual: ${fila_deudor_nomina['saldo_pendiente']:,.2f}")
+                        with st.form("form_adeudo_nomina_abono"):
+                            monto_abono_adeudo = st.number_input(
+                                "Monto del abono ($)", min_value=0.01, max_value=float(fila_deudor_nomina["saldo_pendiente"]),
+                                format="%.2f", key="adeudo_nomina_monto"
+                            )
+                            metodo_abono_adeudo_sel = st.selectbox("Forma de pago", METODOS_PAGO_ADEUDO, key="adeudo_nomina_metodo")
+                            if st.form_submit_button("Registrar abono"):
+                                try:
+                                    registrar_abono_adeudo_nomina(int(fila_deudor_nomina["empleado_id"]), monto_abono_adeudo, metodo_abono_adeudo_sel)
+                                    saldo_restante_adeudo = float(fila_deudor_nomina["saldo_pendiente"]) - monto_abono_adeudo
+                                    st.success(f"¡Abono registrado para {emp_adeudo_sel}! Saldo restante: ${saldo_restante_adeudo:,.2f}")
+                                    st.rerun()
+                                except ValueError as error:
+                                    st.error(str(error))
+
+            with subtab_adeudo_historial:
+                session_hist = get_session()
+                adeudos_hist = pd.read_sql(session_hist.query(AdeudoNomina).statement, session_hist.bind)
+                abonos_hist = pd.read_sql(session_hist.query(AbonoAdeudoNomina).statement, session_hist.bind)
+                session_hist.close()
+                col_hist_1, col_hist_2 = st.columns(2)
+                with col_hist_1:
+                    st.markdown("**Adeudos generados**")
+                    if adeudos_hist.empty:
+                        st.info("Sin registros.")
+                    else:
+                        vista_adeudos_hist = adeudos_hist[["empleado_nombre", "fecha", "monto"]].copy()
+                        vista_adeudos_hist.columns = ["Empleado", "Fecha", "Monto"]
+                        st.dataframe(vista_adeudos_hist, hide_index=True, use_container_width=True)
+                with col_hist_2:
+                    st.markdown("**Abonos registrados**")
+                    if abonos_hist.empty:
+                        st.info("Sin registros.")
+                    else:
+                        abonos_hist = abonos_hist.merge(
+                            cargar_catalogo_empleados()[["id", "nombre"]], left_on="empleado_id", right_on="id", how="left"
+                        )
+                        vista_abonos_hist = abonos_hist[["nombre", "monto", "metodo_pago", "fecha_pago"]].copy()
+                        vista_abonos_hist.columns = ["Empleado", "Monto", "Forma de pago", "Fecha de pago"]
+                        st.dataframe(vista_abonos_hist, hide_index=True, use_container_width=True)
 
         st.markdown("---")
         st.metric("Total del historial completo de vales", f"${float(vales_df['importe'].sum()):,.2f}")
