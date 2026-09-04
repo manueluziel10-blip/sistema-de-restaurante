@@ -2525,16 +2525,24 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             else:
                 conteo_sin_sueldo += 1
             
+            comisiones_cliente_chica = bool(emp.get('comisiones_cliente', False))
             sus_filas = chicas_acumuladas[chicas_acumuladas['empleado_id'] == emp_id] if not chicas_acumuladas.empty else pd.DataFrame()
             comisiones_chica_ind = 0.0
             for _, r in sus_filas.iterrows():
                 desc = str(r['descripcion']).upper()
                 cant = float(r['cantidad']) if pd.notna(r['cantidad']) else 0.0
-                com = 80.0 if 'PRIVADO PROMO' in desc else (300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria']))))
-                comisiones_chica_ind += cant * com
-            
-            if penalizada_chica:
-                comisiones_chica_ind /= 2.0
+                usa_tarifa_cliente = comisiones_cliente_chica and any(p in desc for p in ['COPA LADY', 'STRONGBOW', 'BOONS'])
+                if usa_tarifa_cliente:
+                    # Tarifa especial "Comisiones cliente" — no se combina con
+                    # la penalización (ver comisiones.py TABLA_COMISIONES_CLIENTE).
+                    com = 80.0 if 'COPA LADY' in desc else (200.0 if 'STRONGBOW' in desc else 500.0)
+                    comisiones_chica_ind += cant * com
+                else:
+                    com = 80.0 if 'PRIVADO PROMO' in desc else (300.0 if 'PRIVADO ARTISTA' in desc else (1000.0 if 'BOONS ARTISTA' in desc else (700.0 if 'BOONS' in desc else float(r['comision_unitaria']))))
+                    subtotal = cant * com
+                    if penalizada_chica:
+                        subtotal /= 2.0
+                    comisiones_chica_ind += subtotal
 
             nomina_chicas_calc += ((sueldo_chica + comisiones_chica_ind) - descuento_emp)
             total_pagar_chica = max(0.0, (sueldo_chica + comisiones_chica_ind - descuento_emp)
