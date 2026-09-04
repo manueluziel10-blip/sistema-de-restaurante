@@ -24,7 +24,7 @@ from models import (
     cambiar_fecha_corte, verificar_corte_bloqueado, bloquear_corte_fecha, desbloquear_corte_fecha,
     get_session, CorteVenta, ProductoChica, NominaDiaria, Asistencia,
     cargar_empleados_rango_df, cargar_chicas_rango_df, cargar_ventas_rango_df,
-    obtener_penalizaciones_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
+    obtener_penalizaciones_rango, obtener_comisiones_cliente_rango, diagnosticar_dias_rango, reparar_nomina_faltante_rango,
     verificar_pin_empleado, establecer_pin_empleado, generar_pin_aleatorio,
     agregar_empleado_catalogo, agregar_empleados_catalogo_bulk, registrar_asistencia_lista_empleados,
     exportar_base_datos_excel, importar_base_datos_excel,
@@ -1335,6 +1335,18 @@ elif opcion == "Nómina del día":
                     disabled=not puede_modificar
                 )
 
+        st.caption(":material/info: Marca la casilla junto al nombre para aplicar Comisiones cliente (Copa Lady $80, Strongbow $200, Boons $500):")
+        checkboxes_comisiones_cliente = {}
+        cols_comisiones_cliente = st.columns(4)
+        for idx_chk, (_, emp_chk) in enumerate(df_subgrupo.iterrows()):
+            with cols_comisiones_cliente[idx_chk % 4]:
+                checkboxes_comisiones_cliente[emp_chk['id']] = st.checkbox(
+                    emp_chk['nombre'],
+                    value=bool(emp_chk.get('comisiones_cliente', False)),
+                    key=f"cc_{key_sufijo}_{emp_chk['id']}",
+                    disabled=not puede_modificar
+                )
+
         res_grupo = []
         for _, emp in df_subgrupo.iterrows():
             emp_id = emp['id']
@@ -1348,19 +1360,24 @@ elif opcion == "Nómina del día":
             peinado_emp = float(emp.get('peinado_maquillaje', 0.0))
             dulceria_emp = float(emp.get('dulceria', 0.0))
             penalizada_actual = bool(emp.get('penalizada', False))
+            comisiones_cliente_actual = bool(emp.get('comisiones_cliente', False))
 
             penalizada_cambiada = checkboxes_penalizacion[emp_id]
+            comisiones_cliente_cambiada = checkboxes_comisiones_cliente[emp_id]
 
-            if puede_modificar and (penalizada_cambiada != penalizada_actual):
-                actualizar_empleado(emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp, fecha_str=fecha_activa, nuevo_retencion=multa_emp)
-                st.toast(f"✅ Penalización de {nombre} actualizada.", icon="✅")
+            if puede_modificar and (penalizada_cambiada != penalizada_actual or comisiones_cliente_cambiada != comisiones_cliente_actual):
+                actualizar_empleado(
+                    emp_id, emp['tipo'], sueldo_base, vales_emp, penalizada_cambiada, descuento_emp, transf_emp, cocina_emp,
+                    fecha_str=fecha_activa, nuevo_retencion=multa_emp, nueva_comisiones_cliente=comisiones_cliente_cambiada
+                )
+                st.toast(f"✅ {nombre} actualizada.", icon="✅")
                 st.rerun()
 
             sus_filas = pd.DataFrame()
             if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
                 sus_filas = chicas_totales[chicas_totales['empleado_id'] == emp_id]
 
-            detalle = calcular_comisiones_detalle(sus_filas, penalizada=penalizada_cambiada)
+            detalle = calcular_comisiones_detalle(sus_filas, penalizada=penalizada_cambiada, comisiones_cliente=comisiones_cliente_cambiada)
             extras = detalle["total"]
 
             total_bruto = sueldo_base + extras
@@ -2757,6 +2774,7 @@ elif opcion == "5. Reportes":
 
                 with tab_rep_bailarinas:
                     mapa_penalizaciones = obtener_penalizaciones_rango(f_ini_str, f_fin_str)
+                    mapa_comisiones_cliente = obtener_comisiones_cliente_rango(f_ini_str, f_fin_str)
                     df_bailarinas_rango = empleados_rango[empleados_rango['tipo'].apply(es_chica_o_bailarina)]
                     resumen_bailarinas = []
                     for _, emp in df_bailarinas_rango.iterrows():
@@ -2767,7 +2785,11 @@ elif opcion == "5. Reportes":
                         sus_prods = chicas_rango[chicas_rango['empleado_id'] == emp_id] if not chicas_rango.empty else pd.DataFrame()
 
                         fechas_penalizadas_emp = mapa_penalizaciones.get(emp_id, set())
-                        detalle = calcular_comisiones_detalle(sus_prods, fechas_penalizadas=fechas_penalizadas_emp)
+                        fechas_comisiones_cliente_emp = mapa_comisiones_cliente.get(emp_id, set())
+                        detalle = calcular_comisiones_detalle(
+                            sus_prods, fechas_penalizadas=fechas_penalizadas_emp,
+                            fechas_comisiones_cliente=fechas_comisiones_cliente_emp
+                        )
                         total_comisiones = detalle["total"]
 
                         total_pagar = (sueldo_base_acumulado + total_comisiones) - descuento

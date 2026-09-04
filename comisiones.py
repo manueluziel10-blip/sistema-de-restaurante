@@ -41,6 +41,17 @@ CATEGORIAS_CHICAS = [
     "Vino Espumoso",
 ]
 
+# Tarifa especial "Comisiones cliente" — reemplaza la comisión normal
+# SOLO para estas 3 categorías (las demás se quedan con su tarifa de
+# siempre) cuando la chica tiene marcada la casilla "Comisiones
+# cliente" ese día. No se combina con la penalización (mitad de
+# comisiones): si aplica la tarifa cliente, esa tarifa ya es la final.
+TABLA_COMISIONES_CLIENTE = {
+    "Copa Lady": 80.0,
+    "Strongbow": 200.0,
+    "Boons": 500.0,
+}
+
 # Bono de gerencia/caja (Gerente, Capitán de Mesero, Cajero) por producto vendido.
 # Se paga sobre el total de productos vendidos en el bar (no por chica
 # individual), a diferencia de calcular_comision_chica.
@@ -114,13 +125,15 @@ def calcular_propina_ventas_propias(df_ventas: pd.DataFrame, empleado_id, porcen
 
 
 def calcular_comisiones_detalle(df_productos_empleado: pd.DataFrame, penalizada: bool = False,
-                                 fechas_penalizadas: set = None) -> dict:
+                                 fechas_penalizadas: set = None, comisiones_cliente: bool = False,
+                                 fechas_comisiones_cliente: set = None) -> dict:
     """
     Calcula el desglose de comisiones de una chica/bailarina a partir de
     sus filas de productos vendidos.
 
     Columnas esperadas en df_productos_empleado: 'descripcion', 'cantidad',
-    y opcionalmente 'fecha' (solo se usa si se pasa fechas_penalizadas).
+    y opcionalmente 'fecha' (solo se usa si se pasa fechas_penalizadas o
+    fechas_comisiones_cliente).
 
     - penalizada: si es True, TODAS las filas se calculan a mitad de
       comisión. Pensado para el corte de un solo día (ahí "penalizada"
@@ -129,6 +142,13 @@ def calcular_comisiones_detalle(df_productos_empleado: pd.DataFrame, penalizada:
       mitad de comisión, evaluado fila por fila según su columna 'fecha'.
       Pensado para reportes por periodo (varios días), donde cada día
       puede tener o no la penalización activa.
+    - comisiones_cliente: si es True, Copa Lady/Strongbow/Boons usan la
+      tarifa especial de TABLA_COMISIONES_CLIENTE en vez de la tarifa
+      normal (las demás categorías no cambian). Esta tarifa especial NO
+      se combina con la penalización — si aplica, es la tarifa final.
+    - fechas_comisiones_cliente: set opcional de fechas, mismo patrón que
+      fechas_penalizadas pero para "Comisiones cliente" (reportes por
+      periodo).
 
     Devuelve un dict con "<Categoria>_cant", "<Categoria>_monto" por cada
     categoría en CATEGORIAS_CHICAS, más "total" (suma de todos los montos).
@@ -148,19 +168,25 @@ def calcular_comisiones_detalle(df_productos_empleado: pd.DataFrame, penalizada:
     for _, fila in df_productos_empleado.iterrows():
         desc = str(fila["descripcion"])
         cant = float(fila["cantidad"]) if pd.notna(fila.get("cantidad")) else 0.0
-        com_unit = calcular_comision_chica(desc)
+
+        categoria = _categoria_producto(desc)
+        if categoria == "Otros":
+            continue
+
+        aplica_comisiones_cliente = comisiones_cliente
+        if fechas_comisiones_cliente is not None and "fecha" in fila.index:
+            aplica_comisiones_cliente = fila["fecha"] in fechas_comisiones_cliente
+        usa_tarifa_cliente = aplica_comisiones_cliente and categoria in TABLA_COMISIONES_CLIENTE
+
+        com_unit = TABLA_COMISIONES_CLIENTE[categoria] if usa_tarifa_cliente else calcular_comision_chica(desc)
         subtotal = cant * com_unit
 
         aplica_penalizacion = penalizada
         if fechas_penalizadas is not None and "fecha" in fila.index:
             aplica_penalizacion = fila["fecha"] in fechas_penalizadas
 
-        if aplica_penalizacion:
+        if aplica_penalizacion and not usa_tarifa_cliente:
             subtotal /= 2.0
-
-        categoria = _categoria_producto(desc)
-        if categoria == "Otros":
-            continue
 
         resultado[f"{categoria}_cant"] += cant
         resultado[f"{categoria}_monto"] += subtotal

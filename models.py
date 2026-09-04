@@ -108,6 +108,7 @@ class NominaDiaria(Base):
     retencion_nomina = Column(Numeric(10, 2), default=0.0)
     peinado_maquillaje = Column(Numeric(10, 2), default=0.0)
     dulceria = Column(Numeric(10, 2), default=0.0)
+    comisiones_cliente = Column(Boolean, default=False)
 
     __table_args__ = (
         UniqueConstraint('empleado_id', 'fecha', name='unique_empleado_fecha_nomina'),
@@ -553,6 +554,8 @@ def asegurar_nomina_dia(session, fecha_date):
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN peinado_maquillaje NUMERIC(10,2) DEFAULT 0.0"))
             if 'dulceria' not in columnas_tabla:
                 session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN dulceria NUMERIC(10,2) DEFAULT 0.0"))
+            if 'comisiones_cliente' not in columnas_tabla:
+                session.execute(db_text("ALTER TABLE nomina_diaria ADD COLUMN comisiones_cliente BOOLEAN DEFAULT 0"))
 
             # Filas insertadas por el sincronizador automático antes de que
             # estas columnas se agregaran explícitamente ahí quedaron con
@@ -856,7 +859,8 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         NominaDiaria.puesto_dia,
         NominaDiaria.retencion_nomina,
         NominaDiaria.peinado_maquillaje,
-        NominaDiaria.dulceria
+        NominaDiaria.dulceria,
+        NominaDiaria.comisiones_cliente
     ).join(NominaDiaria, Empleado.id == NominaDiaria.empleado_id).filter(
         NominaDiaria.fecha == f_date,
         Empleado.activo == True
@@ -877,6 +881,7 @@ def cargar_empleados_df(fecha_str: str = None) -> pd.DataFrame:
         df['retencion_nomina'] = df['retencion_nomina'].astype(float).fillna(0.0) if 'retencion_nomina' in df.columns else 0.0
         df['peinado_maquillaje'] = df['peinado_maquillaje'].astype(float).fillna(0.0) if 'peinado_maquillaje' in df.columns else 0.0
         df['dulceria'] = df['dulceria'].astype(float).fillna(0.0) if 'dulceria' in df.columns else 0.0
+        df['comisiones_cliente'] = df['comisiones_cliente'].astype(bool) if 'comisiones_cliente' in df.columns else False
     return df
 
 
@@ -1660,7 +1665,7 @@ def agregar_empleado(nombre, tipo, sueldo_base, fecha_str=None, pin=None, actor=
         session.close()
 
 
-def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, nuevo_puesto_dia=None, nuevo_retencion=None, nuevo_peinado_maquillaje=None, nuevo_dulceria=None, actor=None, **kwargs):
+def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nueva_penalizacion=None, nuevo_descuento=None, nueva_transferencia=None, nuevo_consumo_cocina=None, fecha_str=None, nuevo_puesto_dia=None, nuevo_retencion=None, nuevo_peinado_maquillaje=None, nuevo_dulceria=None, nueva_comisiones_cliente=None, actor=None, **kwargs):
     session = get_session()
     asegurar_puesto_existe(session, nuevo_tipo)
 
@@ -1697,6 +1702,7 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         nom.peinado_maquillaje = 0.0
         nom.dulceria = 0.0
         nom.penalizada = False
+        nom.comisiones_cliente = False
         nom.puesto_dia = nuevo_tipo
 
     if nuevo_vales is not None:
@@ -1717,6 +1723,8 @@ def actualizar_empleado(emp_id, nuevo_tipo, nuevo_sueldo, nuevo_vales=None, nuev
         nom.peinado_maquillaje = nuevo_peinado_maquillaje
     if nuevo_dulceria is not None:
         nom.dulceria = nuevo_dulceria
+    if nueva_comisiones_cliente is not None:
+        nom.comisiones_cliente = nueva_comisiones_cliente
 
     nombre_emp = emp.nombre if emp else str(emp_id)
     session.commit()
@@ -2103,6 +2111,27 @@ def obtener_penalizaciones_rango(fecha_inicio: str, fecha_fin: str) -> dict:
             NominaDiaria.fecha >= f_ini,
             NominaDiaria.fecha <= f_fin,
             NominaDiaria.penalizada == True
+        ).all()
+        mapa = {}
+        for emp_id, fecha in filas:
+            mapa.setdefault(emp_id, set()).add(fecha)
+        return mapa
+    finally:
+        session.close()
+
+
+def obtener_comisiones_cliente_rango(fecha_inicio: str, fecha_fin: str) -> dict:
+    """Devuelve {empleado_id: set(fechas)} con los días marcados como
+    'comisiones_cliente' dentro del rango — mismo patrón que
+    obtener_penalizaciones_rango, para reportes por periodo."""
+    session = get_session()
+    try:
+        f_ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+        f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+        filas = session.query(NominaDiaria.empleado_id, NominaDiaria.fecha).filter(
+            NominaDiaria.fecha >= f_ini,
+            NominaDiaria.fecha <= f_fin,
+            NominaDiaria.comisiones_cliente == True
         ).all()
         mapa = {}
         for emp_id, fecha in filas:
