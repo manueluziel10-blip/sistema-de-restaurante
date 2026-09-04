@@ -470,6 +470,7 @@ def cambiar_fecha_corte(fecha_antigua_str: str, fecha_nueva_str: str):
         session.query(NominaDiaria).filter(NominaDiaria.fecha == f_ant).update({NominaDiaria.fecha: f_nue}, synchronize_session=False)
         session.query(GastoDiario).filter(GastoDiario.fecha == f_ant).update({GastoDiario.fecha: f_nue}, synchronize_session=False)
         session.query(CorteBloqueo).filter(CorteBloqueo.fecha == f_ant).update({CorteBloqueo.fecha: f_nue}, synchronize_session=False)
+        session.query(Asistencia).filter(Asistencia.fecha == f_ant).update({Asistencia.fecha: f_nue}, synchronize_session=False)
         
         session.commit()
     except Exception as e:
