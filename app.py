@@ -2314,13 +2314,14 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         for _, emp in df_operativo_dash.iterrows():
             emp_id = emp['id']
             tipo = emp['tipo']
+            tipo_efectivo = emp.get('tipo_efectivo', tipo) or tipo
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
             vales_personal_total += vales_emp
             transferencia_personal_total += transf_emp
-            
-            puesto_upper_check = tipo.upper()
+
+            puesto_upper_check = str(tipo_efectivo).upper()
             comisiones_prod = 0.0
             if "SCOM" in puesto_upper_check:
                 porcentaje_propina = 0.0
