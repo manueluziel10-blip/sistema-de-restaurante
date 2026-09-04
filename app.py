@@ -2635,6 +2635,11 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         st.metric(f"Utilidad antes de costos ({utilidad_porcentaje:.1f}%)", f"${utilidad_monto:,.2f}", border=True)
         st.metric("Consumos no cobrados en caja (Cocina/Dulcería)", f"${total_ventas_cobradas_nomina:,.2f}", border=True, help="Ya está incluido en 'Ventas efectivo' pero no entró físicamente a caja: se descontó del sueldo del empleado en la nómina.")
 
+    st.caption(
+        f"Ventas efectivo (${efectivo_ventas:,.2f}) − Total gastos/nómina (${total_gastos_nomina_efectivo:,.2f}) "
+        f"− Consumos no cobrados en caja (${total_ventas_cobradas_nomina:,.2f}) = Efectivo entregado (${efectivo_entregado:,.2f})"
+    )
+
     st.subheader(":material/summarize: Resumen detallado de nómina y vales por grupo")
     nomina_cards = [
         ("Nómina - Personal general", nomina_personal_p_total),
