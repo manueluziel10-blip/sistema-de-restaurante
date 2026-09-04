@@ -1629,7 +1629,7 @@ elif opcion == "Nómina del día":
                         comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
 
             total_bruto = sueldo_base + propinas + comisiones_prod
-            total_pagar = total_bruto - vales_emp - transf_emp - retencion_emp - cocina_emp - dulceria_emp
+            total_pagar = max(0.0, total_bruto - vales_emp - transf_emp - retencion_emp - cocina_emp - dulceria_emp)
 
             if propina_propia_rol > 0:
                 etiqueta_propina = f"↑ {porcentaje_propina:.1f}% pool + ${propina_propia_rol:,.2f} propia (${propinas:,.2f})"
@@ -2391,6 +2391,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         chicas_con_descuento_dash = len(df_chicas_dash[df_chicas_dash['descuento_nomina'] > 0.0]) if 'descuento_nomina' in df_chicas_dash.columns else len(df_chicas_dash)
 
     nomina_personal_p_total = 0.0
+    nomina_personal_efectivo_calc = 0.0
     vales_personal_total = 0.0
     transferencia_personal_total = 0.0
     desglose_nomina_personal = []
@@ -2404,6 +2405,9 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
             sueldo_base = float(emp['sueldo_base'])
             vales_emp = float(emp.get('vales_nomina', 0.0))
             transf_emp = float(emp.get('transferencia_nomina', 0.0)) if 'transferencia_nomina' in emp else 0.0
+            retencion_emp = float(emp.get('retencion_nomina', 0.0))
+            cocina_emp_p = float(emp.get('consumo_cocina', 0.0))
+            dulceria_emp_p = float(emp.get('dulceria', 0.0))
             vales_personal_total += vales_emp
             transferencia_personal_total += transf_emp
 
@@ -2456,6 +2460,8 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
 
             subtotal_emp = sueldo_base + propinas + comisiones_prod
             nomina_personal_p_total += subtotal_emp
+            total_pagar_personal_emp = max(0.0, subtotal_emp - vales_emp - transf_emp - retencion_emp - cocina_emp_p - dulceria_emp_p)
+            nomina_personal_efectivo_calc += total_pagar_personal_emp
             desglose_nomina_personal.append({
                 "Nombre": emp.get('nombre', ''), "Puesto": tipo,
                 "Sueldo base": sueldo_base, "Propina": propinas,
@@ -2574,7 +2580,7 @@ elif opcion == "4. Cierre de Caja (Dashboard)":
         ventas_por_cobrar = float(((ventas_acumuladas['otros'] if 'otros' in ventas_acumuladas.columns else 0.0) + (ventas_acumuladas['propinacredito'] if 'propinacredito' in ventas_acumuladas.columns else 0.0)).sum())
 
     ventas_totales_con_propinas = efectivo_ventas + tarjeta_ventas + transferencia_ventas + ventas_por_cobrar
-    nomina_personal_efectivo = nomina_personal_p_total - vales_personal_total - transferencia_personal_total
+    nomina_personal_efectivo = nomina_personal_efectivo_calc
     nomina_chicas_efectivo = nomina_chicas_efectivo_calc
     total_gastos_nomina_efectivo = nomina_personal_efectivo + nomina_chicas_efectivo + gasto_cocina + gasto_peinado + gasto_compras + gasto_vales
     efectivo_entregado = efectivo_ventas - total_gastos_nomina_efectivo - total_ventas_cobradas_nomina

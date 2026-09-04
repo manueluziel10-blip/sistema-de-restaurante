@@ -928,18 +928,73 @@ def generar_vales_desde_nomina(fecha_str: str):
         session.close()
 
 
+def _calcular_total_pagar_personal_general(tipo_efectivo, emp_id, sueldo_base, ventas_totales, chicas_totales, chicas_con_descuento_count):
+    """Replica el cálculo de propina/comisión de procesar_grupo_general
+    (app.py) para un empleado de Personal General, a partir de los
+    mismos datos crudos (ventas del restaurante + productos de chicas).
+    Devuelve (propinas, comisiones_prod)."""
+    from comisiones import calcular_bono_dj_animador, calcular_comision_gerencia_caja, calcular_propina_ventas_propias
+
+    puesto_upper_check = str(tipo_efectivo).upper()
+    comisiones_prod = 0.0
+    if "SCOM" in puesto_upper_check:
+        porcentaje_propina = 0.0
+    elif any(p in puesto_upper_check for p in ["DJ", "ANIMADOR"]):
+        porcentaje_propina = 0.0
+        comisiones_prod = calcular_bono_dj_animador(chicas_con_descuento_count)
+    elif "SEGURIDAD" in puesto_upper_check:
+        porcentaje_propina = 0.0
+    elif "BARMAN" in puesto_upper_check:
+        porcentaje_propina = 10.0
+    elif "AYUDANTE" in puesto_upper_check:
+        porcentaje_propina = 5.0
+    elif any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+        porcentaje_propina = 8.0
+    else:
+        porcentaje_propina = 50.0
+
+    propinas = 0.0
+    if not ventas_totales.empty and porcentaje_propina > 0.0:
+        if any(p in puesto_upper_check for p in ["AYUDANTE", "BARMAN", "GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+            p_tarj_tot = (ventas_totales['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in ventas_totales.columns else 0.0
+            p_efec_tot = ventas_totales['propina_efectivo'].sum() if 'propina_efectivo' in ventas_totales.columns else 0.0
+            p_vale_tot = ventas_totales['propina_vales'].sum() if 'propina_vales' in ventas_totales.columns else 0.0
+            p_cred_tot = ventas_totales['propinacredito'].sum() if 'propinacredito' in ventas_totales.columns else 0.0
+            propinas = (p_tarj_tot + p_efec_tot + p_vale_tot + p_cred_tot) * (porcentaje_propina / 100.0)
+            if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+                propinas += calcular_propina_ventas_propias(ventas_totales, emp_id)
+        else:
+            filas_emp = ventas_totales[ventas_totales['idmesero'] == emp_id]
+            if not filas_emp.empty:
+                p_tarj = (filas_emp['propina_tarjeta'].sum() * 0.84) if 'propina_tarjeta' in filas_emp.columns else 0.0
+                p_efec = filas_emp['propina_efectivo'].sum() if 'propina_efectivo' in filas_emp.columns else 0.0
+                p_vale = filas_emp['propina_vales'].sum() if 'propina_vales' in filas_emp.columns else 0.0
+                p_cred = filas_emp['propinacredito'].sum() if 'propinacredito' in filas_emp.columns else 0.0
+                propinas = (p_tarj + p_efec + p_vale + p_cred) * (porcentaje_propina / 100.0)
+
+    if any(p in puesto_upper_check for p in ["GERENTE", "CAPITÁN", "CAPITAN", "CAJERO"]):
+        if not chicas_totales.empty:
+            for _, f_prod in chicas_totales.iterrows():
+                desc = str(f_prod['descripcion'])
+                cant = float(f_prod['cantidad']) if pd.notna(f_prod['cantidad']) else 0.0
+                comisiones_prod += cant * calcular_comision_gerencia_caja(desc)
+
+    return propinas, comisiones_prod
+
+
 def generar_adeudos_nomina(fecha_str: str):
-    """Al cerrar el corte, si el 'Total a Pagar' de una chica salió
-    negativo ese día (consumió en Cocina/Peinado y maquillaje/Dulcería
-    más de lo que ganó), registra la diferencia como un adeudo
-    pendiente de cobrarle después — lo contrario de un vale. Replica el
-    mismo cálculo de 'Total a Pagar' que procesar_grupo_chicas en
-    app.py, reutilizando cargar_chicas_df/calcular_comisiones_detalle
-    para no duplicar la lógica de negocio."""
+    """Al cerrar el corte, si el 'Total a Pagar' de un empleado (chica o
+    Personal General) salió negativo ese día, registra la diferencia
+    como un adeudo pendiente de cobrarle después — lo contrario de un
+    vale. Replica el mismo cálculo de 'Total a Pagar' que
+    procesar_grupo_chicas/procesar_grupo_general en app.py, reutilizando
+    cargar_chicas_df/cargar_ventas_df/calcular_comisiones_detalle y las
+    funciones de comisiones.py para no duplicar la lógica de negocio."""
     from comisiones import calcular_comisiones_detalle
 
     fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
     chicas_totales = cargar_chicas_df(fecha_str)
+    ventas_totales = cargar_ventas_df(fecha_str)
     session = get_session()
     try:
         nominas = session.query(NominaDiaria, Empleado).join(
@@ -948,27 +1003,39 @@ def generar_adeudos_nomina(fecha_str: str):
             NominaDiaria.fecha == fecha, Empleado.tipo.isnot(None)
         ).all()
 
-        for nomina, empleado in nominas:
-            if not es_chica_o_bailarina(str(empleado.tipo)):
-                continue
+        chicas_con_descuento_count = sum(
+            1 for nomina, empleado in nominas
+            if es_chica_o_bailarina(str(empleado.tipo)) and float(nomina.descuento_nomina or 0.0) > 0.0
+        )
 
-            sueldo_base = float(nomina.sueldo_base or 0.0)
+        for nomina, empleado in nominas:
             vales_emp = float(nomina.vales_nomina or 0.0)
             transf_emp = float(nomina.transferencia_nomina or 0.0)
-            descuento_emp = float(nomina.descuento_nomina or 0.0)
             cocina_emp = float(nomina.consumo_cocina or 0.0)
-            multa_emp = float(nomina.retencion_nomina or 0.0)
-            peinado_emp = float(nomina.peinado_maquillaje or 0.0)
             dulceria_emp = float(nomina.dulceria or 0.0)
-            penalizada = bool(nomina.penalizada)
+            sueldo_base = float(nomina.sueldo_base or 0.0)
 
-            sus_filas = pd.DataFrame()
-            if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
-                sus_filas = chicas_totales[chicas_totales['empleado_id'] == empleado.id]
-            extras = calcular_comisiones_detalle(sus_filas, penalizada=penalizada)["total"]
+            if es_chica_o_bailarina(str(empleado.tipo)):
+                descuento_emp = float(nomina.descuento_nomina or 0.0)
+                multa_emp = float(nomina.retencion_nomina or 0.0)
+                peinado_emp = float(nomina.peinado_maquillaje or 0.0)
+                penalizada = bool(nomina.penalizada)
 
-            total_bruto = sueldo_base + extras
-            total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp
+                sus_filas = pd.DataFrame()
+                if not chicas_totales.empty and 'empleado_id' in chicas_totales.columns:
+                    sus_filas = chicas_totales[chicas_totales['empleado_id'] == empleado.id]
+                extras = calcular_comisiones_detalle(sus_filas, penalizada=penalizada)["total"]
+
+                total_bruto = sueldo_base + extras
+                total_pagar = total_bruto - vales_emp - transf_emp - descuento_emp - multa_emp - cocina_emp - peinado_emp - dulceria_emp
+            else:
+                retencion_emp = float(nomina.retencion_nomina or 0.0)
+                tipo_efectivo = nomina.puesto_dia or empleado.tipo
+                propinas, comisiones_prod = _calcular_total_pagar_personal_general(
+                    tipo_efectivo, empleado.id, sueldo_base, ventas_totales, chicas_totales, chicas_con_descuento_count
+                )
+                total_bruto = sueldo_base + propinas + comisiones_prod
+                total_pagar = total_bruto - vales_emp - transf_emp - retencion_emp - cocina_emp - dulceria_emp
 
             if total_pagar >= 0:
                 continue
